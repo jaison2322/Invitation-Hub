@@ -259,30 +259,35 @@ export default function AddEditEventScreen() {
   }
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: '120px' }}>
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">
-          {isEditing ? 'Edit Function & Guests' : 'Add Family Function'}
-        </span>
-        {isEditing && canEditEvents ? (
-          <button
-            type="button"
-            className="btn btn-sm btn-ghost text-danger"
-            style={{ padding: '6px', color: 'var(--color-danger)' }}
-            onClick={() => setShowDeleteModal(true)}
-            title="Delete Event"
-          >
-            <Trash2 size={16} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
           </button>
-        ) : (
-          <div style={{ width: '36px' }} />
-        )}
+          <span className="top-bar-title">
+            {isEditing ? 'Edit Function & Guests' : 'Add Family Function'}
+          </span>
+          {isEditing && canEditEvents ? (
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost text-danger"
+              style={{ padding: '6px', color: 'var(--color-danger)' }}
+              onClick={() => setShowDeleteModal(true)}
+              title="Delete Event"
+            >
+              <Trash2 size={16} />
+            </button>
+          ) : (
+            <div style={{ width: '36px' }} />
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-col gap-4 animate-slide-up">
+      {/* ── Scrollable Event Form Body ──────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: '120px' }}>
+        <div className="flex flex-col gap-4 animate-slide-up">
         {/* Event Name */}
         <div>
           <label className="label">Event Name *</label>
@@ -673,6 +678,7 @@ export default function AddEditEventScreen() {
             </div>
           )}
         </div>
+      </div>
       </div>
 
       {/* Save Button */}

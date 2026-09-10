@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Sparkles, AlertTriangle,
-  History, Gift, User, Edit3, CheckCircle2, Trash2,
+  History, Gift, User, CheckCircle2, Trash2, ChevronRight,
 } from 'lucide-react';
 import {
-  formatFullDate, formatTime, formatDate, getEventTypeIcon, getEventTypeLabel,
+  formatFullDate, formatTime, formatDate,
   getInitials, formatCurrency, getRelationshipLabel,
 } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
 import { getRelationshipHistory, getGiftHistory, detectScheduleConflicts } from '../services/aiService';
 
 export default function EventDetailScreen() {
@@ -35,7 +37,7 @@ export default function EventDetailScreen() {
     return (
       <div className="screen-no-nav flex items-center justify-center">
         <div className="text-center">
-          <p className="text-muted">Event not found</p>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: '15px' }}>Event record not found</p>
           <button className="btn btn-ghost mt-4" onClick={() => navigate(-1)}>Go Back</button>
         </div>
       </div>
@@ -61,201 +63,264 @@ export default function EventDetailScreen() {
   };
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: invitation.status === 'pending' ? '120px' : 'var(--space-6)' }}>
-      {/* Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Event Details</span>
-        {canManage ? (
-          <button
-            className="btn btn-sm btn-ghost text-danger"
-            style={{ padding: '6px', color: 'var(--color-danger)' }}
-            onClick={() => setShowDeleteModal(true)}
-            title="Delete Invitation"
-          >
-            <Trash2 size={16} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Navigation Header ───────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)} aria-label="Go Back">
+            <ArrowLeft size={16} strokeWidth={2} />
           </button>
-        ) : (
-          <div style={{ width: '36px' }} />
-        )}
+          <span className="top-bar-title">Event Overview</span>
+          {canManage ? (
+            <button
+              type="button"
+              className="btn-icon"
+              style={{ color: 'var(--color-danger)' }}
+              onClick={() => setShowDeleteModal(true)}
+              title="Delete Invitation"
+              aria-label="Delete Event"
+            >
+              <Trash2 size={16} strokeWidth={1.8} />
+            </button>
+          ) : (
+            <div style={{ width: '36px' }} />
+          )}
+        </div>
       </div>
 
-      {/* Main Card */}
-      <div className="hero-event-card animate-slide-up">
-        <div className="flex items-start justify-between mb-2">
-          <span style={{ fontSize: '32px' }}>{getEventTypeIcon(invitation.eventType)}</span>
-          <div className="flex gap-2">
-            <span className={`badge badge-${invitation.priority}`}>{invitation.priority}</span>
-            <span className={`badge badge-${invitation.status}`}>{invitation.status}</span>
+      {/* ── Scrollable Event Content ────────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: invitation.status === 'pending' ? '100px' : '32px' }}>
+        {/* ── Executive Protocol Dossier Pass ─────────────────────────────────── */}
+        <div className="hero-event-card mb-4">
+        <div className="flex items-start justify-between mb-3">
+          <EventBadgeIcon type={invitation.eventType} size="hero" showGlow />
+          <div className="flex items-center gap-2">
+            <PriorityBadge priority={invitation.priority} />
+            <span className={`badge badge-${invitation.status}`}>
+              {invitation.status}
+            </span>
           </div>
         </div>
 
-        <h2 style={{ marginBottom: 'var(--space-1)' }}>
+        <h1
+          className="font-heading font-semibold text-white tracking-tight"
+          style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px' }}
+        >
           {invitation.nickname || invitation.title}
-        </h2>
+        </h1>
         {invitation.nickname && (
-          <p className="text-sm text-secondary">{invitation.title}</p>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+            {invitation.title}
+          </p>
         )}
 
-        <div className="separator" />
+        <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '12px 0' }} />
 
-        <div className="flex flex-col gap-3" style={{ fontSize: 'var(--text-sm)' }}>
-          <div className="flex items-center gap-3 text-secondary">
-            <Calendar size={16} />
+        {/* Metadata Details */}
+        <div className="flex flex-col gap-2.5" style={{ fontSize: '13px' }}>
+          <div className="flex items-center gap-2.5 text-slate-200">
+            <Calendar size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
             <span>{formatFullDate(invitation.date)}</span>
           </div>
           {invitation.time && (
-            <div className="flex items-center gap-3 text-secondary">
-              <Clock size={16} /> <span>{formatTime(invitation.time)}</span>
+            <div className="flex items-center gap-2.5 text-slate-200">
+              <Clock size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span>{formatTime(invitation.time)}</span>
             </div>
           )}
           {invitation.venue && (
-            <div className="flex items-center gap-3 text-secondary">
-              <MapPin size={16} /> <span>{invitation.venue}</span>
+            <div className="flex items-center gap-2.5 text-slate-200">
+              <MapPin size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span className="truncate">{invitation.venue}</span>
             </div>
           )}
           {invitation.mainPerson && (
-            <div className="flex items-center gap-3 text-secondary">
-              <User size={16} /> <span>{invitation.mainPerson}</span>
+            <div className="flex items-center gap-2.5 text-slate-200">
+              <User size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span>Hosted by {invitation.mainPerson}</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* AI Insight */}
+      {/* ── Apple Intelligence Analysis ────────────────────────────────────── */}
       {invitation.aiReason && (
-        <div className="glass-card glass-card-gold animate-slide-up delay-1" style={{ marginTop: 'var(--space-4)' }}>
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles size={16} style={{ color: 'var(--color-gold)' }} />
-            <span className="font-heading font-semibold text-sm">AI Insight</span>
+        <div className="apple-intelligence-card mb-4">
+          <div className="flex items-start gap-2.5">
+            <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff', flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '13px', lineHeight: '1.45', color: 'var(--color-text-secondary)' }}>
+              <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>Strategic Briefing: </strong>
+              {invitation.aiReason}
+            </div>
           </div>
-          <p className="text-sm text-secondary" style={{ lineHeight: '1.6' }}>
-            {invitation.aiReason}
-          </p>
         </div>
       )}
 
-      {/* Schedule Conflicts */}
+      {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
       {conflicts.length > 0 && (
-        <div className="animate-slide-up delay-2" style={{ marginTop: 'var(--space-4)' }}>
+        <div className="mb-4">
           {conflicts.map((c, i) => (
-            <div key={i} className="conflict-card" style={{ marginBottom: 'var(--space-2)' }}>
-              <div className="conflict-icon"><AlertTriangle size={14} /></div>
+            <div key={i} className="conflict-card mb-2">
+              <div className="conflict-icon">
+                <AlertTriangle size={14} strokeWidth={2} />
+              </div>
               <div>
-                <div className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>
-                  {c.type === 'time_overlap' ? 'Time Conflict' : 'Same Day'}
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
+                  {c.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
                 </div>
-                <div className="text-sm text-secondary">{c.conflictingItemTitle} at {c.conflictingTime}</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  {c.conflictingItemTitle} at {c.conflictingTime}
+                </div>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Person Profile Link */}
+      {/* ── Host Profile Inset Link ────────────────────────────────────────── */}
       {person && (
-        <div
-          className="glass-card glass-card-interactive animate-slide-up delay-2"
-          style={{ marginTop: 'var(--space-4)' }}
-          onClick={() => navigate(`/person/${person.id}`)}
-        >
-          <div className="flex items-center gap-3">
-            <div className="avatar">{getInitials(person.name)}</div>
-            <div className="flex-1">
-              <div className="text-sm font-semibold">{person.nickname}</div>
-              <div className="text-xs text-muted">{person.name} · {getRelationshipLabel(person.relationship)}</div>
+        <div className="ios-grouped-list mb-4">
+          <div
+            className="ios-grouped-item"
+            onClick={() => navigate(`/person/${person.id}`)}
+          >
+            <div className="avatar avatar-sm">
+              {getInitials(person.name)}
             </div>
-            <span className="text-xs text-gold">View Profile →</span>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>{person.nickname}</div>
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                {person.name} · {getRelationshipLabel(person.relationship)}
+              </div>
+            </div>
+            <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
           </div>
         </div>
       )}
 
-      {/* Relationship History */}
+      {/* ── Relationship History ───────────────────────────────────────────── */}
       {relHistory.length > 0 && (
-        <div className="glass-card animate-slide-up delay-3" style={{ marginTop: 'var(--space-4)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <History size={16} style={{ color: 'var(--color-info)' }} />
-            <span className="font-heading font-semibold text-sm">Relationship History</span>
+        <section className="mb-4">
+          <div className="section-header">
+            <span className="section-title">Protocol History</span>
           </div>
-          <div className="timeline">
+
+          <div className="ios-grouped-list">
             {relHistory.map((item, i) => (
-              <div key={i} className="timeline-item">
-                <div className="timeline-date">{formatDate(item.eventDate)}</div>
-                <div className="text-sm">
-                  <CheckCircle2 size={12} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-confirmed)' }} />
-                  {item.role} — {item.eventName}
+              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                  <History size={16} strokeWidth={2} />
                 </div>
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                    {item.role} — {item.eventName}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                    {formatDate(item.eventDate)}
+                  </div>
+                </div>
+                <CheckCircle2 size={15} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Gift History */}
+      {/* ── Gift History ───────────────────────────────────────────────────── */}
       {giftHist.length > 0 && (
-        <div className="glass-card animate-slide-up delay-4" style={{ marginTop: 'var(--space-4)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Gift size={16} style={{ color: 'var(--color-gold)' }} />
-            <span className="font-heading font-semibold text-sm">Gift History</span>
+        <section className="mb-4">
+          <div className="section-header">
+            <span className="section-title">Gift Registry Record</span>
           </div>
-          <div className="flex flex-col gap-2">
+
+          <div className="ios-grouped-list">
             {giftHist.map((g, i) => (
-              <div key={i} className="flex items-center justify-between" style={{ padding: 'var(--space-2) var(--space-3)', background: 'rgba(212, 168, 83, 0.04)', borderRadius: 'var(--radius-sm)' }}>
-                <div>
-                  <div className="text-sm">{g.gift}</div>
-                  <div className="text-xs text-muted">{g.eventName}</div>
+              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
+                  <Gift size={16} strokeWidth={2} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{g.gift}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                    {g.eventName}
+                  </div>
                 </div>
                 {g.estimatedValue && (
-                  <span className="badge badge-gold">{formatCurrency(g.estimatedValue)}</span>
+                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>
+                    {formatCurrency(g.estimatedValue)}
+                  </span>
                 )}
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
+      </div>
 
-      {/* Decision Bar for pending */}
+      {/* ── Decision Bar for Pending Events ────────────────────────────────── */}
       {invitation.status === 'pending' && (
         <div className="decision-bar">
-          <button className="btn btn-confirm" onClick={() => { updateInvitationStatus(invitation.id, 'confirmed'); navigate(-1); }}>
-            ✓ CONFIRM
+          <button
+            type="button"
+            className="btn btn-confirm flex-1 font-heading"
+            onClick={() => {
+              updateInvitationStatus(invitation.id, 'confirmed');
+              navigate(-1);
+            }}
+          >
+            Confirm Attendance
           </button>
-          <button className="btn btn-ignore" onClick={() => { updateInvitationStatus(invitation.id, 'ignored'); navigate(-1); }}>
-            ✕ IGNORE
+          <button
+            type="button"
+            className="btn btn-ignore flex-1 font-heading"
+            onClick={() => {
+              updateInvitationStatus(invitation.id, 'ignored');
+              navigate(-1);
+            }}
+          >
+            Decline
           </button>
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
+      {/* ── Delete Confirmation Modal ──────────────────────────────────────── */}
       {showDeleteModal && (
         <div className="modal-overlay modal-centered" onClick={() => setShowDeleteModal(false)}>
-          <div className="modal-dialog animate-scale-in text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog text-center" onClick={(e) => e.stopPropagation()}>
             <div
               style={{
-                width: '48px',
-                height: '48px',
+                width: '44px',
+                height: '44px',
                 borderRadius: '50%',
-                background: 'rgba(239, 68, 68, 0.15)',
+                background: 'rgba(255, 69, 58, 0.15)',
                 color: 'var(--color-danger)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto var(--space-3)',
+                margin: '0 auto 12px',
               }}
             >
-              <Trash2 size={24} />
+              <Trash2 size={20} strokeWidth={1.8} />
             </div>
-            <h3 style={{ marginBottom: 'var(--space-1)' }}>Delete Invitation?</h3>
-            <p className="text-xs text-secondary mb-4">
-              Are you sure you want to remove "{invitation.nickname || invitation.title}"? This action cannot be undone.
+            <h3 className="font-heading font-semibold text-white mb-1" style={{ fontSize: '17px' }}>
+              Delete Invitation?
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+              Are you sure you want to remove &ldquo;{invitation.nickname || invitation.title}&rdquo;? This action cannot be undone.
             </p>
             <div className="flex gap-2">
-              <button className="btn btn-ghost flex-1" onClick={() => setShowDeleteModal(false)}>
+              <button
+                type="button"
+                className="btn btn-ignore flex-1"
+                onClick={() => setShowDeleteModal(false)}
+              >
                 Cancel
               </button>
-              <button className="btn btn-danger flex-1" onClick={handleDelete}>
+              <button
+                type="button"
+                className="btn btn-danger flex-1"
+                onClick={handleDelete}
+              >
                 Delete
               </button>
             </div>

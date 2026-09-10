@@ -7,22 +7,25 @@ import {
   Bell,
   Palette,
   Database,
+  FileSpreadsheet,
   Info,
   LogOut,
   ChevronRight,
   Shield,
-  Crown,
   Trash2,
   Check,
   Moon,
   Sun,
   Sparkles,
-  KeyRound,
   ShieldAlert,
   Phone,
-  Mail,
+  Globe,
+  History,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
+import { exportToExcel } from '../services/exportService';
+import { useTranslation } from '../i18n/useTranslation';
+import { permissionService } from '../services/permissionService';
 
 export default function SettingsScreen() {
   const navigate = useNavigate();
@@ -35,9 +38,12 @@ export default function SettingsScreen() {
     theme,
     setTheme,
     updateProfile,
-    changePIN,
     changePassword,
     clearAllData,
+    invitations,
+    people,
+    schedule,
+    familyEvents,
   } = useAppStore();
 
   const activeUser = isVIP ? currentUser : currentPrivilegedUser;
@@ -45,15 +51,16 @@ export default function SettingsScreen() {
   const activeUsername = activeUser?.username || (isVIP ? 'vip' : 'staff');
   const activeUserRole = isVIP ? 'VIP Master Account' : (currentPrivilegedUser?.role || 'Privileged User');
 
+  const { t, language, setLanguage, currentLanguageOption, supportedLanguages } = useTranslation();
+
   // Modals state
   const [activeModal, setActiveModal] = useState<
-    'theme' | 'profile' | 'password' | 'pin' | 'notifications' | 'about' | 'clear' | 'privileged-info' | null
+    'theme' | 'language' | 'profile' | 'password' | 'notifications' | 'about' | 'clear' | 'privileged-info' | null
   >(null);
 
   // Profile Edit Form State
   const [editName, setEditName] = useState(activeUserName);
   const [editPhone, setEditPhone] = useState(activeUser?.phone || '');
-  const [editEmail, setEditEmail] = useState(activeUser?.email || '');
   const [profileSuccess, setProfileSuccess] = useState('');
 
   // Change Password Form State
@@ -63,22 +70,79 @@ export default function SettingsScreen() {
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
 
-  // Change PIN Form State
-  const [currentPinInput, setCurrentPinInput] = useState('');
-  const [newPinInput, setNewPinInput] = useState('');
-  const [confirmPinInput, setConfirmPinInput] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [pinSuccess, setPinSuccess] = useState('');
-
   // Notification Preferences State
   const [notifConflictAlerts, setNotifConflictAlerts] = useState(true);
   const [notifNewInvitations, setNotifNewInvitations] = useState(true);
   const [notifScheduleChanges, setNotifScheduleChanges] = useState(true);
   const [notifReminders, setNotifReminders] = useState(true);
 
+  const handleToggleNotification = async (
+    setter: (val: boolean) => void,
+    currentVal: boolean
+  ) => {
+    if (!currentVal) {
+      try {
+        const check = await permissionService.checkNotifications();
+        if (check.granted) {
+          setter(true);
+          return;
+        }
+
+        const res = await permissionService.requestNotifications();
+        if (res.granted) {
+          setter(true);
+        } else {
+          setter(false);
+          if (!res.canAskAgain) {
+            const open = window.confirm(
+              'Notification permission is disabled in your device settings. Would you like to open App Settings to enable notifications?'
+            );
+            if (open) {
+              permissionService.openSettings();
+            }
+          } else {
+            alert('Notification permission was not granted. You will not receive system alerts.');
+          }
+        }
+      } catch (err) {
+        console.warn('Notification permission error:', err);
+        setter(true);
+      }
+    } else {
+      setter(false);
+    }
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+
+  const handleExportExcel = async () => {
+    if (isExporting) return;
+    try {
+      setIsExporting(true);
+      setExportStatus(null);
+      const res = await exportToExcel({
+        invitations,
+        people,
+        schedule,
+        familyEvents,
+        privilegedUsers,
+        activeUser,
+        isVIP,
+      });
+      setExportStatus(res.summary);
+      setTimeout(() => setExportStatus(null), 5000);
+    } catch (err: any) {
+      setExportStatus('Export failed: ' + (err?.message || 'Unknown error'));
+      setTimeout(() => setExportStatus(null), 5000);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleClearData = async () => {
@@ -90,7 +154,7 @@ export default function SettingsScreen() {
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editName.trim()) return;
-    updateProfile(editName.trim(), editPhone.trim(), editEmail.trim());
+    updateProfile(editName.trim(), editPhone.trim());
     setProfileSuccess('Profile updated successfully.');
     setTimeout(() => {
       setProfileSuccess('');
@@ -127,31 +191,6 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSavePIN = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinError('');
-    setPinSuccess('');
-
-    if (newPinInput !== confirmPinInput) {
-      setPinError('New PINs do not match.');
-      return;
-    }
-
-    const result = changePIN(currentPinInput, newPinInput);
-    if (result.success) {
-      setPinSuccess(result.message);
-      setCurrentPinInput('');
-      setNewPinInput('');
-      setConfirmPinInput('');
-      setTimeout(() => {
-        setPinSuccess('');
-        setActiveModal(null);
-      }, 1000);
-    } else {
-      setPinError(result.message);
-    }
-  };
-
   const themeOptions = [
     {
       id: 'dark',
@@ -171,7 +210,7 @@ export default function SettingsScreen() {
       id: 'onyx',
       name: 'Royal Onyx',
       desc: 'Pure pitch black OLED with high-contrast gold',
-      icon: <Crown size={20} className="text-gold" />,
+      icon: <Shield size={20} className="text-gold" />,
       colors: ['#000000', '#161616', '#e5b352'],
     },
     {
@@ -199,11 +238,10 @@ export default function SettingsScreen() {
         {
           icon: <User size={18} />,
           label: 'Profile',
-          desc: `@${activeUsername} • ${activeUser?.email || activeUser?.phone || activeUserName}`,
+          desc: `@${activeUsername} • ${activeUser?.phone || activeUserName}`,
           onClick: () => {
             setEditName(activeUserName);
             setEditPhone(activeUser?.phone || '');
-            setEditEmail(activeUser?.email || '');
             setActiveModal('profile');
           },
         },
@@ -218,19 +256,6 @@ export default function SettingsScreen() {
             setPassError('');
             setPassSuccess('');
             setActiveModal('password');
-          },
-        },
-        {
-          icon: <KeyRound size={18} />,
-          label: 'Change PIN',
-          desc: 'Update your 4-digit backup security PIN',
-          onClick: () => {
-            setCurrentPinInput('');
-            setNewPinInput('');
-            setConfirmPinInput('');
-            setPinError('');
-            setPinSuccess('');
-            setActiveModal('pin');
           },
         },
         ...(isVIP
@@ -257,57 +282,64 @@ export default function SettingsScreen() {
       ],
     },
     {
-      title: 'Preferences',
+      title: t('settings.preferences'),
       items: [
         {
           icon: <Palette size={18} />,
-          label: 'Appearance',
+          label: t('settings.appearance'),
           desc: getThemeLabel(theme || 'dark'),
           onClick: () => setActiveModal('theme'),
         },
         {
+          icon: <Globe size={18} />,
+          label: t('settings.language'),
+          desc: `${currentLanguageOption.nativeName}${
+            currentLanguageOption.name !== currentLanguageOption.nativeName
+              ? ` (${currentLanguageOption.name})`
+              : ''
+          }`,
+          onClick: () => setActiveModal('language'),
+        },
+        {
           icon: <Bell size={18} />,
-          label: 'Notifications',
+          label: t('settings.notifications'),
           desc: 'Manage alerts & reminders',
           onClick: () => setActiveModal('notifications'),
+        },
+        {
+          icon: <History size={18} />,
+          label: 'Activity History',
+          desc: 'Audit trail of changes & actions',
+          onClick: () => navigate('/activity'),
         },
       ],
     },
     {
-      title: 'Data & Security',
+      title: t('settings.dataSecurity'),
       items: [
         {
-          icon: <Database size={18} />,
-          label: 'Export Data',
-          desc: 'Download your events & contacts as JSON',
-          onClick: () => {
-            const data = localStorage.getItem('vip-event-intelligence-store-v2');
-            if (data) {
-              const blob = new Blob([data], { type: 'application/json' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `vip-event-backup-${new Date().toISOString().split('T')[0]}.json`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }
-          },
+          icon: <FileSpreadsheet size={18} />,
+          label: t('settings.exportExcel'),
+          desc: isExporting
+            ? 'Generating Excel spreadsheet...'
+            : t('settings.exportDesc'),
+          onClick: handleExportExcel,
         },
         {
           icon: <Trash2 size={18} />,
-          label: 'Clear All Data',
-          desc: 'Reset all stored events and profiles',
+          label: t('settings.clearData'),
+          desc: t('settings.clearDesc'),
           onClick: () => setActiveModal('clear'),
           danger: true,
         },
       ],
     },
     {
-      title: 'About',
+      title: t('settings.about'),
       items: [
         {
           icon: <Info size={18} />,
-          label: 'About VIP Event Intelligence',
+          label: t('settings.about'),
           desc: 'v2.0 Executive Edition',
           onClick: () => setActiveModal('about'),
         },
@@ -317,98 +349,182 @@ export default function SettingsScreen() {
 
   return (
     <div className="screen">
-      <div className="screen-header">
-        <h2>Settings</h2>
+      {/* ── Stationary Header ──────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        {/* ── Apple Large Title Header ───────────────────────────────────────── */}
+        <div style={{ marginBottom: 0 }}>
+          <h1
+            className="font-heading font-bold text-white tracking-tight"
+            style={{ fontSize: '32px', letterSpacing: '-0.03em', lineHeight: 1.15 }}
+          >
+            {t('settings.title')}
+          </h1>
+          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '3px' }}>
+            {t('settings.accountSubtitle')}
+          </p>
+        </div>
       </div>
 
-      {/* Profile Card */}
-      <div
-        className={`glass-card ${isVIP ? 'glass-card-gold' : ''} animate-slide-up mb-4`}
-        style={{ cursor: 'pointer' }}
-        onClick={() => {
-          setEditName(activeUserName);
-          setEditPhone(activeUser?.phone || '');
-          setEditEmail(activeUser?.email || '');
-          setActiveModal('profile');
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="avatar avatar-lg">{getInitials(activeUserName)}</div>
-          <div className="flex-1">
-            <div className="font-heading font-bold text-lg">{activeUserName}</div>
-            <div className="flex items-center gap-2 mt-1">
-              {isVIP ? (
-                <>
-                  <Crown size={14} style={{ color: 'var(--color-gold)' }} />
-                  <span className="text-sm text-gold">VIP Master Account</span>
-                </>
-              ) : (
-                <>
-                  <Shield size={14} style={{ color: 'var(--color-info)' }} />
-                  <span className="text-sm text-info">{activeUserRole}</span>
-                </>
-              )}
+      {/* ── Scrollable Settings Body ────────────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* ── Export Status Alert Banner ─────────────────────────────────────── */}
+      {exportStatus && (
+        <div
+          className="glass-card animate-fade-in mb-4"
+          style={{
+            padding: '12px 16px',
+            borderRadius: 'var(--radius-lg)',
+            background: exportStatus.startsWith('Export failed')
+              ? 'rgba(255, 69, 58, 0.15)'
+              : 'rgba(48, 209, 88, 0.15)',
+            border: exportStatus.startsWith('Export failed')
+              ? '1px solid rgba(255, 69, 58, 0.3)'
+              : '1px solid rgba(48, 209, 88, 0.3)',
+            color: exportStatus.startsWith('Export failed')
+              ? 'var(--color-danger)'
+              : 'var(--color-confirmed)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
+          {exportStatus.startsWith('Export failed') ? (
+            <ShieldAlert size={16} />
+          ) : (
+            <Check size={16} />
+          )}
+          <span>{exportStatus}</span>
+        </div>
+      )}
+
+      {/* ── Apple Profile Card (iOS Inset Grouped) ─────────────────────────── */}
+      <div className="ios-grouped-list mb-5">
+        <div
+          className="ios-grouped-item"
+          style={{ padding: '16px' }}
+          onClick={() => {
+            setEditName(activeUserName);
+            setEditPhone(activeUser?.phone || '');
+            setActiveModal('profile');
+          }}
+        >
+          <div className="avatar avatar-lg" style={{ width: '52px', height: '52px', fontSize: '18px' }}>
+            {getInitials(activeUserName)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-heading font-semibold" style={{ fontSize: '17px', letterSpacing: '-0.015em', color: 'var(--color-text-primary)' }}>
+              {activeUserName}
             </div>
-            {(activeUser?.email || activeUser?.phone) && (
-              <div className="text-xs text-muted mt-1 flex items-center gap-2 flex-wrap">
-                {activeUser.email && <span>{activeUser.email}</span>}
-                {activeUser.email && activeUser.phone && <span>•</span>}
-                {activeUser.phone && <span>{activeUser.phone}</span>}
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`badge ${isVIP ? 'badge-gold' : 'badge-info'}`}>
+                {isVIP ? 'VIP Principal' : activeUserRole}
+              </span>
+              <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                @{activeUsername}
+              </span>
+            </div>
+            {activeUser?.phone && (
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }} className="truncate">
+                {activeUser.phone}
               </div>
             )}
           </div>
-          <ChevronRight size={18} className="text-muted" />
+          <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
         </div>
       </div>
 
-      {/* Settings Groups */}
+      {/* ── Apple Settings Groups (Inset Grouped Lists) ────────────────────── */}
       {settingsGroups.map((group, gi) => (
-        <div
-          key={gi}
-          className="animate-slide-up"
-          style={{ animationDelay: `${gi * 0.08}s`, marginBottom: 'var(--space-5)' }}
-        >
+        <section key={gi} style={{ marginBottom: '20px' }}>
           <div
-            className="text-xs text-muted font-heading font-semibold mb-2"
-            style={{ textTransform: 'uppercase', letterSpacing: '0.5px' }}
+            style={{
+              fontSize: '12px',
+              fontWeight: 600,
+              color: 'var(--color-text-secondary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              marginBottom: '6px',
+              paddingLeft: '4px',
+            }}
           >
             {group.title}
           </div>
-          <div className="flex flex-col gap-1">
-            {group.items.map((item: any, ii) => (
-              <div
-                key={ii}
-                className={`glass-card ${item.isInfoOnly ? '' : 'glass-card-interactive'} flex items-center gap-3`}
-                style={{ padding: 'var(--space-3) var(--space-4)', cursor: 'pointer' }}
-                onClick={item.onClick}
-              >
-                <div style={{ color: item.danger ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
-                  {item.icon}
-                </div>
-                <div className="flex-1">
+
+          <div className="ios-grouped-list">
+            {group.items.map((item: any, ii) => {
+              // System squircle color mapping
+              const squircleBg = item.danger
+                ? 'rgba(255, 69, 58, 0.15)'
+                : ii % 4 === 0
+                ? 'rgba(10, 132, 255, 0.15)'
+                : ii % 4 === 1
+                ? 'rgba(48, 209, 88, 0.15)'
+                : ii % 4 === 2
+                ? 'rgba(255, 159, 10, 0.15)'
+                : 'rgba(191, 90, 242, 0.15)';
+
+              const iconColor = item.danger
+                ? 'var(--color-danger)'
+                : ii % 4 === 0
+                ? 'var(--color-accent)'
+                : ii % 4 === 1
+                ? 'var(--color-confirmed)'
+                : ii % 4 === 2
+                ? 'var(--color-pending)'
+                : 'var(--color-apple-purple)';
+
+              return (
+                <div
+                  key={ii}
+                  className="ios-grouped-item"
+                  onClick={item.onClick}
+                >
                   <div
-                    className="text-sm font-semibold"
-                    style={{ color: item.danger ? 'var(--color-danger)' : undefined }}
+                    className="ios-icon-squircle"
+                    style={{ background: squircleBg, color: iconColor }}
                   >
-                    {item.label}
+                    {item.icon}
                   </div>
-                  <div className="text-xs text-muted">{item.desc}</div>
+                  <div className="flex-1 min-w-0">
+                    <div
+                      style={{
+                        fontSize: '14px',
+                        fontWeight: 500,
+                        color: item.danger ? 'var(--color-danger)' : 'var(--color-text-primary)',
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }} className="truncate">
+                      {item.desc}
+                    </div>
+                  </div>
+                  {item.isInfoOnly ? (
+                    <span className="badge badge-info" style={{ fontSize: '10px' }}>Active</span>
+                  ) : (
+                    <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                  )}
                 </div>
-                {item.isInfoOnly ? (
-                  <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Active</span>
-                ) : (
-                  <ChevronRight size={16} className="text-muted" />
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
-        </div>
+        </section>
       ))}
 
-      {/* Logout */}
-      <button className="btn btn-danger w-full mb-8" onClick={handleLogout}>
-        <LogOut size={18} /> Sign Out
-      </button>
+      {/* ── Sign Out Button ────────────────────────────────────────────────── */}
+      <div style={{ marginTop: '28px', marginBottom: '20px' }}>
+        <button
+          type="button"
+          className="btn btn-danger w-full"
+          onClick={handleLogout}
+        >
+          <LogOut size={16} strokeWidth={2} />
+          <span>{t('settings.signOut')}</span>
+        </button>
+      </div>
+      </div>
 
       {/* ─── MODAL: THEME SELECTION ────────────────────────────────────────── */}
       {activeModal === 'theme' && (
@@ -417,10 +533,10 @@ export default function SettingsScreen() {
             <div className="modal-handle" />
             <div className="flex items-center gap-2 mb-2">
               <Palette size={20} className="text-gold" />
-              <h3 style={{ margin: 0 }}>Select Theme</h3>
+              <h3 style={{ margin: 0 }}>{t('settings.selectTheme')}</h3>
             </div>
             <p className="text-xs text-secondary mb-4">
-              Choose your preferred executive interface styling
+              {t('settings.themeSubtitle')}
             </p>
 
             <div className="flex flex-col gap-3 mb-5">
@@ -490,7 +606,99 @@ export default function SettingsScreen() {
             </div>
 
             <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
-              Done
+              {t('common.done')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: LANGUAGE SELECTION ────────────────────────────────────────── */}
+      {activeModal === 'language' && (
+        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
+          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-handle" />
+            <div className="flex items-center gap-2 mb-2">
+              <Globe size={20} className="text-apple-blue" />
+              <h3 style={{ margin: 0 }}>{t('settings.selectLanguage')}</h3>
+            </div>
+            <p className="text-xs text-secondary mb-4">
+              {t('settings.langSubtitle')}
+            </p>
+
+            <div className="flex flex-col gap-2.5 mb-5" style={{ maxHeight: '55vh', overflowY: 'auto' }}>
+              {supportedLanguages.map((langOpt) => {
+                const isSelected = language === langOpt.code;
+                return (
+                  <div
+                    key={langOpt.code}
+                    className={`glass-card flex items-center justify-between p-3 ${
+                      isSelected ? 'glass-card-blue' : ''
+                    }`}
+                    style={{
+                      cursor: 'pointer',
+                      border: isSelected ? '1px solid var(--color-accent)' : '1px solid var(--glass-border)',
+                      background: isSelected ? 'rgba(10, 132, 255, 0.12)' : undefined,
+                      borderRadius: 'var(--radius-lg)',
+                    }}
+                    onClick={() => {
+                      setLanguage(langOpt.code);
+                      setTimeout(() => setActiveModal(null), 250);
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        style={{
+                          width: '38px',
+                          height: '38px',
+                          borderRadius: 'var(--radius-md)',
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: '18px',
+                          border: '1px solid var(--glass-border)',
+                        }}
+                      >
+                        {langOpt.flag || '🌐'}
+                      </div>
+                      <div>
+                        <div
+                          className="font-heading font-semibold"
+                          style={{
+                            fontSize: '15px',
+                            color: isSelected ? 'var(--color-accent)' : 'var(--color-text-primary)',
+                          }}
+                        >
+                          {langOpt.nativeName}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                          {langOpt.name} • {langOpt.region}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        width: '24px',
+                        height: '24px',
+                        borderRadius: '50%',
+                        border: isSelected ? '2px solid var(--color-accent)' : '2px solid var(--glass-border)',
+                        background: isSelected ? 'var(--color-accent)' : 'transparent',
+                        color: '#fff',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      {isSelected && <Check size={14} strokeWidth={2.5} />}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button className="btn btn-secondary w-full" onClick={() => setActiveModal(null)}>
+              {t('common.done')}
             </button>
           </div>
         </div>
@@ -548,20 +756,6 @@ export default function SettingsScreen() {
                   placeholder="e.g. +91 98765 43210"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="label">
-                  <Mail size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Email Address
-                </label>
-                <input
-                  className="input"
-                  type="email"
-                  placeholder="e.g. user@vip.com"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
                 />
               </div>
 
@@ -675,112 +869,6 @@ export default function SettingsScreen() {
         </div>
       )}
 
-      {/* ─── MODAL: CHANGE PIN ──────────────────────────────────────────────── */}
-      {activeModal === 'pin' && (
-        <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-handle" />
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Change Security PIN</h3>
-            <p className="text-xs text-secondary mb-4">Set a new 4-digit access PIN</p>
-
-            <form onSubmit={handleSavePIN} className="flex flex-col gap-3">
-              {pinError && (
-                <div
-                  style={{
-                    color: 'var(--color-danger)',
-                    fontSize: 'var(--text-xs)',
-                    padding: '8px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'rgba(239, 68, 68, 0.1)',
-                  }}
-                >
-                  {pinError}
-                </div>
-              )}
-              {pinSuccess && (
-                <div
-                  style={{
-                    color: 'var(--color-confirmed)',
-                    fontSize: 'var(--text-xs)',
-                    padding: '8px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'rgba(34, 197, 94, 0.1)',
-                  }}
-                >
-                  {pinSuccess}
-                </div>
-              )}
-
-              <div>
-                <label className="label">Current PIN</label>
-                <input
-                  className="input text-center"
-                  type="password"
-                  maxLength={4}
-                  inputMode="numeric"
-                  placeholder="••••"
-                  style={{ fontSize: 'var(--text-lg)', letterSpacing: '4px' }}
-                  value={currentPinInput}
-                  onChange={(e) => setCurrentPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="label">New 4-Digit PIN</label>
-                <input
-                  className="input text-center"
-                  type="password"
-                  maxLength={4}
-                  inputMode="numeric"
-                  placeholder="••••"
-                  style={{ fontSize: 'var(--text-lg)', letterSpacing: '4px' }}
-                  value={newPinInput}
-                  onChange={(e) => setNewPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="label">Confirm New PIN</label>
-                <input
-                  className="input text-center"
-                  type="password"
-                  maxLength={4}
-                  inputMode="numeric"
-                  placeholder="••••"
-                  style={{ fontSize: 'var(--text-lg)', letterSpacing: '4px' }}
-                  value={confirmPinInput}
-                  onChange={(e) => setConfirmPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  required
-                />
-              </div>
-
-              <div className="flex gap-2 mt-3">
-                <button
-                  type="button"
-                  className="btn btn-ghost flex-1"
-                  onClick={() => setActiveModal(null)}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-gold flex-1"
-                  disabled={
-                    currentPinInput.length !== 4 ||
-                    newPinInput.length !== 4 ||
-                    confirmPinInput.length !== 4
-                  }
-                >
-                  Update PIN
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* ─── MODAL: NOTIFICATIONS ───────────────────────────────────────────── */}
       {activeModal === 'notifications' && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
@@ -798,7 +886,7 @@ export default function SettingsScreen() {
                 <input
                   type="checkbox"
                   checked={notifConflictAlerts}
-                  onChange={(e) => setNotifConflictAlerts(e.target.checked)}
+                  onChange={() => handleToggleNotification(setNotifConflictAlerts, notifConflictAlerts)}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
                 />
               </div>
@@ -811,7 +899,7 @@ export default function SettingsScreen() {
                 <input
                   type="checkbox"
                   checked={notifNewInvitations}
-                  onChange={(e) => setNotifNewInvitations(e.target.checked)}
+                  onChange={() => handleToggleNotification(setNotifNewInvitations, notifNewInvitations)}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
                 />
               </div>
@@ -824,7 +912,7 @@ export default function SettingsScreen() {
                 <input
                   type="checkbox"
                   checked={notifReminders}
-                  onChange={(e) => setNotifReminders(e.target.checked)}
+                  onChange={() => handleToggleNotification(setNotifReminders, notifReminders)}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
                 />
               </div>
@@ -837,7 +925,7 @@ export default function SettingsScreen() {
                 <input
                   type="checkbox"
                   checked={notifScheduleChanges}
-                  onChange={(e) => setNotifScheduleChanges(e.target.checked)}
+                  onChange={() => handleToggleNotification(setNotifScheduleChanges, notifScheduleChanges)}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
                 />
               </div>
@@ -869,9 +957,9 @@ export default function SettingsScreen() {
                   color: 'var(--color-text-inverse)',
                 }}
               >
-                <Crown size={28} />
+                <Shield size={28} />
               </div>
-              <h3 style={{ marginBottom: '2px' }}>VIP Event Intelligence</h3>
+              <h3 style={{ marginBottom: '2px' }}>VIP Intelligence</h3>
               <p className="text-xs text-gold">Executive Private Assistant v2.0</p>
             </div>
 
@@ -880,7 +968,7 @@ export default function SettingsScreen() {
                 <strong>Protocol Intelligence:</strong> Prioritization matrix & family relationship memory ledger.
               </div>
               <div className="glass-card p-3">
-                <strong>Security:</strong> Client-side PIN cryptographic isolation & delegated staff role-based permissions.
+                <strong>Security:</strong> Encrypted password isolation & delegated staff role-based permissions.
               </div>
             </div>
 

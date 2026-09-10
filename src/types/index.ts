@@ -48,6 +48,10 @@ export interface UserAccount {
   staffTitle?: string;
   phone?: string;
   email?: string;
+  phoneVerified?: boolean;
+  emailVerified?: boolean;
+  phoneVerifiedAt?: string;
+  emailVerifiedAt?: string;
   pin?: string;
   avatar?: string;
   permissions?: Record<PermissionKey, boolean>;
@@ -63,7 +67,11 @@ export interface VIPUser {
   name: string;
   phone?: string;
   email?: string;
-  pin: string;
+  phoneVerified?: boolean;
+  emailVerified?: boolean;
+  phoneVerifiedAt?: string;
+  emailVerifiedAt?: string;
+  pin?: string;
   avatar?: string;
   createdAt: string;
 }
@@ -74,13 +82,32 @@ export interface PrivilegedUser {
   passwordHash?: string;
   name: string;
   role: string;
-  pin: string;
+  pin?: string;
   phone?: string;
   email?: string;
+  phoneVerified?: boolean;
+  emailVerified?: boolean;
+  phoneVerifiedAt?: string;
+  emailVerifiedAt?: string;
   permissions: Record<PermissionKey, boolean>;
   addedBy: string;
   addedAt: string;
   lastActive?: string;
+}
+
+export type VerificationChannel = 'phone' | 'email';
+
+export interface VerificationSession {
+  target: string;
+  channel: VerificationChannel;
+  code: string;
+  expiresAt: number;
+  attemptsLeft: number;
+  verified: boolean;
+  lastSentAt: number;
+  isSupabaseLive?: boolean;
+  supabaseMessage?: string;
+  supabaseUserId?: string;
 }
 
 export interface Person {
@@ -273,3 +300,16 @@ export interface ScanResult {
   extractedFields: ExtractedFields;
   analysis: AIAnalysis;
 }
+
+// ─── Multilingual Localization Types ──────────────────────────────────────────
+
+export type LanguageCode = 'en' | 'hi' | 'ta' | 'te' | 'kn' | 'ml' | 'es' | 'fr';
+
+export interface LanguageOption {
+  code: LanguageCode;
+  name: string;
+  nativeName: string;
+  region: string;
+  flag?: string;
+}
+

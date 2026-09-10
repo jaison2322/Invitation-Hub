@@ -7,10 +7,7 @@ import {
   Users,
   Edit3,
   Trash2,
-  Phone,
-  Mail,
-  FileText,
-  AlertTriangle,
+  ChevronRight,
 } from 'lucide-react';
 import { getInitials, getRelationshipLabel } from '../utils/formatters';
 import type { RelationshipType, Person } from '../types';
@@ -30,6 +27,7 @@ export default function PeopleListScreen() {
   const canManagePeople = isVIP || !!currentPrivilegedUser?.permissions?.canAddPeople;
 
   const [search, setSearch] = useState('');
+  const [filterCategory, setFilterCategory] = useState<'all' | 'family' | 'business' | 'friend'>('all');
 
   // Modal State: 'add' | 'edit' | 'delete' | null
   const [modalMode, setModalMode] = useState<'add' | 'edit' | 'delete' | null>(null);
@@ -40,10 +38,14 @@ export default function PeopleListScreen() {
   const [formNickname, setFormNickname] = useState('');
   const [formRelationship, setFormRelationship] = useState<RelationshipType>('friend');
   const [formPhone, setFormPhone] = useState('');
-  const [formEmail, setFormEmail] = useState('');
   const [formNotes, setFormNotes] = useState('');
 
   const filtered = people.filter((p) => {
+    // Category filter
+    if (filterCategory === 'family' && p.relationship !== 'family' && p.relationship !== 'relative') return false;
+    if (filterCategory === 'business' && p.relationship !== 'business_partner' && p.relationship !== 'client' && p.relationship !== 'colleague') return false;
+    if (filterCategory === 'friend' && p.relationship !== 'friend' && p.relationship !== 'neighbor' && p.relationship !== 'acquaintance') return false;
+
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -70,7 +72,6 @@ export default function PeopleListScreen() {
     setFormNickname('');
     setFormRelationship('friend');
     setFormPhone('');
-    setFormEmail('');
     setFormNotes('');
     setSelectedPersonId(null);
     setModalMode('add');
@@ -81,7 +82,6 @@ export default function PeopleListScreen() {
     setFormNickname(person.nickname || person.name);
     setFormRelationship(person.relationship);
     setFormPhone(person.phone || '');
-    setFormEmail(person.email || '');
     setFormNotes(person.notes || '');
     setSelectedPersonId(person.id);
     setModalMode('edit');
@@ -98,7 +98,6 @@ export default function PeopleListScreen() {
         nickname: formNickname.trim() || trimmedName,
         relationship: formRelationship,
         phone: formPhone.trim() || undefined,
-        email: formEmail.trim() || undefined,
         notes: formNotes.trim() || undefined,
       });
 
@@ -116,7 +115,6 @@ export default function PeopleListScreen() {
         nickname: formNickname.trim() || trimmedName,
         relationship: formRelationship,
         phone: formPhone.trim() || undefined,
-        email: formEmail.trim() || undefined,
         notes: formNotes.trim() || undefined,
       });
 
@@ -152,117 +150,163 @@ export default function PeopleListScreen() {
 
   return (
     <div className="screen">
-      <div className="screen-header">
-        <div className="flex items-center justify-between">
-          <h2>People</h2>
+      {/* ── Stationary Header & Filters ─────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        {/* ── Apple Top Bar & Large Title ────────────────────────────────────── */}
+        <div className="flex items-center justify-between mb-2">
+          <h1
+            className="font-heading font-bold text-white tracking-tight"
+            style={{ fontSize: '32px', letterSpacing: '-0.03em', lineHeight: 1.15 }}
+          >
+            Contacts
+          </h1>
           {canManagePeople && (
-            <button className="btn btn-sm btn-gold" onClick={handleOpenAdd}>
-              <Plus size={14} /> Add Person
+            <button
+              type="button"
+              className="btn-icon"
+              onClick={handleOpenAdd}
+              aria-label="Add Contact"
+              title="Add VIP Contact"
+            >
+              <Plus size={18} strokeWidth={2} />
             </button>
           )}
         </div>
-        <p className="text-sm text-secondary mt-1">{people.length} VIP contacts in directory</p>
+        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+          {people.length} VIP relationships in ledger
+        </p>
+
+        {/* ── Apple Search Field ──────────────────────────────────────────────── */}
+        <div className="search-bar mb-3">
+          <Search size={16} className="search-bar-icon" />
+          <input
+            placeholder="Search by name, nickname, or tier..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* ── Apple Segmented Filters ─────────────────────────────────────────── */}
+        <div className="segmented-control">
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'family', label: 'Family' },
+            { id: 'business', label: 'Business' },
+            { id: 'friend', label: 'Friends' },
+          ].map((chip) => (
+            <button
+              key={chip.id}
+              type="button"
+              className={`segmented-item ${filterCategory === chip.id ? 'active' : ''}`}
+              onClick={() => setFilterCategory(chip.id as any)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="search-bar mb-4">
-        <Search size={16} className="search-bar-icon" />
-        <input
-          placeholder="Search by name, nickname, or relationship..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* People List */}
-      <div className="flex flex-col gap-2">
-        {filtered.map((person, i) => (
-          <div
-            key={person.id}
-            className="glass-card glass-card-interactive animate-slide-up"
-            style={{ animationDelay: `${i * 0.04}s`, padding: 'var(--space-3) var(--space-4)' }}
-            onClick={() => navigate(`/person/${person.id}`)}
-          >
-            <div className="flex items-center gap-3">
-              <div className="avatar">{getInitials(person.name)}</div>
-              <div className="flex-1">
-                <div className="font-semibold text-sm flex items-center gap-2">
-                  <span>{person.nickname || person.name}</span>
-                </div>
-                <div className="text-xs text-muted mt-0.5">{person.name}</div>
+      {/* ── Scrollable Contacts Content ─────────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* ── Apple Inset Grouped Contact List ────────────────────────────────── */}
+        {filtered.length > 0 ? (
+        <div className="ios-grouped-list">
+          {filtered.map((person) => (
+            <div
+              key={person.id}
+              className="ios-grouped-item"
+              onClick={() => navigate(`/person/${person.id}`)}
+            >
+              <div className="avatar avatar-sm">
+                {getInitials(person.name)}
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="badge badge-gold" style={{ fontSize: '9px' }}>
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  {person.nickname || person.name}
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                  {person.name}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                <span className="badge badge-info">
                   {getRelationshipLabel(person.relationship)}
                 </span>
 
                 {canManagePeople && (
                   <button
                     type="button"
-                    className="btn btn-sm btn-ghost text-muted"
-                    style={{ padding: '6px' }}
+                    className="btn-icon"
+                    style={{ width: '28px', height: '28px' }}
                     title="Edit Contact"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleOpenEdit(person);
                     }}
                   >
-                    <Edit3 size={15} />
+                    <Edit3 size={13} strokeWidth={1.8} />
                   </button>
                 )}
+                <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
               </div>
             </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">
+          <div className="empty-state-icon">
+            <Users size={24} strokeWidth={1.8} />
           </div>
-        ))}
-
-        {filtered.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <Users size={28} />
-            </div>
-            <div className="empty-state-title">No People Found</div>
-            <div className="empty-state-text">
-              {search ? 'No contacts match your search.' : 'Add contacts to build your VIP network.'}
-            </div>
-            {canManagePeople && (
-              <button className="btn btn-gold mt-4" onClick={handleOpenAdd}>
-                <Plus size={14} /> Add First Contact
-              </button>
-            )}
+          <div className="empty-state-title" style={{ fontSize: '18px' }}>No Contacts Found</div>
+          <div className="empty-state-text" style={{ fontSize: '13px' }}>
+            {search ? 'No contacts match your query.' : 'Add your executive contacts to begin.'}
           </div>
-        )}
+          {canManagePeople && (
+            <button className="btn btn-gold mt-4" onClick={handleOpenAdd}>
+              Add First Contact
+            </button>
+          )}
+        </div>
+      )}
       </div>
 
       {/* ─── MODAL: ADD / EDIT PERSON ───────────────────────────────────────── */}
       {(modalMode === 'add' || modalMode === 'edit') && (
         <div className="modal-overlay" onClick={() => setModalMode(null)}>
-          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle" />
-            <div className="flex items-center justify-between mb-2">
-              <h3 style={{ margin: 0 }}>
-                {modalMode === 'edit' ? 'Edit VIP Contact' : 'Add New VIP Contact'}
-              </h3>
+            <div className="flex items-center justify-between mb-1">
+              <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em', margin: 0 }}>
+                {modalMode === 'edit' ? 'Edit Contact' : 'New VIP Contact'}
+              </h2>
               {modalMode === 'edit' && (
                 <button
                   type="button"
-                  className="btn btn-sm btn-ghost text-danger"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-danger)',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                  }}
                   onClick={() => setModalMode('delete')}
-                  style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
                 >
-                  <Trash2 size={14} /> Remove
+                  Remove
                 </button>
               )}
             </div>
-            <p className="text-xs text-secondary mb-4">
+            <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
               {modalMode === 'edit'
-                ? 'Update contact details, relationship tier, and notes'
-                : 'Add a new person to your executive relationship network'}
+                ? 'Update contact details and relationship tier'
+                : 'Add a new member to your VIP directory'}
             </p>
 
             <form onSubmit={handleSaveForm} className="flex flex-col gap-3">
-              {/* Full Name */}
               <div>
-                <label className="label">Full Name *</label>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>Full Name *</label>
                 <input
                   className="input"
                   value={formName}
@@ -273,9 +317,8 @@ export default function PeopleListScreen() {
                 />
               </div>
 
-              {/* Nickname / Display Name */}
               <div>
-                <label className="label">Display Name / Nickname</label>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>Display Nickname</label>
                 <input
                   className="input"
                   value={formNickname}
@@ -284,9 +327,8 @@ export default function PeopleListScreen() {
                 />
               </div>
 
-              {/* Relationship */}
               <div>
-                <label className="label">Relationship Tier *</label>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>Relationship Tier *</label>
                 <select
                   className="select"
                   value={formRelationship}
@@ -300,48 +342,32 @@ export default function PeopleListScreen() {
                 </select>
               </div>
 
-              {/* Phone & Email */}
-              <div className="grid-2">
-                <div>
-                  <label className="label">Phone</label>
-                  <input
-                    className="input"
-                    type="tel"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Email</label>
-                  <input
-                    className="input"
-                    type="email"
-                    value={formEmail}
-                    onChange={(e) => setFormEmail(e.target.value)}
-                    placeholder="contact@vip.com"
-                  />
-                </div>
+              <div>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>Phone Number</label>
+                <input
+                  className="input"
+                  type="tel"
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                />
               </div>
 
-              {/* Notes */}
               <div>
-                <label className="label">Notes / Relationship Context</label>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>Relationship Context & Notes</label>
                 <textarea
                   className="textarea"
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="Family relations, important preferences, VIP background..."
+                  placeholder="Important preferences, protocol details, background..."
                   rows={2}
                 />
               </div>
 
-              {/* Actions */}
-              <div className="flex gap-2 mt-3">
+              <div className="flex gap-2 mt-2">
                 <button
                   type="button"
-                  className="btn btn-ghost flex-1"
+                  className="btn btn-ignore flex-1"
                   onClick={() => setModalMode(null)}
                 >
                   Cancel
@@ -359,35 +385,37 @@ export default function PeopleListScreen() {
         </div>
       )}
 
-      {/* ─── MODAL: CENTERED DELETE CONFIRMATION ─────────────────────────────── */}
+      {/* ─── MODAL: DELETE CONFIRMATION ─────────────────────────────────────── */}
       {modalMode === 'delete' && (
         <div className="modal-overlay modal-centered" onClick={() => setModalMode('edit')}>
-          <div className="modal-dialog animate-scale-in text-center" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-dialog text-center" onClick={(e) => e.stopPropagation()}>
             <div
               style={{
-                width: '52px',
-                height: '52px',
+                width: '44px',
+                height: '44px',
                 borderRadius: '50%',
-                background: 'rgba(239, 68, 68, 0.15)',
+                background: 'rgba(255, 69, 58, 0.15)',
                 color: 'var(--color-danger)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                margin: '0 auto var(--space-3)',
+                margin: '0 auto 12px',
               }}
             >
-              <Trash2 size={26} />
+              <Trash2 size={20} strokeWidth={1.8} />
             </div>
 
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Delete Contact?</h3>
-            <p className="text-xs text-secondary mb-5">
-              Are you sure you want to remove <strong>{formName}</strong> from your VIP directory? This action cannot be undone.
+            <h3 className="font-heading font-semibold text-white mb-1" style={{ fontSize: '17px' }}>
+              Delete Contact?
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+              Are you sure you want to remove <strong>{formName}</strong>? This action cannot be undone.
             </p>
 
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <button
                 type="button"
-                className="btn btn-ghost flex-1"
+                className="btn btn-ignore flex-1"
                 onClick={() => setModalMode('edit')}
               >
                 Cancel
@@ -397,7 +425,7 @@ export default function PeopleListScreen() {
                 className="btn btn-danger flex-1"
                 onClick={handleConfirmDelete}
               >
-                Delete Contact
+                Delete
               </button>
             </div>
           </div>

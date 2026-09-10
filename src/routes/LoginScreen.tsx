@@ -1,30 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Crown,
   LogIn,
   UserPlus,
   Briefcase,
   User,
-  KeyRound,
   CheckCircle2,
   AlertCircle,
-  Sparkles,
   ArrowLeft,
+  ArrowRight,
   Shield,
   Calendar,
   Phone,
-  Mail,
   Lock,
   Eye,
   EyeOff,
   AtSign,
+  Award,
+  Check,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import IconBadge from '../components/IconBadge';
+import OtpInput from '../components/OtpInput';
+import ExecutiveVerificationBanner from '../components/ExecutiveVerificationBanner';
+import { verificationAuthService } from '../services/verificationAuthService';
 
 export default function LoginScreen() {
   const navigate = useNavigate();
-  const { loginWithCredentials, setupVIP, registerPrivilegedUser } = useAppStore();
+  const { isAuthenticated, loginWithCredentials, setupVIP, registerPrivilegedUser } = useAppStore();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   // Auth View: 'landing' (welcome screen) | 'login' (username & password) | 'register' (create account)
   const [authView, setAuthView] = useState<'landing' | 'login' | 'register'>('landing');
@@ -37,7 +46,8 @@ export default function LoginScreen() {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  // ── Register Form State ─────────────────────────────────────────────────────
+  // ── Register Form & Verification State ──────────────────────────────────────
+  const [regStep, setRegStep] = useState<'form' | 'verify'>('form');
   const [regType, setRegType] = useState<'vip' | 'staff'>('vip');
   const [regUsername, setRegUsername] = useState('');
   const [regName, setRegName] = useState('');
@@ -45,11 +55,25 @@ export default function LoginScreen() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
-  const [regEmail, setRegEmail] = useState('');
   const [regRole, setRegRole] = useState('Personal Assistant');
-  const [regPin, setRegPin] = useState('1234');
   const [regError, setRegError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
+
+  // Verification sub-states
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [phoneVerified, setPhoneVerified] = useState(false);
+  const [otpError, setOtpError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+
+  // Timer cooldown for resending verification code
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
 
   // ── Login Handlers ──────────────────────────────────────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
@@ -84,8 +108,8 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Register Handler ────────────────────────────────────────────────────────
-  const handleRegister = async (e: React.FormEvent) => {
+  // ── Register: Proceed to Phone Verification ──────────────────────────────────
+  const handleProceedToVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
 
@@ -110,160 +134,203 @@ export default function LoginScreen() {
       return;
     }
 
-    if (regEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(regEmail.trim())) {
-      setRegError('Please enter a valid email address.');
+    const cleanPhone = regPhone.trim();
+    if (!cleanPhone || cleanPhone.length < 7 || !/^[+0-9\s-]{7,20}$/.test(cleanPhone)) {
+      setRegError('Please enter a valid mobile phone number for verification.');
       return;
     }
 
     setIsRegistering(true);
     try {
+      // Send OTP to phone via Supabase Auth
+      const phoneRes = await verificationAuthService.sendVerificationCode(cleanPhone, 'phone');
+      if (!phoneRes.success) {
+        const raw = phoneRes.error || '';
+        const friendly = raw.includes('504') || raw.includes('timeout') || raw.includes('upstream')
+          ? 'Mobile verification gateway is temporarily busy. Please try again in a moment.'
+          : raw || 'Failed to dispatch verification SMS.';
+        setRegError(friendly);
+        setIsRegistering(false);
+        return;
+      }
+
+      setResendCooldown(30);
+      setPhoneVerified(false);
+      setPhoneOtp('');
+      setOtpError('');
+      setRegStep('verify');
+    } catch (err: any) {
+      const raw = err?.message || '';
+      const friendly = raw.includes('504') || raw.includes('timeout') || raw.includes('upstream')
+        ? 'Verification network timed out. Please try again in a moment.'
+        : raw || 'Failed to dispatch verification SMS. Please try again.';
+      setRegError(friendly);
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  // ── Register: Resend OTP ────────────────────────────────────────────────────
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    const target = regPhone.trim();
+    const res = await verificationAuthService.sendVerificationCode(target, 'phone');
+    if (res.success) {
+      setResendCooldown(30);
+      setOtpError('');
+      setPhoneOtp('');
+    } else if (res.error) {
+      setOtpError(res.error);
+    }
+  };
+
+  // ── Register: Verify OTP & Finalize Account ─────────────────────────────────
+  const handleVerifyOtp = async (codeToVerify?: string) => {
+    const code = (codeToVerify || phoneOtp).trim();
+    setOtpError('');
+
+    if (!code || code.length !== 6) {
+      setOtpError('Please enter the complete 6-digit verification code.');
+      return;
+    }
+
+    setIsVerifyingOtp(true);
+    const target = regPhone.trim();
+    const result = await verificationAuthService.verifyCode(target, code, 'phone');
+
+    if (!result.success) {
+      setOtpError(result.error || 'Verification failed. Please check the code.');
+      setIsVerifyingOtp(false);
+      return;
+    }
+
+    setPhoneVerified(true);
+    await finalizeRegistration();
+  };
+
+  // ── Register: Finalize Account Creation ─────────────────────────────────────
+  const finalizeRegistration = async () => {
+    setIsRegistering(true);
+    const cleanUsername = regUsername.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+    try {
       if (regType === 'vip') {
         await setupVIP(
           regName.trim(),
-          regPin || '1234',
           regPhone.trim(),
-          regEmail.trim(),
+          undefined,
           cleanUsername,
-          regPassword
+          regPassword,
+          true, // phoneVerified
+          false // emailVerified
         );
         setIsSuccess(true);
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
-        }, 400);
+        }, 600);
       } else {
         const result = await registerPrivilegedUser(
           regName.trim(),
           regRole.trim(),
-          regPin || '1111',
           regPhone.trim(),
-          regEmail.trim(),
+          undefined,
           cleanUsername,
-          regPassword
+          regPassword,
+          true, // phoneVerified
+          false // emailVerified
         );
         if (result) {
           setIsSuccess(true);
           setTimeout(() => {
             navigate('/dashboard', { replace: true });
-          }, 400);
+          }, 600);
         } else {
-          setRegError('Maximum privileged staff limit reached (5 users max).');
+          setOtpError('Maximum privileged staff limit reached (5 users max).');
           setIsRegistering(false);
+          setIsVerifyingOtp(false);
         }
       }
     } catch (err: any) {
-      setRegError(err?.message || 'Registration failed. Please try again.');
+      setOtpError(err?.message || 'Registration failed. Please try again.');
       setIsRegistering(false);
+      setIsVerifyingOtp(false);
     }
   };
 
   return (
     <div className="auth-wrapper screen-no-nav">
-      {/* Background ambient gold lighting */}
       <div className="auth-ambient-glow" />
 
-      <div className="auth-card animate-scale-in">
+      <div className="auth-card">
         {/* ══════════════════════════════════════════════════════════════════════
             VIEW 1: LANDING / WELCOME SCREEN (Default)
             ══════════════════════════════════════════════════════════════════════ */}
         {authView === 'landing' && (
-          <div className="animate-fade-in text-center">
-            {/* Header Logo & Title */}
-            <div className="auth-header" style={{ marginBottom: 'var(--space-6)' }}>
-              <div className="auth-logo-badge">
-                <Crown size={32} />
+          <div className="text-center">
+            {/* Executive Logo & Header */}
+            <div className="auth-header mb-6">
+              <div className="flex justify-center mb-3">
+                <IconBadge icon={Shield} variant="gold" size="hero" glow />
               </div>
-              <h1 className="auth-title" style={{ fontSize: 'var(--text-2xl)' }}>
-                VIP Event Intelligence
+              <h1 className="auth-title">
+                VIP Intelligence
               </h1>
-              <p className="auth-subtitle" style={{ fontSize: 'var(--text-sm)', marginTop: '4px' }}>
+              <p className="auth-subtitle">
                 Executive Schedule & Protocol Management
               </p>
             </div>
 
-            {/* Feature Highlights */}
-            <div className="flex flex-col gap-3 mb-6 text-left">
-              <div
-                className="glass-card flex items-center gap-3 p-3"
-                style={{ borderRadius: 'var(--radius-lg)', background: 'rgba(15, 23, 42, 0.45)' }}
-              >
-                <div style={{ color: 'var(--color-gold)', flexShrink: 0 }}>
-                  <Crown size={20} />
-                </div>
+            {/* Inset Highlights */}
+            <div className="ios-grouped-list mb-5 text-left">
+              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <IconBadge icon={Award} variant="gold" size="sm" />
                 <div>
-                  <div className="text-xs font-semibold text-primary">Executive Protocol</div>
-                  <div className="text-xs text-muted">VIP relationship memory ledger & event prioritization</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Executive Protocol</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Relationship memory & event prioritization</div>
                 </div>
               </div>
 
-              <div
-                className="glass-card flex items-center gap-3 p-3"
-                style={{ borderRadius: 'var(--radius-lg)', background: 'rgba(15, 23, 42, 0.45)' }}
-              >
-                <div style={{ color: '#60a5fa', flexShrink: 0 }}>
-                  <Shield size={20} />
-                </div>
+              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <IconBadge icon={Briefcase} variant="cyan" size="sm" />
                 <div>
-                  <div className="text-xs font-semibold text-primary">Role Delegated Access</div>
-                  <div className="text-xs text-muted">Secure account authentication for VIPs and Staff</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Role Delegated Access</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Secure authentication for VIPs and Staff</div>
                 </div>
               </div>
 
-              <div
-                className="glass-card flex items-center gap-3 p-3"
-                style={{ borderRadius: 'var(--radius-lg)', background: 'rgba(15, 23, 42, 0.45)' }}
-              >
-                <div style={{ color: '#34d399', flexShrink: 0 }}>
-                  <Calendar size={20} />
-                </div>
+              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <IconBadge icon={Calendar} variant="emerald" size="sm" />
                 <div>
-                  <div className="text-xs font-semibold text-primary">Smart Schedule Intelligence</div>
-                  <div className="text-xs text-muted">AI OCR card scanning & real-time conflict detection</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Schedule Intelligence</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>AI invitation scanning & conflict detection</div>
                 </div>
               </div>
             </div>
 
-            {/* Main Action Buttons */}
-            <div className="flex flex-col gap-3">
+            {/* Apple Actions */}
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 className="btn btn-gold w-full"
-                style={{
-                  padding: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontSize: 'var(--text-base)',
-                  fontWeight: 600,
-                }}
                 onClick={() => {
                   setLoginError('');
                   setAuthView('login');
                 }}
               >
-                <LogIn size={18} />
+                <LogIn size={16} strokeWidth={2} />
                 <span>Sign In</span>
               </button>
 
               <button
                 type="button"
                 className="btn btn-outline w-full"
-                style={{
-                  padding: '14px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontSize: 'var(--text-base)',
-                  fontWeight: 600,
-                }}
                 onClick={() => {
                   setRegError('');
                   setAuthView('register');
                 }}
               >
-                <UserPlus size={18} />
-                <span>Register</span>
+                <UserPlus size={16} strokeWidth={2} />
+                <span>Create Account</span>
               </button>
             </div>
           </div>
@@ -273,36 +340,36 @@ export default function LoginScreen() {
             VIEW 2: SIGN IN (USERNAME & PASSWORD SCREEN)
             ══════════════════════════════════════════════════════════════════════ */}
         {authView === 'login' && (
-          <div className="animate-fade-in">
+          <div>
             {/* Top Back Nav */}
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-3">
               <button
                 type="button"
-                className="btn btn-sm btn-ghost text-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
+                className="btn-ghost flex items-center gap-1"
+                style={{ padding: '4px 8px', fontSize: '13px' }}
                 onClick={() => setAuthView('landing')}
               >
-                <ArrowLeft size={16} />
+                <ArrowLeft size={16} strokeWidth={2} />
                 <span>Back</span>
               </button>
-              <span className="text-xs text-gold font-semibold uppercase tracking-wider">
-                Executive Access
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Sign In
               </span>
               <div style={{ width: '40px' }} />
             </div>
 
             {/* Logo Badge & Header */}
-            <div className="text-center" style={{ marginBottom: 'var(--space-4)' }}>
-              <div className="auth-logo-badge" style={{ width: '48px', height: '48px', marginBottom: 'var(--space-2)' }}>
-                <Crown size={24} />
+            <div className="text-center" style={{ marginBottom: '16px' }}>
+              <div className="flex justify-center mb-2.5">
+                <IconBadge icon={Shield} variant="gold" size="md" glow />
               </div>
-              <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                {isSuccess ? 'Access Granted' : 'Sign In'}
+              <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em' }}>
+                {isSuccess ? 'Access Granted' : 'Enter Credentials'}
               </h2>
-              <p className="text-secondary text-xs" style={{ marginTop: '2px' }}>
+              <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
                 {isSuccess
-                  ? 'Initializing executive interface...'
-                  : 'Enter your username and password to log in to your account'}
+                  ? 'Loading executive interface...'
+                  : 'Enter your username and password'}
               </p>
             </div>
 
@@ -314,55 +381,49 @@ export default function LoginScreen() {
                   alignItems: 'center',
                   gap: '8px',
                   color: 'var(--color-danger)',
-                  fontSize: 'var(--text-xs)',
-                  marginBottom: 'var(--space-3)',
+                  fontSize: '12px',
+                  marginBottom: '12px',
                   padding: '10px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(239, 68, 68, 0.12)',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  animation: 'slideUp 0.25s ease-out',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 69, 58, 0.12)',
+                  border: '0.5px solid rgba(255, 69, 58, 0.3)',
                 }}
               >
-                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                <AlertCircle size={15} strokeWidth={2} style={{ flexShrink: 0 }} />
                 <span>{loginError}</span>
               </div>
             )}
 
             {/* Username & Password Form */}
             <form onSubmit={handleLogin} className="flex flex-col gap-3">
-              {/* Username Input */}
               <div>
-                <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                  <AtSign size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Username
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                  <AtSign size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                  Username or Phone
                 </label>
-                <div style={{ position: 'relative' }}>
-                  <input
-                    className="input"
-                    style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
-                    type="text"
-                    placeholder="e.g. jaison or deepa_pa"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    autoFocus
-                    required
-                    disabled={isLoggingIn || isSuccess}
-                  />
-                </div>
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter username or phone number"
+                  value={loginUsername}
+                  onChange={(e) => setLoginUsername(e.target.value)}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  autoFocus
+                  required
+                  disabled={isLoggingIn || isSuccess}
+                />
               </div>
 
-              {/* Password Input */}
               <div>
-                <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                  <Lock size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                  <Lock size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                   Password
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     className="input"
-                    style={{ fontSize: 'var(--text-sm)', padding: '10px 40px 10px 14px', width: '100%' }}
+                    style={{ paddingRight: '40px' }}
                     type={showLoginPassword ? 'text' : 'password'}
                     placeholder="Enter your password"
                     value={loginPassword}
@@ -386,7 +447,7 @@ export default function LoginScreen() {
                     }}
                     title={showLoginPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showLoginPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showLoginPassword ? <EyeOff size={16} strokeWidth={2} /> : <Eye size={16} strokeWidth={2} />}
                   </button>
                 </div>
               </div>
@@ -395,100 +456,93 @@ export default function LoginScreen() {
               <button
                 type="submit"
                 className="btn btn-gold w-full mt-2"
-                style={{
-                  padding: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontSize: 'var(--text-sm)',
-                  fontWeight: 600,
-                }}
                 disabled={isLoggingIn || isSuccess || !loginUsername.trim() || !loginPassword}
               >
                 {isLoggingIn ? (
                   <span>Authenticating...</span>
                 ) : isSuccess ? (
                   <>
-                    <CheckCircle2 size={16} />
+                    <CheckCircle2 size={16} strokeWidth={2} />
                     <span>Access Granted</span>
                   </>
                 ) : (
                   <>
-                    <LogIn size={16} />
+                    <LogIn size={16} strokeWidth={2} />
                     <span>Sign In</span>
                   </>
                 )}
               </button>
             </form>
 
-            <div style={{ marginTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+            <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
               Don&apos;t have an account yet?{' '}
               <button
                 type="button"
-                className="text-gold"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  color: 'var(--color-accent)',
+                }}
                 onClick={() => {
                   setRegError('');
                   setAuthView('register');
                 }}
               >
-                Register Here
+                Create One
               </button>
             </div>
           </div>
         )}
 
         {/* ══════════════════════════════════════════════════════════════════════
-            VIEW 3: REGISTER SCREEN (USERNAME, PASSWORD & PROFILE)
+            VIEW 3: REGISTER SCREEN (WITH PHONE VERIFICATION)
             ══════════════════════════════════════════════════════════════════════ */}
-        {authView === 'register' && (
-          <form onSubmit={handleRegister} className="animate-fade-in">
+        {authView === 'register' && regStep === 'form' && (
+          <form onSubmit={handleProceedToVerification}>
             {/* Top Back Nav */}
             <div className="flex items-center justify-between mb-3">
               <button
                 type="button"
-                className="btn btn-sm btn-ghost text-secondary"
-                style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px' }}
+                className="btn-ghost flex items-center gap-1"
+                style={{ padding: '4px 8px', fontSize: '13px' }}
                 onClick={() => setAuthView('landing')}
               >
-                <ArrowLeft size={16} />
+                <ArrowLeft size={16} strokeWidth={2} />
                 <span>Back</span>
               </button>
-              <span className="text-xs text-gold font-semibold uppercase tracking-wider">
-                Create Account
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                New Profile (Step 1 of 2)
               </span>
               <div style={{ width: '40px' }} />
             </div>
 
-            <div style={{ marginBottom: 'var(--space-3)', textAlign: 'center' }}>
-              <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                Create New Profile
+            <div style={{ marginBottom: '14px', textAlign: 'center' }}>
+              <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em' }}>
+                Create Account
               </h2>
-              <p className="text-secondary text-xs" style={{ marginTop: '2px' }}>
-                Set up VIP Principal or Staff credentials with username & password
+              <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                Set credentials and verified contact details
               </p>
             </div>
 
-            {/* Account Role Card Selector */}
-            <div className="role-select-cards">
-              <div
-                className={`role-select-card ${regType === 'vip' ? 'active' : ''}`}
+            {/* Apple Segmented Control for Role */}
+            <div className="segmented-control mb-3">
+              <button
+                type="button"
+                className={`segmented-item ${regType === 'vip' ? 'active' : ''}`}
                 onClick={() => setRegType('vip')}
               >
-                <div className="role-select-card-icon">👑</div>
-                <div className="role-select-card-title">VIP Principal</div>
-                <div className="role-select-card-desc">Master access & protocol</div>
-              </div>
-
-              <div
-                className={`role-select-card ${regType === 'staff' ? 'active' : ''}`}
+                VIP Principal
+              </button>
+              <button
+                type="button"
+                className={`segmented-item ${regType === 'staff' ? 'active' : ''}`}
                 onClick={() => setRegType('staff')}
               >
-                <div className="role-select-card-icon">👔</div>
-                <div className="role-select-card-title">Staff / PA</div>
-                <div className="role-select-card-desc">Schedule & entry access</div>
-              </div>
+                Staff / PA
+              </button>
             </div>
 
             {/* Error Message */}
@@ -499,34 +553,27 @@ export default function LoginScreen() {
                   alignItems: 'center',
                   gap: '6px',
                   color: 'var(--color-danger)',
-                  fontSize: 'var(--text-xs)',
-                  marginBottom: 'var(--space-3)',
+                  fontSize: '12px',
+                  marginBottom: '10px',
                   padding: '8px 12px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(239, 68, 68, 0.1)',
-                  border: '1px solid rgba(239, 68, 68, 0.25)',
-                  animation: 'slideUp 0.25s ease-out',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 69, 58, 0.1)',
+                  border: '0.5px solid rgba(255, 69, 58, 0.25)',
                 }}
               >
-                <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                <AlertCircle size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
                 <span>{regError}</span>
               </div>
             )}
 
-            {/* Username Input (Primary Key) */}
-            <div style={{ marginBottom: 'var(--space-3)' }}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="label" style={{ fontSize: 'var(--text-xs)', margin: 0 }}>
-                  <AtSign size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Username
-                </label>
-                <span className="badge badge-gold" style={{ fontSize: '9px', padding: '1px 5px' }}>
-                  Database Primary Key
-                </span>
-              </div>
+            {/* Username Input */}
+            <div style={{ marginBottom: '10px' }}>
+              <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                <AtSign size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                Username
+              </label>
               <input
                 className="input"
-                style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
                 type="text"
                 placeholder={regType === 'vip' ? 'e.g. vikram_principal' : 'e.g. ananya_pa'}
                 value={regUsername}
@@ -536,20 +583,16 @@ export default function LoginScreen() {
                 autoFocus
                 required
               />
-              <p className="text-muted" style={{ fontSize: '10px', marginTop: '2px', paddingLeft: '2px' }}>
-                Used to log in to your account. Unique primary key in database.
-              </p>
             </div>
 
             {/* Full Name input */}
-            <div style={{ marginBottom: 'var(--space-3)' }}>
-              <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+            <div style={{ marginBottom: '10px' }}>
+              <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                <User size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                 Full Name / Title
               </label>
               <input
                 className="input"
-                style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
                 type="text"
                 placeholder={regType === 'vip' ? 'e.g. Dr. Vikramaditya' : 'e.g. Ananya Rao'}
                 value={regName}
@@ -559,16 +602,16 @@ export default function LoginScreen() {
             </div>
 
             {/* Password & Confirm Password */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)', marginBottom: 'var(--space-3)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
               <div>
-                <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                  <Lock size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                  <Lock size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                   Password
                 </label>
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     className="input"
-                    style={{ fontSize: 'var(--text-sm)', padding: '8px 30px 8px 10px', width: '100%' }}
+                    style={{ paddingRight: '28px' }}
                     type={showRegPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={regPassword}
@@ -588,19 +631,18 @@ export default function LoginScreen() {
                       padding: '2px',
                     }}
                   >
-                    {showRegPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showRegPassword ? <EyeOff size={14} strokeWidth={2} /> : <Eye size={14} strokeWidth={2} />}
                   </button>
                 </div>
               </div>
 
               <div>
-                <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                  <CheckCircle2 size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                  <CheckCircle2 size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                   Confirm
                 </label>
                 <input
                   className="input"
-                  style={{ fontSize: 'var(--text-sm)', padding: '8px 10px' }}
                   type={showRegPassword ? 'text' : 'password'}
                   placeholder="••••••••"
                   value={regConfirmPassword}
@@ -612,14 +654,13 @@ export default function LoginScreen() {
 
             {/* Role input if Staff */}
             {regType === 'staff' && (
-              <div style={{ marginBottom: 'var(--space-3)' }}>
-                <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                  <Briefcase size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Staff Role / Designation
+              <div style={{ marginBottom: '10px' }}>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                  <Briefcase size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                  Designation / Role
                 </label>
                 <input
                   className="input"
-                  style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
                   type="text"
                   placeholder="e.g. Personal Assistant, Secretary"
                   value={regRole}
@@ -629,108 +670,163 @@ export default function LoginScreen() {
               </div>
             )}
 
-            {/* Phone Number input */}
-            <div style={{ marginBottom: 'var(--space-3)' }}>
-              <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                <Phone size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Phone Number (Optional)
+            {/* Contact details with required mobile phone verification */}
+            <div style={{ marginBottom: '12px' }}>
+              <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                <Phone size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                Mobile Phone Number (SMS Verification)
               </label>
               <input
                 className="input"
-                style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
                 type="tel"
                 placeholder="e.g. +91 98765 43210"
                 value={regPhone}
                 onChange={(e) => setRegPhone(e.target.value)}
+                required
               />
             </div>
 
-            {/* Email Address input */}
-            <div style={{ marginBottom: 'var(--space-3)' }}>
-              <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                <Mail size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Email Address (Optional)
-              </label>
-              <input
-                className="input"
-                style={{ fontSize: 'var(--text-sm)', padding: '10px 14px' }}
-                type="email"
-                placeholder={regType === 'vip' ? 'e.g. vikramaditya@royal.com' : 'e.g. ananya@executive.com'}
-                value={regEmail}
-                onChange={(e) => setRegEmail(e.target.value)}
-              />
-            </div>
-
-            {/* Optional 4-Digit PIN */}
-            <div style={{ marginBottom: 'var(--space-4)' }}>
-              <label className="label" style={{ fontSize: 'var(--text-xs)', marginBottom: '4px' }}>
-                <KeyRound size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Security PIN (Optional backup)
-              </label>
-              <input
-                className="input"
-                style={{ fontSize: 'var(--text-sm)', padding: '8px 12px', letterSpacing: '2px' }}
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="1234"
-                value={regPin}
-                onChange={(e) => setRegPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              />
-            </div>
-
-            {/* Submit button */}
+            {/* Submit button to verification */}
             <button
               type="submit"
               className="btn btn-gold w-full"
-              style={{
-                padding: '12px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600,
-              }}
               disabled={
                 isRegistering ||
-                isSuccess ||
                 !regUsername.trim() ||
                 !regName.trim() ||
                 !regPassword ||
-                regPassword !== regConfirmPassword
+                regPassword !== regConfirmPassword ||
+                !regPhone.trim()
               }
             >
               {isRegistering ? (
-                <span>Creating Account in Database...</span>
-              ) : isSuccess ? (
-                <>
-                  <CheckCircle2 size={16} />
-                  <span>Account Created & Signed In</span>
-                </>
+                <span>Sending Verification...</span>
               ) : (
                 <>
-                  <Sparkles size={16} />
-                  <span>Create Account & Sign In</span>
+                  <span>Proceed to Verification</span>
+                  <ArrowRight size={16} strokeWidth={2} />
                 </>
               )}
             </button>
 
-            <div style={{ marginTop: 'var(--space-4)', fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', textAlign: 'center' }}>
+            <div style={{ marginTop: '14px', fontSize: '12px', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
               Already registered?{' '}
               <button
                 type="button"
-                className="text-gold"
-                style={{ background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, textDecoration: 'underline' }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  color: 'var(--color-accent)',
+                }}
                 onClick={() => {
                   setLoginError('');
                   setAuthView('login');
                 }}
               >
-                Sign In with Username & Password
+                Sign In
               </button>
             </div>
           </form>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════════════════
+            VIEW 3 (STEP 2): PHONE OTP VERIFICATION
+            ══════════════════════════════════════════════════════════════════════ */}
+        {authView === 'register' && regStep === 'verify' && (
+          <div>
+            {/* Top Back Nav */}
+            <div className="flex items-center justify-between mb-3">
+              <button
+                type="button"
+                className="btn-ghost flex items-center gap-1"
+                style={{ padding: '4px 8px', fontSize: '13px' }}
+                onClick={() => setRegStep('form')}
+              >
+                <ArrowLeft size={16} strokeWidth={2} />
+                <span>Edit Info</span>
+              </button>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                Verification (Step 2 of 2)
+              </span>
+              <div style={{ width: '40px' }} />
+            </div>
+
+            {/* Executive Verification Banner */}
+            <ExecutiveVerificationBanner
+              phoneTarget={regPhone}
+              phoneVerified={phoneVerified}
+              onResend={handleResendOtp}
+              resendCooldown={resendCooldown}
+              onEditDetails={() => setRegStep('form')}
+              disabled={isVerifyingOtp || isRegistering || isSuccess}
+            />
+
+            {/* Error Message */}
+            {otpError && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  color: 'var(--color-danger)',
+                  fontSize: '12px',
+                  marginBottom: '10px',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 69, 58, 0.1)',
+                  border: '0.5px solid rgba(255, 69, 58, 0.25)',
+                }}
+              >
+                <AlertCircle size={14} strokeWidth={2} style={{ flexShrink: 0 }} />
+                <span>{otpError}</span>
+              </div>
+            )}
+
+            {/* Segmented OTP 6-Digit Input */}
+            <OtpInput
+              length={6}
+              value={phoneOtp}
+              onChange={(val) => {
+                setOtpError('');
+                setPhoneOtp(val);
+              }}
+              onComplete={(completedCode) => {
+                handleVerifyOtp(completedCode);
+              }}
+              disabled={isVerifyingOtp || isRegistering || isSuccess}
+              hasError={!!otpError}
+              autoFocus={true}
+            />
+
+            {/* Verification Button */}
+            <button
+              type="button"
+              className="btn btn-gold w-full mt-3"
+              disabled={
+                isVerifyingOtp ||
+                isRegistering ||
+                isSuccess ||
+                phoneOtp.length !== 6
+              }
+              onClick={() => handleVerifyOtp()}
+            >
+              {isSuccess ? (
+                <>
+                  <CheckCircle2 size={16} strokeWidth={2} />
+                  <span>Account Verified & Created</span>
+                </>
+              ) : isVerifyingOtp || isRegistering ? (
+                <span>Validating Code...</span>
+              ) : (
+                <>
+                  <Check size={16} strokeWidth={2} />
+                  <span>Verify Phone & Create Account</span>
+                </>
+              )}
+            </button>
+          </div>
         )}
       </div>
     </div>

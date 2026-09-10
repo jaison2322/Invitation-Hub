@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { Search, Gift, Shield } from 'lucide-react';
+import { Search, Gift, Shield, ArrowLeft } from 'lucide-react';
 import { formatDate, formatCurrency, getGiftCategoryLabel, getInitials } from '../utils/formatters';
+import GiftBadgeIcon from '../components/GiftBadgeIcon';
 
 export default function GiftHistoryScreen() {
   const navigate = useNavigate();
@@ -44,48 +45,59 @@ export default function GiftHistoryScreen() {
 
   if (!canViewGifts) {
     return (
-      <div className="screen-no-nav flex flex-col items-center justify-center text-center" style={{ minHeight: '100dvh', padding: 'var(--space-6)' }}>
-        <div className="auth-card animate-scale-in">
-          <div style={{ color: 'var(--color-danger)', marginBottom: 'var(--space-4)' }}>
-            <Shield size={48} style={{ margin: '0 auto' }} />
-          </div>
-          <h3>Permission Restricted</h3>
-          <p className="text-secondary text-sm" style={{ marginTop: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
-            Your account role does not have permission to view confidential gift records and valuations. Please contact your VIP Principal.
-          </p>
-          <button className="btn btn-outline w-full" onClick={() => navigate(-1)}>
-            Go Back
-          </button>
+      <div className="screen flex flex-col items-center justify-center text-center">
+        <div className="empty-state-icon"><Shield size={36} style={{ color: 'var(--color-danger)' }} /></div>
+        <div className="empty-state-title">Access Restricted</div>
+        <div className="empty-state-text">
+          You do not have permission to view the gift ledger.
         </div>
+        <button className="btn btn-gold mt-4" onClick={() => navigate('/dashboard')}>
+          Return to Briefing
+        </button>
       </div>
     );
   }
 
   return (
     <div className="screen">
-      <div className="screen-header">
-        <h2>Gift History</h2>
-        <p className="text-sm text-secondary mt-1">
-          {allGifts.length} gifts recorded · Total: {formatCurrency(totalValue)}
-        </p>
-      </div>
-
-      <div className="search-bar" style={{ marginBottom: 'var(--space-3)' }}>
-        <Search size={16} className="search-bar-icon" />
-        <input placeholder="Search gifts..." value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
-      <div className="overflow-x-auto" style={{ margin: '0 calc(-1 * var(--space-4)) var(--space-4)', padding: '0 var(--space-4)' }}>
-        <div className="tabs" style={{ width: 'max-content' }}>
-          {categories.map((cat) => (
-            <button key={cat} className={`tab ${filterCategory === cat ? 'active' : ''}`} onClick={() => setFilterCategory(cat)}>
-              {cat === 'all' ? 'All' : getGiftCategoryLabel(cat as any)}
+      <div className="screen-stationary-header">
+        <div className="screen-header">
+          <div className="flex items-center gap-3">
+            <button className="btn-icon" onClick={() => navigate(-1)} aria-label="Go Back">
+              <ArrowLeft size={16} />
             </button>
-          ))}
+            <div>
+              <h2>Gift Ledger</h2>
+              <p className="text-sm text-secondary mt-1">
+                {allGifts.length} protocol exchanges recorded · Total: {formatCurrency(totalValue)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="search-bar" style={{ marginBottom: 'var(--space-3)' }}>
+          <Search size={16} className="search-bar-icon" />
+          <input placeholder="Search gifts, recipients, or functions..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+
+        <div className="overflow-x-auto" style={{ margin: '0 calc(-1 * var(--space-4)) 0', padding: '0 var(--space-4)' }}>
+          <div className="tabs" style={{ width: 'max-content' }}>
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                className={`tab flex items-center gap-1.5 ${filterCategory === cat ? 'active' : ''}`}
+                onClick={() => setFilterCategory(cat)}
+              >
+                {cat !== 'all' && <GiftBadgeIcon category={cat} size="xs" />}
+                <span>{cat === 'all' ? 'All Gifts' : getGiftCategoryLabel(cat as any)}</span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="screen-scroll-body">
+        <div className="flex flex-col gap-2">
         {filtered.map((g, i) => (
           <div
             key={i}
@@ -96,10 +108,10 @@ export default function GiftHistoryScreen() {
             <div className="flex items-center gap-3">
               <div className="avatar avatar-sm">{getInitials(g.personName)}</div>
               <div className="flex-1">
-                <div className="text-sm font-semibold">{g.personName}</div>
+                <div className="text-sm font-semibold text-white">{g.personName}</div>
                 <div className="flex items-center gap-2 mt-1">
-                  <Gift size={12} style={{ color: 'var(--color-gold)' }} />
-                  <span className="text-sm text-gold">{g.gift}</span>
+                  <GiftBadgeIcon category={g.giftCategory || 'other'} size="xs" />
+                  <span className="text-sm text-gold font-medium">{g.gift}</span>
                 </div>
                 <div className="text-xs text-muted mt-1">
                   {g.eventName} · {formatDate(g.eventDate)}
@@ -126,6 +138,7 @@ export default function GiftHistoryScreen() {
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

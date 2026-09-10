@@ -5,7 +5,9 @@ import {
   ArrowLeft, AlertTriangle, Calendar, Clock, MapPin, Sparkles,
   CheckCircle2, XCircle, ArrowRightLeft, ShieldAlert
 } from 'lucide-react';
-import { formatDate, formatTime, getEventTypeIcon } from '../utils/formatters';
+import { formatDate, formatTime } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
 
 export default function ScheduleConflictScreen() {
   const navigate = useNavigate();
@@ -52,17 +54,21 @@ export default function ScheduleConflictScreen() {
   };
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: 'var(--space-12)' }}>
-      {/* Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Schedule Conflict Center</span>
-        <div style={{ width: '36px' }} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="top-bar-title">Schedule Conflict Center</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {/* Hero Banner */}
+      {/* ── Scrollable Conflicts Content ────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: 'var(--space-12)' }}>
+        {/* Hero Banner */}
       <div className="conflict-card animate-slide-up mb-4" style={{ padding: 'var(--space-4)', borderRadius: 'var(--radius-lg)' }}>
         <div className="conflict-icon" style={{ width: '36px', height: '36px' }}>
           <ShieldAlert size={20} />
@@ -149,17 +155,15 @@ export default function ScheduleConflictScreen() {
         {activeConflict.invitations.map((inv) => (
           <div
             key={inv.id}
-            className={`event-card event-card-${inv.priority}`}
+            className="event-card"
             style={{ borderLeft: `3px solid var(--color-priority-${inv.priority})` }}
           >
             <div className="flex items-start justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span>{getEventTypeIcon(inv.eventType)}</span>
-                <span className={`badge badge-${inv.priority}`} style={{ fontSize: '9px' }}>
-                  {inv.priority} Priority
-                </span>
+                <EventBadgeIcon type={inv.eventType} size="xs" />
+                <PriorityBadge priority={inv.priority} size="sm" />
               </div>
-              <span className={`badge badge-${inv.status}`} style={{ fontSize: '9px' }}>
+              <span className={`badge badge-${inv.status}`} style={{ fontSize: '10px' }}>
                 {inv.status}
               </span>
             </div>
@@ -193,6 +197,7 @@ export default function ScheduleConflictScreen() {
             </div>
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

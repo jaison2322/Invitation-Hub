@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, Plus, UserPlus, Shield, Trash2, Clock } from 'lucide-react';
+import { ArrowLeft, UserPlus, Shield, Trash2, Clock, AtSign, Lock, CheckCircle2, Copy } from 'lucide-react';
 import { getInitials, formatTimeAgo } from '../utils/formatters';
-import type { PermissionKey } from '../types';
+import type { PermissionKey, PrivilegedUser } from '../types';
 
 export default function PrivilegedUsersScreen() {
   const navigate = useNavigate();
@@ -17,13 +17,28 @@ export default function PrivilegedUsersScreen() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newPhone, setNewPhone] = useState('');
-  const [newEmail, setNewEmail] = useState('');
-  const [newPin, setNewPin] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isAdding, setIsAdding] = useState(false);
+  const [createdUser, setCreatedUser] = useState<PrivilegedUser | null>(null);
+  const [createdPassword, setCreatedPassword] = useState('');
+  const [copiedField, setCopiedField] = useState('');
 
-  const handleAddUser = () => {
-    if (!newName.trim() || !newRole.trim() || newPin.length !== 4) return;
+  // Auto-suggest username from name
+  const suggestedUsername = newName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+
+  const effectiveUsername = newUsername || suggestedUsername || '';
+
+  const handleAddUser = async () => {
+    if (!newName.trim() || !newRole.trim() || !newPassword.trim() || newPassword.length < 4 || isAdding) return;
+    setIsAdding(true);
+
     const defaultPerms: Record<PermissionKey, boolean> = {
       canAddInvitations: true,
       canEditEvents: false,
@@ -32,34 +47,54 @@ export default function PrivilegedUsersScreen() {
       canViewGiftHistory: false,
       canAddPeople: false,
     };
-    addPrivilegedUser({
+
+    const passToUse = newPassword.trim();
+    const result = await addPrivilegedUser({
       name: newName.trim(),
+      username: effectiveUsername,
       role: newRole.trim(),
-      pin: newPin,
       phone: newPhone.trim() || undefined,
-      email: newEmail.trim() || undefined,
       permissions: defaultPerms,
       addedBy: 'vip',
-    });
-    setShowAdd(false);
-    setNewName('');
-    setNewRole('');
-    setNewPhone('');
-    setNewEmail('');
-    setNewPin('');
+      password: passToUse,
+    } as any);
+
+    setIsAdding(false);
+
+    if (result) {
+      setCreatedUser(result);
+      setCreatedPassword(passToUse);
+      setShowAdd(false);
+      setNewName('');
+      setNewUsername('');
+      setNewRole('');
+      setNewPhone('');
+      setNewPassword('');
+    }
+  };
+
+  const handleCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(''), 1500);
   };
 
   return (
     <div className="screen-no-nav">
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Privileged Users</span>
-        <div style={{ width: '36px' }} />
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="top-bar-title">Privileged Users</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {/* Count indicator */}
+      {/* ── Scrollable Users Content ────────────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* Count indicator */}
       <div className="glass-card glass-card-gold animate-slide-up" style={{ marginBottom: 'var(--space-4)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -69,9 +104,68 @@ export default function PrivilegedUsersScreen() {
           <span className="badge badge-gold">{privilegedUsers.length}/5 Users</span>
         </div>
         <p className="text-xs text-muted mt-2">
-          Privileged users can perform actions on your behalf. Maximum 5 users allowed.
+          Privileged users can sign in directly from the start page. Maximum 5 users allowed.
         </p>
       </div>
+
+      {/* Created User Credentials Confirmation */}
+      {createdUser && (
+        <div className="glass-card glass-card-gold animate-scale-in" style={{ marginBottom: 'var(--space-4)' }}>
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle2 size={18} style={{ color: 'var(--color-success)' }} />
+            <span className="font-semibold text-sm" style={{ color: 'var(--color-success)' }}>
+              User Created Successfully!
+            </span>
+          </div>
+          <p className="text-xs text-muted mb-3">
+            Share these credentials with <strong>{createdUser.name}</strong> so they can sign in:
+          </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between" style={{
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: 'var(--radius-md)',
+              padding: '8px 12px',
+            }}>
+              <div>
+                <div className="text-xs text-muted">Username</div>
+                <div className="text-sm font-semibold">@{createdUser.username}</div>
+              </div>
+              <button
+                className="btn btn-sm btn-ghost"
+                onClick={() => handleCopy(createdUser.username || '', 'username')}
+                style={{ padding: '4px 8px' }}
+              >
+                {copiedField === 'username' ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+              </button>
+            </div>
+            {createdPassword && (
+              <div className="flex items-center justify-between" style={{
+                background: 'rgba(0,0,0,0.2)',
+                borderRadius: 'var(--radius-md)',
+                padding: '8px 12px',
+              }}>
+                <div>
+                  <div className="text-xs text-muted">Password</div>
+                  <div className="text-sm font-semibold">{createdPassword}</div>
+                </div>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => handleCopy(createdPassword, 'password')}
+                  style={{ padding: '4px 8px' }}
+                >
+                  {copiedField === 'password' ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+            )}
+          </div>
+          <button
+            className="btn btn-sm btn-outline w-full mt-3"
+            onClick={() => setCreatedUser(null)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* User List */}
       <div className="flex flex-col gap-3">
@@ -82,9 +176,16 @@ export default function PrivilegedUsersScreen() {
               <div className="flex-1">
                 <div className="font-semibold text-sm">{user.name}</div>
                 <div className="text-xs text-muted">{user.role}</div>
-                {(user.email || user.phone) && (
+                {user.username && (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="badge badge-info" style={{ fontSize: '8px', padding: '1px 5px' }}>
+                      @{user.username}
+                    </span>
+                  </div>
+                )}
+                {user.phone && (
                   <div className="text-xs text-muted mt-1">
-                    {user.email} {user.email && user.phone ? '•' : ''} {user.phone}
+                    {user.phone}
                   </div>
                 )}
                 {user.lastActive && (
@@ -133,30 +234,62 @@ export default function PrivilegedUsersScreen() {
                   <input className="input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g., Deepa" />
                 </div>
                 <div>
+                  <label className="label">
+                    <AtSign size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                    Username
+                  </label>
+                  <input
+                    className="input"
+                    value={newUsername}
+                    onChange={(e) => setNewUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                    placeholder={suggestedUsername ? `Auto: ${suggestedUsername}` : 'e.g., deepa_pa'}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                  />
+                  {!newUsername && suggestedUsername && (
+                    <p className="text-muted" style={{ fontSize: '10px', marginTop: '2px' }}>
+                      Will use: <strong>@{suggestedUsername}</strong>
+                    </p>
+                  )}
+                </div>
+                <div>
                   <label className="label">Role</label>
                   <input className="input" value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="e.g., Personal Assistant" />
+                </div>
+                <div>
+                  <label className="label">
+                    <Lock size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                    Password (min 4 characters)
+                  </label>
+                  <input
+                    className="input"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter password for staff sign-in"
+                    required
+                  />
                 </div>
                 <div>
                   <label className="label">Phone Number</label>
                   <input className="input" type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="e.g., +91 98765 43210" />
                 </div>
-                <div>
-                  <label className="label">Email Address</label>
-                  <input className="input" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="e.g., deepa@executive.com" />
-                </div>
-                <div>
-                  <label className="label">4-Digit PIN</label>
-                  <input className="input" type="password" maxLength={4} value={newPin} onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))} placeholder="••••" />
-                </div>
                 <div className="flex gap-2">
                   <button className="btn btn-ghost flex-1" onClick={() => setShowAdd(false)}>Cancel</button>
-                  <button className="btn btn-gold flex-1" onClick={handleAddUser} disabled={!newName.trim() || !newRole.trim() || newPin.length !== 4}>Add User</button>
+                  <button
+                    className="btn btn-gold flex-1"
+                    onClick={handleAddUser}
+                    disabled={!newName.trim() || !newRole.trim() || !newPassword.trim() || newPassword.length < 4 || isAdding}
+                  >
+                    {isAdding ? 'Creating...' : 'Add User'}
+                  </button>
                 </div>
               </div>
             </div>
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

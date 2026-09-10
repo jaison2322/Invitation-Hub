@@ -8,6 +8,7 @@ import type {
   ScheduleItem,
   Reminder,
   Notification,
+  ActivityLog,
 } from '../types';
 
 let realtimeChannel: RealtimeChannel | null = null;
@@ -44,6 +45,74 @@ export const realtimeService = {
                     updatedAccount.email || ''
                   );
                 }
+              }
+
+              // Also update permissions for privileged users
+              if (updatedAccount.role === 'staff') {
+                const { privilegedUsers } = store;
+                const existing = privilegedUsers.find(
+                  (u) => u.username && u.username.toLowerCase() === updatedAccount.username?.toLowerCase()
+                );
+                if (existing && updatedAccount.permissions) {
+                  useAppStore.setState({
+                    privilegedUsers: privilegedUsers.map((u) =>
+                      u.id === existing.id
+                        ? { ...u, permissions: updatedAccount.permissions, name: updatedAccount.name }
+                        : u
+                    ),
+                  });
+                }
+              }
+            }
+
+            // Handle new staff account added from another client
+            if (payload.eventType === 'INSERT') {
+              const newAccount = payload.new as any;
+              if (newAccount.role === 'staff') {
+                const { privilegedUsers } = store;
+                const alreadyExists = privilegedUsers.some(
+                  (u) => u.username && u.username.toLowerCase() === newAccount.username?.toLowerCase()
+                );
+                if (!alreadyExists) {
+                  useAppStore.setState({
+                    privilegedUsers: [
+                      ...privilegedUsers,
+                      {
+                        id: 'priv-' + Date.now(),
+                        username: newAccount.username,
+                        passwordHash: newAccount.password_hash,
+                        name: newAccount.name,
+                        role: newAccount.staff_title || 'Personal Assistant',
+                        pin: newAccount.pin || '1111',
+                        phone: newAccount.phone,
+                        email: newAccount.email,
+                        permissions: newAccount.permissions || {
+                          canAddInvitations: true,
+                          canEditEvents: false,
+                          canChangePriority: false,
+                          canManageSchedule: false,
+                          canViewGiftHistory: false,
+                          canAddPeople: false,
+                        },
+                        addedBy: 'vip',
+                        addedAt: newAccount.created_at,
+                      },
+                    ],
+                  });
+                }
+              }
+            }
+
+            // Handle staff account deleted from another client
+            if (payload.eventType === 'DELETE') {
+              const deletedAccount = payload.old as any;
+              if (deletedAccount?.username) {
+                const { privilegedUsers } = store;
+                useAppStore.setState({
+                  privilegedUsers: privilegedUsers.filter(
+                    (u) => !(u.username && u.username.toLowerCase() === deletedAccount.username.toLowerCase())
+                  ),
+                });
               }
             }
           }
@@ -309,6 +378,7 @@ export const realtimeService = {
                 type: notif.type || 'system',
                 title: notif.title,
                 message: notif.message,
+                actionUrl: notif.action_url || notif.actionUrl,
                 relatedEntityId: notif.related_entity_id || notif.relatedEntityId,
                 read: notif.read ?? false,
                 timestamp: notif.timestamp || notif.created_at || new Date().toISOString(),
@@ -318,6 +388,73 @@ export const realtimeService = {
                   notifications: [formatted, ...state.notifications],
                 }));
               }
+            } else if (payload.eventType === 'UPDATE') {
+              const updatedNotif = payload.new as any;
+              useAppStore.setState((state) => ({
+                notifications: state.notifications.map((n) =>
+                  n.id === updatedNotif.id
+                    ? {
+                        ...n,
+                        read: updatedNotif.read ?? n.read,
+                        title: updatedNotif.title ?? n.title,
+                        message: updatedNotif.message ?? n.message,
+                      }
+                    : n
+                ),
+              }));
+            } else if (payload.eventType === 'DELETE') {
+              const oldRow = payload.old as any;
+              useAppStore.setState((state) => ({
+                notifications: state.notifications.filter((n) => n.id !== oldRow.id),
+              }));
+            }
+          }
+        )
+        // ── 8. Listen to activity_logs changes ─────────────────────────────
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'activity_logs' },
+          (payload) => {
+            const store = useAppStore.getState();
+            if (payload.eventType === 'INSERT') {
+              const row = payload.new as any;
+              const formatted: ActivityLog = {
+                id: row.id,
+                userId: row.user_id || row.userId || 'system',
+                userName: row.user_name || row.userName || 'VIP Principal',
+                action: row.action,
+                entityType: row.entity_type || row.entityType || 'system',
+                entityId: row.entity_id || row.entityId || '',
+                entityName: row.entity_name || row.entityName,
+                previousValue: row.previous_value || row.previousValue,
+                newValue: row.new_value || row.newValue,
+                timestamp: row.timestamp || new Date().toISOString(),
+              };
+              if (!store.activityLogs.some((x) => x.id === formatted.id)) {
+                useAppStore.setState((state) => ({
+                  activityLogs: [formatted, ...state.activityLogs],
+                }));
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              const row = payload.new as any;
+              useAppStore.setState((state) => ({
+                activityLogs: state.activityLogs.map((log) =>
+                  log.id === row.id
+                    ? {
+                        ...log,
+                        action: row.action ?? log.action,
+                        entityName: row.entity_name ?? log.entityName,
+                        previousValue: row.previous_value ?? log.previousValue,
+                        newValue: row.new_value ?? log.newValue,
+                      }
+                    : log
+                ),
+              }));
+            } else if (payload.eventType === 'DELETE') {
+              const oldRow = payload.old as any;
+              useAppStore.setState((state) => ({
+                activityLogs: state.activityLogs.filter((l) => l.id !== oldRow.id),
+              }));
             }
           }
         )

@@ -32,6 +32,8 @@ import SettingsScreen from './routes/SettingsScreen';
 import PeopleListScreen from './routes/PeopleListScreen';
 
 import { realtimeService } from './services/realtimeService';
+import AppHeader from './components/AppHeader';
+import { useTranslation } from './i18n/useTranslation';
 
 // ─── Protected Route ────────────────────────────────────────────────────────
 function ProtectedRoute({ children }: { children: ReactNode }) {
@@ -45,6 +47,7 @@ function BottomNavigation() {
   const location = useLocation();
   const navigate = useNavigate();
   const { getUnreadCount } = useAppStore();
+  const { t } = useTranslation();
 
   // Pages that should NOT show bottom nav
   const hideNavPages = [
@@ -71,31 +74,61 @@ function BottomNavigation() {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <nav className="bottom-nav">
-      <div className={`nav-item ${isActive('/dashboard') ? 'active' : ''}`} onClick={() => navigate('/dashboard')}>
-        <LayoutDashboard size={22} />
-        <span className="nav-item-label">Home</span>
-      </div>
+    <nav className="bottom-nav" aria-label="Main Navigation">
+      <button
+        type="button"
+        className={`nav-item ${isActive('/dashboard') ? 'active' : ''}`}
+        onClick={() => navigate('/dashboard')}
+        aria-label="Home"
+        style={{ background: 'none', border: 'none' }}
+      >
+        <LayoutDashboard size={20} strokeWidth={1.8} />
+        <span className="nav-item-label">{t('nav.briefing')}</span>
+      </button>
 
-      <div className={`nav-item ${isActive('/upcoming') ? 'active' : ''}`} onClick={() => navigate('/upcoming')}>
-        <Calendar size={22} />
-        <span className="nav-item-label">Events</span>
+      <button
+        type="button"
+        className={`nav-item ${isActive('/upcoming') ? 'active' : ''}`}
+        onClick={() => navigate('/upcoming')}
+        aria-label="Events"
+        style={{ background: 'none', border: 'none' }}
+      >
+        <Calendar size={20} strokeWidth={1.8} />
+        <span className="nav-item-label">{t('nav.events')}</span>
         {unread > 0 && <span className="nav-badge">{unread > 9 ? '9+' : unread}</span>}
-      </div>
+      </button>
 
-      <div className={`nav-scan-btn ${isActive('/scan') ? 'active' : ''}`} onClick={() => navigate('/scan')}>
-        <ScanLine size={24} />
-      </div>
+      <button
+        type="button"
+        className={`nav-scan-btn ${isActive('/scan') ? 'active' : ''}`}
+        onClick={() => navigate('/scan')}
+        aria-label="Scan Invitation"
+        title="Scan Invitation"
+      >
+        <ScanLine size={20} strokeWidth={2.2} />
+      </button>
 
-      <div className={`nav-item ${isActive('/people') ? 'active' : ''}`} onClick={() => navigate('/people')}>
-        <Users size={22} />
-        <span className="nav-item-label">People</span>
-      </div>
+      <button
+        type="button"
+        className={`nav-item ${isActive('/people') ? 'active' : ''}`}
+        onClick={() => navigate('/people')}
+        aria-label="Contacts"
+        style={{ background: 'none', border: 'none' }}
+      >
+        <Users size={20} strokeWidth={1.8} />
+        <span className="nav-item-label">{t('nav.contacts')}</span>
+      </button>
 
-      <div className={`nav-item ${isActive('/settings') ? 'active' : ''}`} onClick={() => navigate('/settings')}>
-        <Settings size={22} />
-        <span className="nav-item-label">More</span>
-      </div>
+      <button
+        type="button"
+        className={`nav-item ${isActive('/settings') ? 'active' : ''}`}
+        onClick={() => navigate('/settings')}
+        aria-label="Settings"
+        style={{ background: 'none', border: 'none' }}
+      >
+        <Settings size={20} strokeWidth={1.8} />
+        <span className="nav-item-label">{t('nav.settings')}</span>
+      </button>
     </nav>
   );
 }
@@ -114,48 +147,52 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="app-container">
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<SplashScreen />} />
-          <Route path="/login" element={<LoginScreen />} />
+      <div className="app-shell">
+        <div className="status-bar-scrim" aria-hidden="true" />
+        <AppHeader />
+        <div className="app-container">
+          <Routes>
+            {/* Public */}
+            <Route path="/" element={<SplashScreen />} />
+            <Route path="/login" element={<LoginScreen />} />
 
-          {/* Protected — Core Flow */}
-          <Route path="/dashboard" element={<ProtectedRoute><DashboardScreen /></ProtectedRoute>} />
-          <Route path="/scan" element={<ProtectedRoute><ScanInvitationScreen /></ProtectedRoute>} />
-          <Route path="/ai-processing" element={<ProtectedRoute><AIProcessingScreen /></ProtectedRoute>} />
-          <Route path="/extracted-details" element={<ProtectedRoute><ExtractedDetailsScreen /></ProtectedRoute>} />
-          <Route path="/confirm-ignore" element={<ProtectedRoute><ConfirmIgnoreScreen /></ProtectedRoute>} />
+            {/* Protected — Core Flow */}
+            <Route path="/dashboard" element={<ProtectedRoute><DashboardScreen /></ProtectedRoute>} />
+            <Route path="/scan" element={<ProtectedRoute><ScanInvitationScreen /></ProtectedRoute>} />
+            <Route path="/ai-processing" element={<ProtectedRoute><AIProcessingScreen /></ProtectedRoute>} />
+            <Route path="/extracted-details" element={<ProtectedRoute><ExtractedDetailsScreen /></ProtectedRoute>} />
+            <Route path="/confirm-ignore" element={<ProtectedRoute><ConfirmIgnoreScreen /></ProtectedRoute>} />
 
-          {/* Protected — Event & People */}
-          <Route path="/upcoming" element={<ProtectedRoute><UpcomingInvitationsScreen /></ProtectedRoute>} />
-          <Route path="/calendar" element={<ProtectedRoute><CalendarScreen /></ProtectedRoute>} />
-          <Route path="/event/:id" element={<ProtectedRoute><EventDetailScreen /></ProtectedRoute>} />
-          <Route path="/person/:id" element={<ProtectedRoute><PersonProfileScreen /></ProtectedRoute>} />
-          <Route path="/people" element={<ProtectedRoute><PeopleListScreen /></ProtectedRoute>} />
+            {/* Protected — Event & People */}
+            <Route path="/upcoming" element={<ProtectedRoute><UpcomingInvitationsScreen /></ProtectedRoute>} />
+            <Route path="/calendar" element={<ProtectedRoute><CalendarScreen /></ProtectedRoute>} />
+            <Route path="/event/:id" element={<ProtectedRoute><EventDetailScreen /></ProtectedRoute>} />
+            <Route path="/person/:id" element={<ProtectedRoute><PersonProfileScreen /></ProtectedRoute>} />
+            <Route path="/people" element={<ProtectedRoute><PeopleListScreen /></ProtectedRoute>} />
 
-          {/* Protected — Past Events & Gifts */}
-          <Route path="/past-events" element={<ProtectedRoute><PastFamilyFunctionsScreen /></ProtectedRoute>} />
-          <Route path="/past-event/:id" element={<ProtectedRoute><PastEventDetailScreen /></ProtectedRoute>} />
-          <Route path="/gifts" element={<ProtectedRoute><GiftHistoryScreen /></ProtectedRoute>} />
-          <Route path="/add-event" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
-          <Route path="/edit-event/:id" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
-          <Route path="/add-invitation" element={<ProtectedRoute><AddInvitationScreen /></ProtectedRoute>} />
+            {/* Protected — Past Events & Gifts */}
+            <Route path="/past-events" element={<ProtectedRoute><PastFamilyFunctionsScreen /></ProtectedRoute>} />
+            <Route path="/past-event/:id" element={<ProtectedRoute><PastEventDetailScreen /></ProtectedRoute>} />
+            <Route path="/gifts" element={<ProtectedRoute><GiftHistoryScreen /></ProtectedRoute>} />
+            <Route path="/add-event" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
+            <Route path="/edit-event/:id" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
+            <Route path="/add-invitation" element={<ProtectedRoute><AddInvitationScreen /></ProtectedRoute>} />
 
-          {/* Protected — Management */}
-          <Route path="/conflicts" element={<ProtectedRoute><ScheduleConflictScreen /></ProtectedRoute>} />
-          <Route path="/reminders" element={<ProtectedRoute><ReminderCenterScreen /></ProtectedRoute>} />
-          <Route path="/privileged-users" element={<ProtectedRoute><PrivilegedUsersScreen /></ProtectedRoute>} />
-          <Route path="/permissions/:id" element={<ProtectedRoute><PermissionManagementScreen /></ProtectedRoute>} />
-          <Route path="/notifications" element={<ProtectedRoute><NotificationsScreen /></ProtectedRoute>} />
-          <Route path="/activity" element={<ProtectedRoute><ActivityHistoryScreen /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
+            {/* Protected — Management */}
+            <Route path="/conflicts" element={<ProtectedRoute><ScheduleConflictScreen /></ProtectedRoute>} />
+            <Route path="/reminders" element={<ProtectedRoute><ReminderCenterScreen /></ProtectedRoute>} />
+            <Route path="/privileged-users" element={<ProtectedRoute><PrivilegedUsersScreen /></ProtectedRoute>} />
+            <Route path="/permissions/:id" element={<ProtectedRoute><PermissionManagementScreen /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><NotificationsScreen /></ProtectedRoute>} />
+            <Route path="/activity" element={<ProtectedRoute><ActivityHistoryScreen /></ProtectedRoute>} />
+            <Route path="/settings" element={<ProtectedRoute><SettingsScreen /></ProtectedRoute>} />
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
 
-        <BottomNavigation />
+          <BottomNavigation />
+        </div>
       </div>
     </BrowserRouter>
   );

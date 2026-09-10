@@ -5,14 +5,16 @@ import {
   History, Gift, CheckCircle2, ArrowLeft,
 } from 'lucide-react';
 import {
-  formatDate, formatTime, formatFullDate, getEventTypeIcon,
-  getEventTypeLabel, formatCurrency, getInitials,
+  formatDate, formatTime, formatFullDate,
+  formatCurrency, getInitials,
 } from '../utils/formatters';
-import type { ExtractedFields, Priority } from '../types';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
+import type { ExtractedFields } from '../types';
 
 export default function ConfirmIgnoreScreen() {
   const navigate = useNavigate();
-  const { currentScanResult, addInvitation, setScanResult } = useAppStore();
+  const { currentScanResult, addInvitation, setScanResult, addActivityLog, addNotification, isVIP, currentUser, currentPrivilegedUser } = useAppStore();
 
   if (!currentScanResult) {
     navigate('/scan', { replace: true });
@@ -27,7 +29,7 @@ export default function ConfirmIgnoreScreen() {
   const nickname = sessionStorage.getItem('invitation-nickname') || '';
 
   const handleDecision = (status: 'confirmed' | 'ignored') => {
-    addInvitation({
+    const created = addInvitation({
       personId: analysis.relatedPerson?.id,
       eventType: fields.eventType || 'other',
       title: fields.title || 'New Event',
@@ -44,8 +46,46 @@ export default function ConfirmIgnoreScreen() {
       aiReason: analysis.priorityReason,
       status,
       ocrText: analysis.ocrText,
-      createdBy: 'vip',
+      createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
     });
+
+    const userName = isVIP
+      ? (currentUser?.name || 'VIP Principal')
+      : (currentPrivilegedUser?.name || 'Staff User');
+    const userId = isVIP
+      ? (currentUser?.username || 'vip')
+      : (currentPrivilegedUser?.id || 'staff');
+
+    // Add Activity Log
+    addActivityLog({
+      userId,
+      userName,
+      action: `Scanned & recorded invitation "${created.title}" as ${status}`,
+      entityType: 'invitation',
+      entityId: created.id,
+      entityName: created.title,
+    });
+
+    // Add Notification
+    if (analysis.scheduleConflicts && analysis.scheduleConflicts.length > 0) {
+      addNotification({
+        type: 'conflict_warning',
+        title: `Schedule Conflict: ${created.title}`,
+        message: `Invitation conflicts with ${analysis.scheduleConflicts.length} existing event(s) on ${created.date}.`,
+        read: false,
+        relatedEntityId: created.id,
+        actionUrl: `/conflicts`,
+      });
+    } else {
+      addNotification({
+        type: 'new_invitation',
+        title: `New Invitation Scanned: ${created.title}`,
+        message: `Scanned and recorded as ${status.toUpperCase()} for ${created.date}.`,
+        read: false,
+        relatedEntityId: created.id,
+        actionUrl: `/event/${created.id}`,
+      });
+    }
 
     // Clean up
     setScanResult(null);
@@ -56,152 +96,88 @@ export default function ConfirmIgnoreScreen() {
     navigate('/dashboard', { replace: true });
   };
 
-  const priorityColors: Record<Priority, string> = {
-    high: 'var(--color-priority-high)',
-    medium: 'var(--color-priority-medium)',
-    low: 'var(--color-priority-low)',
-  };
-
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: '120px' }}>
-      {/* Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Review & Decide</span>
-        <div style={{ width: '36px' }} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)} aria-label="Go Back">
+            <ArrowLeft size={16} strokeWidth={2} />
+          </button>
+          <span className="top-bar-title">Protocol Decision</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {/* Event Summary Card */}
-      <div className="hero-event-card animate-slide-up">
+      {/* ── Scrollable Decision Content ─────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: '90px' }}>
+        {/* ── Executive Briefing Event Pass ─────────────────────────────────── */}
+        <div className="hero-event-card mb-3">
         <div className="flex items-start justify-between mb-3">
-          <span style={{ fontSize: '32px' }}>{getEventTypeIcon(fields.eventType || 'other')}</span>
-          <span className={`badge badge-${analysis.suggestedPriority}`}>
-            {analysis.suggestedPriority} priority
-          </span>
+          <EventBadgeIcon type={fields.eventType || 'other'} size="hero" showGlow />
+          <PriorityBadge priority={analysis.suggestedPriority} />
         </div>
 
-        <h2 style={{ marginBottom: 'var(--space-1)' }}>
+        <h1
+          className="font-heading font-semibold text-white tracking-tight"
+          style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '2px' }}
+        >
           {nickname || fields.title || 'New Event'}
-        </h2>
+        </h1>
         {nickname && fields.title && nickname !== fields.title && (
-          <p className="text-secondary text-sm">{fields.title}</p>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
+            {fields.title}
+          </p>
         )}
 
-        <div className="flex flex-col gap-2 mt-4" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
-          <div className="flex items-center gap-2">
-            <Calendar size={15} />
+        <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '10px 0' }} />
+
+        <div className="flex flex-col gap-2" style={{ fontSize: '13px' }}>
+          <div className="flex items-center gap-2 text-slate-200">
+            <Calendar size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
             <span>{fields.date ? formatFullDate(fields.date) : 'Date not specified'}</span>
           </div>
           {fields.time && (
-            <div className="flex items-center gap-2">
-              <Clock size={15} /> <span>{formatTime(fields.time)}</span>
+            <div className="flex items-center gap-2 text-slate-200">
+              <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span>{formatTime(fields.time)}</span>
             </div>
           )}
           {fields.venue && (
-            <div className="flex items-center gap-2">
-              <MapPin size={15} /> <span>{fields.venue}</span>
+            <div className="flex items-center gap-2 text-slate-200">
+              <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span className="truncate">{fields.venue}</span>
             </div>
           )}
         </div>
       </div>
 
-      {/* AI Priority Recommendation */}
-      <div className="glass-card glass-card-gold animate-slide-up delay-1" style={{ marginTop: 'var(--space-4)' }}>
-        <div className="flex items-center gap-2 mb-2">
-          <Sparkles size={16} style={{ color: 'var(--color-gold)' }} />
-          <span className="font-heading font-semibold text-sm">AI Recommendation</span>
-        </div>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm">Suggested Priority:</span>
-          <span style={{
-            color: priorityColors[analysis.suggestedPriority],
-            fontWeight: 700,
-            fontFamily: 'var(--font-heading)',
-            textTransform: 'uppercase',
-          }}>
-            {analysis.suggestedPriority}
+      {/* ── Apple Intelligence Recommendation ──────────────────────────────── */}
+      <div className="apple-intelligence-card mb-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff' }} />
+          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            AI Suggested Priority: {analysis.suggestedPriority.toUpperCase()}
           </span>
         </div>
-        <p className="text-sm text-secondary" style={{ lineHeight: '1.6' }}>
+        <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: '1.45' }}>
           {analysis.priorityReason}
         </p>
       </div>
 
-      {/* Relationship History */}
-      {analysis.relationshipHistory.length > 0 && (
-        <div className="glass-card animate-slide-up delay-2" style={{ marginTop: 'var(--space-4)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <History size={16} style={{ color: 'var(--color-info)' }} />
-            <span className="font-heading font-semibold text-sm">Relationship History</span>
-          </div>
-
-          {analysis.relatedPerson && (
-            <div className="flex items-center gap-3 mb-3" style={{ padding: 'var(--space-2)', background: 'rgba(34, 197, 94, 0.06)', borderRadius: 'var(--radius-sm)' }}>
-              <div className="avatar avatar-sm">{getInitials(analysis.relatedPerson.name)}</div>
-              <div>
-                <div className="text-sm font-semibold">{analysis.relatedPerson.nickname}</div>
-                <div className="text-xs text-muted">{analysis.relatedPerson.name}</div>
-              </div>
-            </div>
-          )}
-
-          <div className="timeline">
-            {analysis.relationshipHistory.map((item, i) => (
-              <div key={i} className="timeline-item">
-                <div className="timeline-date">{formatDate(item.eventDate)}</div>
-                <div className="text-sm">
-                  <CheckCircle2 size={12} style={{ display: 'inline', marginRight: '4px', color: 'var(--color-confirmed)' }} />
-                  {item.role} — {item.eventName}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Gift History */}
-      {analysis.giftHistory.length > 0 && (
-        <div className="glass-card animate-slide-up delay-3" style={{ marginTop: 'var(--space-4)' }}>
-          <div className="flex items-center gap-2 mb-3">
-            <Gift size={16} style={{ color: 'var(--color-gold)' }} />
-            <span className="font-heading font-semibold text-sm">Gift History</span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {analysis.giftHistory.map((gift, i) => (
-              <div key={i} className="flex items-center justify-between" style={{
-                padding: 'var(--space-2) var(--space-3)',
-                background: 'rgba(212, 168, 83, 0.04)',
-                borderRadius: 'var(--radius-sm)',
-              }}>
-                <div>
-                  <div className="text-sm">{gift.gift}</div>
-                  <div className="text-xs text-muted">{gift.eventName}</div>
-                </div>
-                {gift.estimatedValue && (
-                  <span className="badge badge-gold">{formatCurrency(gift.estimatedValue)}</span>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Schedule Conflicts */}
+      {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
       {analysis.scheduleConflicts.length > 0 && (
-        <div className="animate-slide-up delay-4" style={{ marginTop: 'var(--space-4)' }}>
+        <div className="mb-3">
           {analysis.scheduleConflicts.map((conflict, i) => (
-            <div key={i} className="conflict-card" style={{ marginBottom: 'var(--space-2)' }}>
+            <div key={i} className="conflict-card mb-2">
               <div className="conflict-icon">
-                <AlertTriangle size={14} />
+                <AlertTriangle size={14} strokeWidth={2} />
               </div>
               <div>
-                <div className="text-sm font-semibold" style={{ color: 'var(--color-danger)' }}>
-                  {conflict.type === 'time_overlap' ? 'Time Conflict!' : 'Same Day Event'}
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
+                  {conflict.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
                 </div>
-                <div className="text-sm text-secondary">
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
                   {conflict.conflictingItemTitle} at {conflict.conflictingTime}
                 </div>
               </div>
@@ -210,19 +186,82 @@ export default function ConfirmIgnoreScreen() {
         </div>
       )}
 
-      {/* Decision Bar */}
+      {/* ── Protocol History (Grouped List) ─────────────────────────────────── */}
+      {analysis.relationshipHistory.length > 0 && (
+        <div className="ios-grouped-list mb-3">
+          {analysis.relatedPerson && (
+            <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+              <div className="avatar avatar-sm">
+                {getInitials(analysis.relatedPerson.name)}
+              </div>
+              <div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                  {analysis.relatedPerson.nickname}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                  {analysis.relatedPerson.name}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {analysis.relationshipHistory.map((item, i) => (
+            <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+              <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                <History size={15} strokeWidth={2} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                  {item.role} — {item.eventName}
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                  {formatDate(item.eventDate)}
+                </div>
+              </div>
+              <CheckCircle2 size={14} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Gift History ───────────────────────────────────────────────────── */}
+      {analysis.giftHistory.length > 0 && (
+        <div className="ios-grouped-list mb-3">
+          {analysis.giftHistory.map((gift, i) => (
+            <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+              <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
+                <Gift size={15} strokeWidth={2} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: '13px', fontWeight: 500 }}>{gift.gift}</div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{gift.eventName}</div>
+              </div>
+              {gift.estimatedValue && (
+                <span className="badge badge-gold" style={{ flexShrink: 0 }}>
+                  {formatCurrency(gift.estimatedValue)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      </div>
+
+      {/* ── Decision Bar ────────────────────────────────────────────────────── */}
       <div className="decision-bar">
         <button
-          className="btn btn-confirm"
+          type="button"
+          className="btn btn-confirm flex-1 font-heading"
           onClick={() => handleDecision('confirmed')}
         >
-          ✓ CONFIRM
+          Confirm Attendance
         </button>
         <button
-          className="btn btn-ignore"
+          type="button"
+          className="btn btn-ignore flex-1 font-heading"
           onClick={() => handleDecision('ignored')}
         >
-          ✕ IGNORE
+          Decline
         </button>
       </div>
     </div>

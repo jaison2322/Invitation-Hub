@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
 import type { EventType } from '../types';
 import { getEventTypeLabel } from '../utils/formatters';
 
@@ -18,8 +18,8 @@ export default function ExtractedDetailsScreen() {
   const [fields, setFields] = useState({ ...extractedFields });
   const [nickname, setNickname] = useState(
     analysis.relatedPerson
-      ? `${analysis.relatedPerson.nickname} — ${getEventTypeLabel(fields.eventType || 'other').replace(/^.+\s/, '')}`
-      : ''
+      ? `${analysis.relatedPerson.nickname} — ${getEventTypeLabel(fields.eventType || 'other')}`
+      : (fields.title || '')
   );
 
   const updateField = (key: string, value: string) => {
@@ -29,25 +29,18 @@ export default function ExtractedDetailsScreen() {
   const getConfidenceColor = (field: string): string => {
     const confidence = fields.confidence[field] || 0;
     if (confidence >= 0.7) return '';
-    if (confidence >= 0.4) return 'input-uncertain';
     return 'input-uncertain';
   };
 
   const getConfidenceIcon = (field: string) => {
     const confidence = fields.confidence[field] || 0;
     if (confidence >= 0.7) {
-      return <CheckCircle2 size={14} style={{ color: 'var(--color-confirmed)' }} />;
+      return <CheckCircle2 size={13} strokeWidth={2} style={{ color: 'var(--color-confirmed)' }} />;
     }
-    return <AlertCircle size={14} style={{ color: 'var(--color-pending)' }} />;
+    return <AlertCircle size={13} strokeWidth={2} style={{ color: 'var(--color-pending)' }} />;
   };
 
   const handleContinue = () => {
-    // Update the scan result with edited fields
-    const updatedResult = {
-      ...currentScanResult,
-      extractedFields: fields,
-    };
-    // Store nickname in sessionStorage for the confirm screen
     sessionStorage.setItem('invitation-nickname', nickname);
     sessionStorage.setItem('edited-fields', JSON.stringify(fields));
     navigate('/confirm-ignore');
@@ -60,37 +53,46 @@ export default function ExtractedDetailsScreen() {
   ];
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: 'var(--space-16)' }}>
-      {/* Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate('/scan')}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Extracted Details</span>
-        <div style={{ width: '36px' }} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate('/scan')} aria-label="Go Back">
+            <ArrowLeft size={16} strokeWidth={2} />
+          </button>
+          <span className="top-bar-title">Extracted Details</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {/* Confidence */}
-      <div className="glass-card glass-card-gold animate-slide-up" style={{ marginBottom: 'var(--space-4)' }}>
+      {/* ── Scrollable Details Content ──────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: '90px' }}>
+        {/* ── Apple Intelligence Confidence Card ──────────────────────────────── */}
+      <div className="apple-intelligence-card mb-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-semibold">AI Confidence</span>
-          <span className="badge badge-gold">
+          <div className="flex items-center gap-2">
+            <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff' }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Recognition Confidence</span>
+          </div>
+          <span className="badge badge-info">
             {Math.round(analysis.confidence * 100)}%
           </span>
         </div>
-        <p className="text-xs text-muted" style={{ marginTop: 'var(--space-1)' }}>
-          Amber fields have lower confidence — tap to edit
+        <p style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+          Amber highlighted fields were predicted with lower confidence. Tap to edit.
         </p>
       </div>
 
-      {/* Matched Person */}
+      {/* ── Matched Person Badge ───────────────────────────────────────────── */}
       {analysis.relatedPerson && (
-        <div className="glass-card animate-slide-up delay-1" style={{ marginBottom: 'var(--space-4)', borderColor: 'rgba(34, 197, 94, 0.2)' }}>
-          <div className="flex items-center gap-3">
-            <CheckCircle2 size={18} style={{ color: 'var(--color-confirmed)' }} />
-            <div>
-              <div className="text-sm font-semibold" style={{ color: 'var(--color-confirmed)' }}>Person Match Found</div>
-              <div className="text-sm text-secondary">
+        <div className="ios-grouped-list mb-3">
+          <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+            <div className="ios-icon-squircle" style={{ background: 'rgba(48, 209, 88, 0.15)', color: '#30d158' }}>
+              <CheckCircle2 size={16} strokeWidth={2} />
+            </div>
+            <div className="flex-1">
+              <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>VIP Contact Recognized</div>
+              <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
                 {analysis.relatedPerson.nickname} ({analysis.relatedPerson.name})
               </div>
             </div>
@@ -98,13 +100,12 @@ export default function ExtractedDetailsScreen() {
         </div>
       )}
 
-      {/* Form Fields */}
-      <div className="flex flex-col gap-4 animate-slide-up delay-2">
-        {/* Nickname */}
+      {/* ── Form Fields ────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-3">
         <div>
-          <label className="label flex items-center gap-2">
-            Custom Nickname / Identity
-            <span className="badge badge-gold" style={{ fontSize: '9px' }}>Recommended</span>
+          <label className="label flex items-center justify-between" style={{ fontSize: '12px', marginBottom: '4px' }}>
+            <span>Event Display Title</span>
+            <span className="badge badge-gold" style={{ fontSize: '9px' }}>Suggested</span>
           </label>
           <input
             className="input"
@@ -112,15 +113,12 @@ export default function ExtractedDetailsScreen() {
             onChange={(e) => setNickname(e.target.value)}
             placeholder="e.g., Business Partner Ramesh — Son's Wedding"
           />
-          <p className="text-xs text-muted" style={{ marginTop: '4px' }}>
-            How you'd like to identify this event
-          </p>
         </div>
 
-        {/* Event Type */}
         <div>
-          <label className="label flex items-center gap-2">
-            Event Type {getConfidenceIcon('eventType')}
+          <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+            <span>Event Category</span>
+            {getConfidenceIcon('eventType')}
           </label>
           <select
             className={`select ${getConfidenceColor('eventType')}`}
@@ -135,10 +133,10 @@ export default function ExtractedDetailsScreen() {
           </select>
         </div>
 
-        {/* Main Person */}
         <div>
-          <label className="label flex items-center gap-2">
-            Main Person / Couple {getConfidenceIcon('mainPerson')}
+          <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+            <span>Principal / Couple</span>
+            {getConfidenceIcon('mainPerson')}
           </label>
           <input
             className={`input ${getConfidenceColor('mainPerson')}`}
@@ -148,83 +146,70 @@ export default function ExtractedDetailsScreen() {
           />
         </div>
 
-        {/* Host */}
         <div>
-          <label className="label flex items-center gap-2">
-            Host Name {getConfidenceIcon('hostName')}
+          <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+            <span>Host Name</span>
+            {getConfidenceIcon('hostName')}
           </label>
           <input
             className={`input ${getConfidenceColor('hostName')}`}
             value={fields.hostName || ''}
             onChange={(e) => updateField('hostName', e.target.value)}
-            placeholder="Who is hosting the event"
+            placeholder="Who is hosting the function"
           />
         </div>
 
-        {/* Date */}
-        <div>
-          <label className="label flex items-center gap-2">
-            Date {getConfidenceIcon('date')}
-          </label>
-          <input
-            className={`input ${getConfidenceColor('date')}`}
-            type="date"
-            value={fields.date || ''}
-            onChange={(e) => updateField('date', e.target.value)}
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+          <div>
+            <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+              <span>Date</span>
+              {getConfidenceIcon('date')}
+            </label>
+            <input
+              className={`input ${getConfidenceColor('date')}`}
+              type="date"
+              value={fields.date || ''}
+              onChange={(e) => updateField('date', e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+              <span>Time</span>
+              {getConfidenceIcon('time')}
+            </label>
+            <input
+              className={`input ${getConfidenceColor('time')}`}
+              type="time"
+              value={fields.time || ''}
+              onChange={(e) => updateField('time', e.target.value)}
+            />
+          </div>
         </div>
 
-        {/* Time */}
         <div>
-          <label className="label flex items-center gap-2">
-            Time {getConfidenceIcon('time')}
-          </label>
-          <input
-            className={`input ${getConfidenceColor('time')}`}
-            type="time"
-            value={fields.time || ''}
-            onChange={(e) => updateField('time', e.target.value)}
-          />
-        </div>
-
-        {/* Venue */}
-        <div>
-          <label className="label flex items-center gap-2">
-            Venue {getConfidenceIcon('venue')}
+          <label className="label flex items-center gap-1.5" style={{ fontSize: '12px', marginBottom: '4px' }}>
+            <span>Venue</span>
+            {getConfidenceIcon('venue')}
           </label>
           <input
             className={`input ${getConfidenceColor('venue')}`}
             value={fields.venue || ''}
             onChange={(e) => updateField('venue', e.target.value)}
-            placeholder="Event venue"
-          />
-        </div>
-
-        {/* Location */}
-        <div>
-          <label className="label flex items-center gap-2">
-            Location
-          </label>
-          <input
-            className="input"
-            value={fields.location || ''}
-            onChange={(e) => updateField('location', e.target.value)}
-            placeholder="City or address"
+            placeholder="Grand Ballroom, Hotel..."
           />
         </div>
       </div>
+      </div>
 
-      {/* Continue Button */}
-      <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
-        padding: 'var(--space-4) var(--space-6)',
-        paddingBottom: 'calc(var(--space-6) + var(--safe-area-bottom))',
-        background: 'rgba(6, 10, 19, 0.95)',
-        backdropFilter: 'blur(20px)',
-        borderTop: '1px solid var(--glass-border)',
-      }}>
-        <button className="btn btn-gold w-full" onClick={handleContinue}>
-          Continue to Review
+      {/* ── Apple Floating Continue Bar ─────────────────────────────────────── */}
+      <div className="decision-bar">
+        <button
+          type="button"
+          className="btn btn-gold w-full"
+          onClick={handleContinue}
+        >
+          Continue to Protocol Review
         </button>
       </div>
     </div>

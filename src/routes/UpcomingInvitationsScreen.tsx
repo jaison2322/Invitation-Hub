@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { Calendar, Clock, MapPin, Search, Plus } from 'lucide-react';
-import { formatDate, formatTime, getEventTypeIcon } from '../utils/formatters';
+import { Calendar, Clock, MapPin, Search, Plus, ChevronRight } from 'lucide-react';
+import { formatDate, formatTime } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
 import type { InvitationStatus } from '../types';
+import { useTranslation } from '../i18n/useTranslation';
 
 export default function UpcomingInvitationsScreen() {
   const navigate = useNavigate();
   const { invitations, updateInvitationStatus } = useAppStore();
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'all' | InvitationStatus>('all');
   const [search, setSearch] = useState('');
 
@@ -25,109 +29,132 @@ export default function UpcomingInvitationsScreen() {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   const tabs: { key: typeof activeTab; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'pending', label: 'Pending' },
-    { key: 'confirmed', label: 'Confirmed' },
-    { key: 'ignored', label: 'Ignored' },
+    { key: 'all', label: t('common.all') },
+    { key: 'pending', label: t('events.pending') },
+    { key: 'confirmed', label: t('events.confirmed') },
+    { key: 'ignored', label: t('events.ignored') },
   ];
 
   return (
     <div className="screen">
-      <div className="screen-header flex items-center justify-between">
-        <div>
-          <h2>Invitations</h2>
-          <p className="text-sm text-secondary" style={{ marginTop: '4px' }}>
-            {invitations.length} total invitations
-          </p>
-        </div>
-        <button
-          className="btn btn-sm btn-gold"
-          style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '6px 12px' }}
-          onClick={() => navigate('/add-invitation')}
-        >
-          <Plus size={16} />
-          <span>Add</span>
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="search-bar" style={{ marginBottom: 'var(--space-3)' }}>
-        <Search size={16} className="search-bar-icon" />
-        <input
-          placeholder="Search invitations..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      {/* Tabs */}
-      <div className="tabs" style={{ marginBottom: 'var(--space-4)' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.key}
-            className={`tab ${activeTab === tab.key ? 'active' : ''}`}
-            onClick={() => setActiveTab(tab.key)}
+      {/* ── Stationary Header & Controls ───────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        {/* ── Apple Large Title Header ───────────────────────────────────────── */}
+        <div className="flex items-center justify-between mb-2">
+          <h1
+            className="font-heading font-bold text-white tracking-tight"
+            style={{ fontSize: '32px', letterSpacing: '-0.03em', lineHeight: 1.15 }}
           >
-            {tab.label}
+            {t('events.title')}
+          </h1>
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => navigate('/add-invitation')}
+            aria-label="Add Invitation"
+            title="Add Invitation"
+          >
+            <Plus size={18} strokeWidth={2} />
           </button>
-        ))}
+        </div>
+        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+          {invitations.length} total invitations in protocol ledger
+        </p>
+
+        {/* ── Apple Search Field ──────────────────────────────────────────────── */}
+        <div className="search-bar mb-3">
+          <Search size={16} className="search-bar-icon" />
+          <input
+            placeholder="Search invitations, venues, or hosts..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* ── Apple Segmented Control ─────────────────────────────────────────── */}
+        <div className="segmented-control">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`segmented-item ${activeTab === tab.key ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* List */}
-      <div className="flex flex-col gap-3">
-        {filtered.map((inv, i) => (
+      {/* ── Scrollable Events Content ───────────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* ── Events List ────────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-5">
+        {filtered.map((inv) => (
           <div
             key={inv.id}
-            className={`event-card event-card-${inv.priority} animate-slide-up`}
-            style={{ animationDelay: `${i * 0.05}s` }}
+            className="event-card cursor-pointer"
+            style={{ marginBottom: '20px' }}
             onClick={() => navigate(`/event/${inv.id}`)}
           >
             <div className="flex items-start justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span>{getEventTypeIcon(inv.eventType)}</span>
-                <span className={`badge badge-${inv.priority}`} style={{ fontSize: '9px' }}>
-                  {inv.priority}
-                </span>
+              <div className="flex items-center gap-2.5">
+                <EventBadgeIcon type={inv.eventType} size="sm" />
+                <PriorityBadge priority={inv.priority} size="sm" />
               </div>
-              <span className={`badge badge-${inv.status}`} style={{ fontSize: '9px' }}>
-                {inv.status}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`badge badge-${inv.status}`}>
+                  {inv.status}
+                </span>
+                <ChevronRight size={14} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
             </div>
 
             <div className="event-card-title">{inv.nickname || inv.title}</div>
 
-            <div className="event-card-meta" style={{ marginTop: 'var(--space-2)' }}>
+            <div className="event-card-meta mt-2">
               <span className="event-card-meta-item">
-                <Calendar size={12} /> {formatDate(inv.date)}
+                <Calendar size={12} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                <span>{formatDate(inv.date)}</span>
               </span>
               {inv.time && (
                 <span className="event-card-meta-item">
-                  <Clock size={12} /> {formatTime(inv.time)}
+                  <Clock size={12} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                  <span>{formatTime(inv.time)}</span>
                 </span>
               )}
               {inv.venue && (
-                <span className="event-card-meta-item">
-                  <MapPin size={12} /> {inv.venue}
+                <span className="event-card-meta-item truncate">
+                  <MapPin size={12} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                  <span className="truncate">{inv.venue}</span>
                 </span>
               )}
             </div>
 
-            {/* Quick actions for pending */}
+            {/* Quick action buttons for pending */}
             {inv.status === 'pending' && (
-              <div className="flex gap-2" style={{ marginTop: 'var(--space-3)' }}>
+              <div className="flex gap-2 mt-3">
                 <button
-                  className="btn btn-sm btn-confirm flex-1"
-                  style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2)' }}
-                  onClick={(e) => { e.stopPropagation(); updateInvitationStatus(inv.id, 'confirmed'); }}
+                  type="button"
+                  className="btn btn-confirm flex-1 font-heading"
+                  style={{ fontSize: '12px', padding: '8px 12px' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateInvitationStatus(inv.id, 'confirmed');
+                  }}
                 >
-                  ✓ Confirm
+                  {t('events.confirmAttendance')}
                 </button>
                 <button
-                  className="btn btn-sm btn-ignore flex-1"
-                  style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2)' }}
-                  onClick={(e) => { e.stopPropagation(); updateInvitationStatus(inv.id, 'ignored'); }}
+                  type="button"
+                  className="btn btn-ignore flex-1 font-heading"
+                  style={{ fontSize: '12px', padding: '8px 12px' }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    updateInvitationStatus(inv.id, 'ignored');
+                  }}
                 >
-                  ✕ Ignore
+                  {t('events.declineIgnore')}
                 </button>
               </div>
             )}
@@ -137,22 +164,22 @@ export default function UpcomingInvitationsScreen() {
         {filtered.length === 0 && (
           <div className="empty-state">
             <div className="empty-state-icon">
-              <Calendar size={28} />
+              <Calendar size={24} strokeWidth={1.8} />
             </div>
-            <div className="empty-state-title">No Invitations Yet</div>
-            <div className="empty-state-text">
-              {search ? 'No results matching your search.' : 'Add your first invitation manually or scan an invitation card.'}
+            <div className="empty-state-title" style={{ fontSize: '18px' }}>{t('events.noEventsFound')}</div>
+            <div className="empty-state-text" style={{ fontSize: '13px' }}>
+              {search ? t('events.noEventsFound') : t('events.noEventsFound')}
             </div>
             {!search && (
               <div className="flex gap-2 mt-4" style={{ justifyContent: 'center' }}>
                 <button
-                  className="btn btn-sm btn-gold"
+                  className="btn btn-gold"
                   onClick={() => navigate('/add-invitation')}
                 >
-                  <Plus size={14} /> Add Manually
+                  Add Manually
                 </button>
                 <button
-                  className="btn btn-sm btn-outline"
+                  className="btn btn-outline"
                   onClick={() => navigate('/scan')}
                 >
                   Scan Card
@@ -161,6 +188,7 @@ export default function UpcomingInvitationsScreen() {
             )}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

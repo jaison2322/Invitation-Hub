@@ -141,7 +141,7 @@ export default function AddInvitationScreen() {
 
   if (!canAdd) {
     return (
-      <div className="screen-no-nav flex flex-col items-center justify-center text-center" style={{ minHeight: '100dvh', padding: 'var(--space-6)' }}>
+      <div className="screen-no-nav flex flex-col items-center justify-center text-center" style={{ minHeight: '100vh', padding: 'var(--space-6)' }}>
         <div className="auth-card animate-scale-in">
           <div style={{ color: 'var(--color-danger)', marginBottom: 'var(--space-4)' }}>
             <Shield size={48} style={{ margin: '0 auto' }} />
@@ -159,17 +159,20 @@ export default function AddInvitationScreen() {
   }
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: '120px' }}>
-      {/* Top Navigation Bar */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Add Invitation Manually</span>
-        <div style={{ width: '36px' }} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="top-bar-title">Add Invitation Manually</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      <form onSubmit={handleSave} className="flex flex-col gap-4 animate-slide-up" style={{ padding: '0 var(--space-4)' }}>
+      <div className="screen-scroll-body" style={{ paddingBottom: '120px' }}>
+        <form onSubmit={handleSave} className="flex flex-col gap-4 animate-slide-up">
         {/* Creator Info Pill */}
         <div
           style={{
@@ -253,8 +256,8 @@ export default function AddInvitationScreen() {
 
           <div>
             <label className="label">
-              <Crown size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-              Priority Level
+              <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+              Protocol Priority
             </label>
             <select
               className="select"
@@ -262,9 +265,9 @@ export default function AddInvitationScreen() {
               disabled={!canChangePriority}
               onChange={(e) => setPriority(e.target.value as Priority)}
             >
-              <option value="high">👑 High Priority</option>
-              <option value="medium">⚡ Medium Priority</option>
-              <option value="low">🌿 Normal / Low</option>
+              <option value="high">Tier 1 · Critical Priority</option>
+              <option value="medium">Tier 2 · Priority Attendance</option>
+              <option value="low">Tier 3 · Routine / Courtesy</option>
             </select>
             {!canChangePriority && (
               <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '2px', display: 'block' }}>
@@ -464,6 +467,7 @@ export default function AddInvitationScreen() {
           </button>
         </div>
       </form>
+      </div>
 
       {/* Quick Add Person Modal */}
       {showAddPersonModal && (

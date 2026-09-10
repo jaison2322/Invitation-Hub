@@ -10,7 +10,6 @@ import {
   User,
   Trash2,
   Phone,
-  Mail,
   FileText,
 } from 'lucide-react';
 import {
@@ -18,8 +17,8 @@ import {
   getRelationshipLabel,
   formatDate,
   formatCurrency,
-  getEventTypeIcon,
 } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
 import { getRelationshipHistory, getGiftHistory } from '../services/aiService';
 import type { RelationshipType } from '../types';
 
@@ -52,7 +51,6 @@ export default function PersonProfileScreen() {
     person?.relationship || 'friend'
   );
   const [editPhone, setEditPhone] = useState(person?.phone || '');
-  const [editEmail, setEditEmail] = useState(person?.email || '');
   const [editNotes, setEditNotes] = useState(person?.notes || '');
 
   if (!person) {
@@ -90,7 +88,6 @@ export default function PersonProfileScreen() {
     setEditNickname(person.nickname || person.name);
     setEditRelationship(person.relationship);
     setEditPhone(person.phone || '');
-    setEditEmail(person.email || '');
     setEditNotes(person.notes || '');
     setShowDeleteConfirm(false);
     setShowEditModal(true);
@@ -106,7 +103,6 @@ export default function PersonProfileScreen() {
       nickname: editNickname.trim() || trimmedName,
       relationship: editRelationship,
       phone: editPhone.trim() || undefined,
-      email: editEmail.trim() || undefined,
       notes: editNotes.trim() || undefined,
     });
 
@@ -138,29 +134,33 @@ export default function PersonProfileScreen() {
   };
 
   return (
-    <div className="screen-no-nav" style={{ paddingBottom: '80px' }}>
-      {/* Top Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Person Profile</span>
-        {canManagePeople ? (
-          <button
-            className="btn btn-sm btn-outline"
-            style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', fontSize: 'var(--text-xs)' }}
-            onClick={handleOpenEdit}
-          >
-            <Edit3 size={13} />
-            <span>Edit</span>
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
           </button>
-        ) : (
-          <div style={{ width: '36px' }} />
-        )}
+          <span className="top-bar-title">Person Profile</span>
+          {canManagePeople ? (
+            <button
+              className="btn btn-sm btn-outline"
+              style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 10px', fontSize: 'var(--text-xs)' }}
+              onClick={handleOpenEdit}
+            >
+              <Edit3 size={13} />
+              <span>Edit</span>
+            </button>
+          ) : (
+            <div style={{ width: '36px' }} />
+          )}
+        </div>
       </div>
 
-      {/* Profile Header */}
-      <div className="text-center animate-slide-up" style={{ marginBottom: 'var(--space-5)' }}>
+      {/* ── Scrollable Profile Content ──────────────────────────────────────── */}
+      <div className="screen-scroll-body" style={{ paddingBottom: '80px' }}>
+        {/* Profile Header */}
+        <div className="text-center animate-slide-up" style={{ marginBottom: 'var(--space-5)' }}>
         <div className="avatar avatar-xl" style={{ margin: '0 auto var(--space-3)' }}>
           {getInitials(person.name)}
         </div>
@@ -173,18 +173,11 @@ export default function PersonProfileScreen() {
         </div>
 
         {/* Contact info badges */}
-        {(person.phone || person.email) && (
+        {person.phone && (
           <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted">
-            {person.phone && (
-              <span className="flex items-center gap-1">
-                <Phone size={12} className="text-gold" /> {person.phone}
-              </span>
-            )}
-            {person.email && (
-              <span className="flex items-center gap-1">
-                <Mail size={12} className="text-gold" /> {person.email}
-              </span>
-            )}
+            <span className="flex items-center gap-1">
+              <Phone size={12} className="text-gold" /> {person.phone}
+            </span>
           </div>
         )}
 
@@ -250,8 +243,11 @@ export default function PersonProfileScreen() {
             {relHistory.map((item, i) => (
               <div key={i} className="timeline-item">
                 <div className="timeline-date">{formatDate(item.eventDate)}</div>
-                <div className="text-sm">
-                  {getEventTypeIcon(item.eventType)} {item.role} — {item.eventName}
+                <div className="text-sm flex items-center gap-2">
+                  <EventBadgeIcon type={item.eventType} size="xs" />
+                  <span className="text-white font-medium">{item.role}</span>
+                  <span className="text-muted">—</span>
+                  <span>{item.eventName}</span>
                 </div>
               </div>
             ))}
@@ -321,6 +317,7 @@ export default function PersonProfileScreen() {
           </div>
         </div>
       )}
+      </div>
 
       {/* ─── MODAL: EDIT PERSON ──────────────────────────────────────────────── */}
       {showEditModal && (
@@ -382,28 +379,15 @@ export default function PersonProfileScreen() {
                 </select>
               </div>
 
-              <div className="grid-2">
-                <div>
-                  <label className="label">Phone</label>
-                  <input
-                    className="input"
-                    type="tel"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
-                  />
-                </div>
-
-                <div>
-                  <label className="label">Email</label>
-                  <input
-                    className="input"
-                    type="email"
-                    value={editEmail}
-                    onChange={(e) => setEditEmail(e.target.value)}
-                    placeholder="contact@vip.com"
-                  />
-                </div>
+              <div>
+                <label className="label">Phone Number</label>
+                <input
+                  className="input"
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  placeholder="+91 98765 43210"
+                />
               </div>
 
               <div>

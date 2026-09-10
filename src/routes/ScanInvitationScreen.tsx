@@ -1,6 +1,7 @@
 import { useState, useRef, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Camera, Upload, Image, ArrowLeft, Sparkles, PenLine } from 'lucide-react';
+import { Camera, Upload, ArrowLeft, Sparkles, PenLine } from 'lucide-react';
+import { permissionService } from '../services/permissionService';
 
 export default function ScanInvitationScreen() {
   const navigate = useNavigate();
@@ -24,129 +25,236 @@ export default function ScanInvitationScreen() {
 
   const handleAnalyze = () => {
     if (preview) {
-      // Store the image in sessionStorage and navigate to AI processing
       sessionStorage.setItem('scan-image', preview);
       navigate('/ai-processing');
     }
   };
 
+  const handleOpenCamera = async () => {
+    try {
+      // 1. Check if permission is already granted
+      const check = await permissionService.checkCamera();
+      if (check.granted) {
+        cameraInputRef.current?.click();
+        return;
+      }
+
+      // 2. Request runtime permission
+      const res = await permissionService.requestCamera();
+      if (res.granted) {
+        cameraInputRef.current?.click();
+      } else {
+        // 3. Handle denial safely without crashing; handle "Don't ask again"
+        if (!res.canAskAgain) {
+          const open = window.confirm(
+            'Camera permission is required to capture invitation cards. Would you like to open App Settings to grant Camera permission?'
+          );
+          if (open) {
+            permissionService.openSettings();
+          }
+        } else {
+          alert('Camera permission was not granted. You can still choose an existing photo from your gallery or enter details manually.');
+        }
+      }
+    } catch (err) {
+      console.warn('Camera permission check fallback:', err);
+      // Safe fallback
+      cameraInputRef.current?.click();
+    }
+  };
+
   return (
-    <div className="screen flex flex-col" style={{ minHeight: '100dvh' }}>
-      {/* Header */}
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Scan Invitation</span>
-        <div style={{ width: '36px' }} />
+    <div className="screen-no-nav">
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)} aria-label="Go Back">
+            <ArrowLeft size={16} strokeWidth={2} />
+          </button>
+          <span className="top-bar-title">Document Scanner</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      <div className="flex-1 flex flex-col items-center justify-center gap-6" style={{ padding: '0 var(--space-4)' }}>
+      <div className="screen-scroll-body flex flex-col items-center justify-center gap-6" style={{ paddingLeft: '16px', paddingRight: '16px' }}>
         {!preview ? (
           <>
-            {/* Upload Area */}
+            {/* Apple Viewfinder Frame */}
             <div
-              className="glass-card glass-card-gold glass-card-interactive text-center animate-scale-in"
+              className="ios-card text-center cursor-pointer transition-transform"
               style={{
                 width: '100%',
-                maxWidth: '340px',
-                padding: 'var(--space-10) var(--space-6)',
-                border: '2px dashed rgba(212, 168, 83, 0.3)',
+                maxWidth: '320px',
+                padding: '40px 24px',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
               onClick={() => fileInputRef.current?.click()}
             >
-              <div style={{
-                width: '64px', height: '64px', borderRadius: 'var(--radius-xl)',
-                background: 'var(--color-gold-muted)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                margin: '0 auto var(--space-4)', color: 'var(--color-gold)',
-              }}>
-                <Image size={28} />
+              {/* Corner Reticles */}
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  left: '12px',
+                  width: '20px',
+                  height: '20px',
+                  borderTop: '2px solid #0a84ff',
+                  borderLeft: '2px solid #0a84ff',
+                  borderRadius: '4px 0 0 0',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  right: '12px',
+                  width: '20px',
+                  height: '20px',
+                  borderTop: '2px solid #0a84ff',
+                  borderRight: '2px solid #0a84ff',
+                  borderRadius: '0 4px 0 0',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '12px',
+                  left: '12px',
+                  width: '20px',
+                  height: '20px',
+                  borderBottom: '2px solid #0a84ff',
+                  borderLeft: '2px solid #0a84ff',
+                  borderRadius: '0 0 0 4px',
+                }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '12px',
+                  right: '12px',
+                  width: '20px',
+                  height: '20px',
+                  borderBottom: '2px solid #0a84ff',
+                  borderRight: '2px solid #0a84ff',
+                  borderRadius: '0 0 4px 0',
+                }}
+              />
+
+              <div
+                className="ios-icon-squircle"
+                style={{
+                  width: '52px',
+                  height: '52px',
+                  borderRadius: '16px',
+                  background: 'rgba(10, 132, 255, 0.15)',
+                  color: '#0a84ff',
+                  marginBottom: '16px',
+                }}
+              >
+                <Camera size={24} strokeWidth={1.8} />
               </div>
-              <h3 style={{ marginBottom: 'var(--space-2)' }}>Upload Invitation</h3>
-              <p className="text-secondary text-sm">
-                Tap to select an invitation image from your gallery
+
+              <h2 className="font-heading font-semibold text-white mb-1" style={{ fontSize: '17px' }}>
+                Capture Invitation Card
+              </h2>
+              <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', maxWidth: '240px' }}>
+                Position card within camera view or choose an existing photo
               </p>
             </div>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 w-full" style={{ maxWidth: '340px' }}>
-              <button
-                className="btn btn-gold flex-1"
-                onClick={() => cameraInputRef.current?.click()}
-              >
-                <Camera size={18} />
-                Take Photo
-              </button>
-              <button
-                className="btn btn-outline flex-1"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <Upload size={18} />
-                Upload
-              </button>
-            </div>
-
-            {/* Manual Entry Option */}
-            <div className="w-full" style={{ maxWidth: '340px', marginTop: 'var(--space-1)' }}>
+            {/* Actions */}
+            <div className="flex flex-col gap-2.5 w-full" style={{ maxWidth: '320px' }}>
               <button
                 type="button"
-                className="btn btn-outline w-full"
+                className="btn btn-gold w-full"
+                onClick={handleOpenCamera}
+              >
+                <Camera size={16} strokeWidth={2} />
+                <span>Open Camera</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-ignore w-full"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload size={16} strokeWidth={2} />
+                <span>Choose Photo</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn flex items-center justify-center gap-2 w-full"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  borderColor: 'rgba(212, 168, 83, 0.35)',
-                  background: 'rgba(15, 23, 42, 0.4)',
-                  padding: '12px',
+                  fontSize: '13px',
+                  color: 'var(--color-text-primary)',
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  borderRadius: '12px',
+                  padding: '10px',
                 }}
+                onClick={() => {
+                  sessionStorage.setItem('scan-image', 'demo');
+                  navigate('/ai-processing');
+                }}
+              >
+                <Sparkles size={14} strokeWidth={1.8} style={{ color: '#64d2ff' }} />
+                <span>Test with Sample Invitation</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn-ghost flex items-center justify-center gap-2 mt-1"
+                style={{ fontSize: '13px', color: 'var(--color-accent)' }}
                 onClick={() => navigate('/add-invitation')}
               >
-                <PenLine size={16} className="text-gold" />
-                <span>Add Invitation Manually</span>
+                <PenLine size={14} strokeWidth={2} />
+                <span>Enter Details Manually</span>
               </button>
             </div>
-
-            <p className="text-muted text-xs text-center" style={{ maxWidth: '280px', marginTop: 'var(--space-2)' }}>
-              AI can automatically extract details from photos, or you can enter event details manually.
-            </p>
           </>
         ) : (
           <>
-            {/* Preview */}
-            <div className="scan-overlay animate-scale-in" style={{ width: '100%', maxWidth: '340px' }}>
+            {/* Captured Preview */}
+            <div style={{ width: '100%', maxWidth: '320px' }}>
               <img
                 src={preview}
-                alt="Invitation preview"
+                alt="Invitation scan preview"
                 style={{
                   width: '100%',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid var(--glass-border)',
+                  borderRadius: '18px',
+                  border: '0.5px solid rgba(255, 255, 255, 0.2)',
+                  boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
                 }}
               />
             </div>
 
-            <div className="flex gap-3 w-full" style={{ maxWidth: '340px' }}>
+            <div className="flex gap-2 w-full" style={{ maxWidth: '320px' }}>
               <button
-                className="btn btn-ghost flex-1"
+                type="button"
+                className="btn btn-ignore flex-1"
                 onClick={() => setPreview(null)}
               >
                 Retake
               </button>
               <button
+                type="button"
                 className="btn btn-gold flex-1"
                 onClick={handleAnalyze}
               >
-                <Sparkles size={18} />
-                Analyze
+                <Sparkles size={16} strokeWidth={2} />
+                <span>Analyze</span>
               </button>
             </div>
           </>
         )}
       </div>
 
-      {/* Hidden file inputs */}
+      {/* Hidden inputs */}
       <input
         ref={fileInputRef}
         type="file"

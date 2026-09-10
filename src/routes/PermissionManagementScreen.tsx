@@ -51,15 +51,20 @@ export default function PermissionManagementScreen() {
 
   return (
     <div className="screen-no-nav">
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Permissions</span>
-        <div style={{ width: '36px' }} />
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="top-bar-title">Permissions</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {/* User Header */}
+      {/* ── Scrollable Permissions Content ──────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* User Header */}
       <div className="text-center animate-slide-up" style={{ marginBottom: 'var(--space-5)' }}>
         <div className="avatar avatar-lg" style={{ margin: '0 auto var(--space-3)' }}>
           {getInitials(user.name)}
@@ -94,6 +99,7 @@ export default function PermissionManagementScreen() {
         <Shield size={12} style={{ display: 'inline', marginRight: '4px' }} />
         All permission changes are logged in the activity history.
       </p>
+      </div>
     </div>
   );
 }

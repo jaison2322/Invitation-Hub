@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { ArrowLeft, Bell, Clock, Calendar } from 'lucide-react';
-import { formatDate, daysUntil, getEventTypeIcon } from '../utils/formatters';
+import { formatDate, daysUntil } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
 
 export default function ReminderCenterScreen() {
   const navigate = useNavigate();
@@ -18,27 +20,26 @@ export default function ReminderCenterScreen() {
     return 'var(--color-priority-low)';
   };
 
-  const getUrgencyLabel = (days: number): string => {
-    if (days === 0) return 'TODAY';
-    if (days === 1) return 'TOMORROW';
-    return `${days} DAYS`;
-  };
-
   return (
     <div className="screen-no-nav">
-      <div className="top-bar">
-        <button className="top-bar-back" onClick={() => navigate(-1)}>
-          <ArrowLeft size={18} />
-        </button>
-        <span className="top-bar-title">Reminders</span>
-        <div style={{ width: '36px' }} />
+      {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <div className="top-bar">
+          <button className="top-bar-back" onClick={() => navigate(-1)}>
+            <ArrowLeft size={18} />
+          </button>
+          <span className="top-bar-title">Protocol Reminders</span>
+          <div style={{ width: '36px' }} />
+        </div>
       </div>
 
-      {confirmed.length === 0 ? (
+      {/* ── Scrollable Reminders Content ────────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {confirmed.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon"><Bell size={28} /></div>
           <div className="empty-state-title">No Upcoming Events</div>
-          <div className="empty-state-text">Confirm invitations to see reminders here.</div>
+          <div className="empty-state-text">Confirmed invitations will populate protocol briefings and reminders.</div>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -47,30 +48,31 @@ export default function ReminderCenterScreen() {
             return (
               <div
                 key={inv.id}
-                className={`glass-card glass-card-interactive animate-slide-up`}
+                className="glass-card glass-card-interactive animate-slide-up"
                 style={{ animationDelay: `${i * 0.06}s`, borderLeft: `3px solid ${getUrgencyColor(days)}` }}
                 onClick={() => navigate(`/event/${inv.id}`)}
               >
                 <div className="flex items-start gap-3">
                   <div style={{
-                    minWidth: '52px', textAlign: 'center', padding: 'var(--space-2)',
+                    minWidth: '54px', textAlign: 'center', padding: 'var(--space-2)',
                     borderRadius: 'var(--radius-sm)', background: `${getUrgencyColor(days)}15`,
+                    border: `1px solid ${getUrgencyColor(days)}30`,
                   }}>
-                    <div style={{ fontSize: 'var(--text-xl)', fontWeight: 800, fontFamily: 'var(--font-heading)', color: getUrgencyColor(days), lineHeight: 1 }}>
+                    <div style={{ fontSize: 'var(--text-xl)', fontWeight: 800, fontFamily: 'var(--font-mono)', color: getUrgencyColor(days), lineHeight: 1 }}>
                       {days}
                     </div>
-                    <div style={{ fontSize: '8px', fontWeight: 700, color: getUrgencyColor(days), textTransform: 'uppercase', marginTop: '2px' }}>
-                      {days === 1 ? 'day' : 'days'}
+                    <div style={{ fontSize: '9px', fontWeight: 700, color: getUrgencyColor(days), textTransform: 'uppercase', marginTop: '3px', fontFamily: 'var(--font-mono)' }}>
+                      {days === 0 ? 'TODAY' : days === 1 ? '1 DAY' : `${days} DAYS`}
                     </div>
                   </div>
 
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span>{getEventTypeIcon(inv.eventType)}</span>
-                      <span className={`badge badge-${inv.priority}`} style={{ fontSize: '8px' }}>{inv.priority}</span>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <EventBadgeIcon type={inv.eventType} size="xs" />
+                      <PriorityBadge priority={inv.priority} size="sm" />
                     </div>
-                    <div className="font-semibold text-sm">{inv.nickname || inv.title}</div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-muted">
+                    <div className="font-semibold text-sm text-white">{inv.nickname || inv.title}</div>
+                    <div className="flex items-center gap-3 mt-1.5 text-xs text-muted font-mono">
                       <span className="flex items-center gap-1">
                         <Calendar size={10} /> {formatDate(inv.date)}
                       </span>
@@ -87,6 +89,7 @@ export default function ReminderCenterScreen() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -1,22 +1,28 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
-  Crown, Bell, Calendar, Clock, MapPin, AlertTriangle,
-  ChevronRight, Sparkles, TrendingUp, Users, Gift,
+  Bell, Calendar, Clock, MapPin, AlertTriangle,
+  ChevronRight, Sparkles, Users, Gift, Plus,
+  CheckCircle2, TrendingUp, Compass,
 } from 'lucide-react';
-import { formatDate, formatTime, daysUntil, getEventTypeIcon, getInitials, formatTimeAgo } from '../utils/formatters';
+import { formatDate, formatTime, daysUntil, getInitials, formatTimeAgo } from '../utils/formatters';
+import EventBadgeIcon from '../components/EventBadgeIcon';
+import PriorityBadge from '../components/PriorityBadge';
+import IconBadge from '../components/IconBadge';
 import type { Invitation } from '../types';
+import { useTranslation } from '../i18n/useTranslation';
 
 export default function DashboardScreen() {
   const navigate = useNavigate();
   const {
     currentUser, currentPrivilegedUser, isVIP, invitations, schedule, notifications,
-    activityLogs, people, familyEvents, updateInvitationStatus, isRealtimeActive,
+    activityLogs, people, familyEvents, updateInvitationStatus,
   } = useAppStore();
+  const { t } = useTranslation();
 
   const activeUser = isVIP ? currentUser : currentPrivilegedUser;
-  const activeUserName = activeUser?.name || (isVIP ? 'VIP User' : 'Staff User');
-  const activeUserRole = isVIP ? 'VIP Principal' : (currentPrivilegedUser?.role || 'Personal Assistant');
+  const activeUserName = activeUser?.name || (isVIP ? t('dashboard.vipPrincipal') : t('dashboard.privilegedStaff'));
+  const activeUserRole = isVIP ? t('dashboard.vipPrincipal') : (currentPrivilegedUser?.role || t('dashboard.privilegedStaff'));
 
   const pendingInvitations = invitations.filter((i) => i.status === 'pending');
   const confirmedInvitations = invitations.filter((i) => i.status === 'confirmed');
@@ -60,439 +66,473 @@ export default function DashboardScreen() {
 
   return (
     <div className="screen">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between" style={{ paddingTop: 'var(--space-4)', marginBottom: 'var(--space-5)' }}>
-        <div className="flex items-center gap-3">
-          <div className="avatar">
-            {getInitials(activeUserName)}
+      {/* ── Stationary Top Profile Header Bar ───────────────────────────────── */}
+      <div className="screen-stationary-header">
+        <header
+          className="flex items-center justify-between"
+          style={{ paddingBottom: '14px' }}
+        >
+          <div
+            className="flex items-center gap-3 cursor-pointer"
+            onClick={() => navigate('/settings')}
+          >
+            <div className="avatar avatar-sm">
+              {getInitials(activeUserName)}
+            </div>
+            <div>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  color: 'var(--color-text-secondary)',
+                  letterSpacing: '-0.01em',
+                }}
+              >
+                {isVIP ? 'Executive Principal' : activeUserRole}
+              </div>
+              <div
+                className="font-heading font-semibold text-white truncate"
+                style={{ fontSize: '15px', maxWidth: '160px', letterSpacing: '-0.01em' }}
+              >
+                {activeUserName}
+              </div>
+            </div>
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-muted)' }}>
-                {isVIP ? 'Welcome back' : `Logged in as ${activeUserRole}`}
-              </span>
-              {/* Realtime Live Pulse Badge */}
+
+          {/* Notifications Icon Button */}
+          <button
+            type="button"
+            className="btn-icon"
+            onClick={() => navigate('/notifications')}
+            aria-label="Notifications"
+            style={{ position: 'relative' }}
+          >
+            <Bell size={18} strokeWidth={1.8} />
+            {unreadNotifications > 0 && (
               <span
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '2px 7px',
-                  borderRadius: '12px',
-                  fontSize: '10px',
-                  fontWeight: 600,
-                  background: isRealtimeActive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(148, 163, 184, 0.12)',
-                  color: isRealtimeActive ? '#4ade80' : 'var(--color-text-muted)',
-                  border: isRealtimeActive ? '1px solid rgba(74, 222, 128, 0.3)' : '1px solid rgba(148, 163, 184, 0.2)',
+                  position: 'absolute',
+                  top: '6px',
+                  right: '6px',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: 'var(--color-danger)',
                 }}
-                title={isRealtimeActive ? 'Supabase Real-Time Live Sync Active' : 'Connecting to Real-Time...'}
-              >
+              />
+            )}
+          </button>
+        </header>
+      </div>
+
+      {/* ── Scrollable Lower Content Area ───────────────────────────────────── */}
+      <div className="screen-scroll-body">
+        {/* ── Apple iOS Large Title ───────────────────────────────────────────── */}
+        <div style={{ marginBottom: '18px' }}>
+          <h1
+            className="font-heading font-bold text-white tracking-tight"
+            style={{ fontSize: '30px', letterSpacing: '-0.03em', lineHeight: 1.15 }}
+          >
+            {t('dashboard.executiveBriefing')}
+          </h1>
+          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '3px' }}>
+            {t('dashboard.protocolLedger')}
+          </p>
+        </div>
+
+      {/* ── Executive Metric Widgets ──────────────────────────── */}
+      <section style={{ marginBottom: '22px' }}>
+        <div className="grid grid-cols-3 gap-2.5">
+          <div
+            className="stat-card-luxury cursor-pointer"
+            onClick={() => navigate('/upcoming')}
+          >
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={Clock} variant="amber" size="xs" />
+            </div>
+            <div className="stat-value" style={{ color: '#fbbf24', fontSize: '22px' }}>
+              {pendingInvitations.length}
+            </div>
+            <div className="stat-label">{t('events.pending')}</div>
+          </div>
+
+          <div
+            className="stat-card-luxury cursor-pointer"
+            onClick={() => navigate('/upcoming')}
+          >
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={CheckCircle2} variant="emerald" size="xs" />
+            </div>
+            <div className="stat-value" style={{ color: '#34d399', fontSize: '22px' }}>
+              {confirmedInvitations.length}
+            </div>
+            <div className="stat-label">{t('events.confirmed')}</div>
+          </div>
+
+          <div
+            className="stat-card-luxury cursor-pointer"
+            onClick={() => navigate('/people')}
+          >
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={Users} variant="cyan" size="xs" />
+            </div>
+            <div className="stat-value text-white" style={{ fontSize: '22px' }}>
+              {people.length}
+            </div>
+            <div className="stat-label">{t('contacts.title')}</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Executive Briefing Layout (2-Column on Desktop) ──────────────── */}
+      <div className="desktop-grid-2">
+        {/* ── Column 1: Priority Decisions & Queue ──────────────────────────── */}
+        <div className="flex flex-col gap-5">
+          {/* ── Priority Decision Pass ──────────────────────────────────────── */}
+          {nextPending && (
+            <section>
+              <div className="section-header">
+                <span className="section-title">{t('dashboard.upcomingProtocols')}</span>
                 <span
-                  style={{
-                    width: '6px',
-                    height: '6px',
-                    borderRadius: '50%',
-                    backgroundColor: isRealtimeActive ? '#22c55e' : '#94a3b8',
-                    boxShadow: isRealtimeActive ? '0 0 6px #22c55e' : 'none',
-                    animation: isRealtimeActive ? 'pulse 2s infinite' : 'none',
-                  }}
-                />
-                {isRealtimeActive ? 'LIVE' : 'SYNC'}
-              </span>
-            </div>
-            <div className="font-heading font-semibold" style={{ fontSize: 'var(--text-lg)' }}>
-              {activeUserName}
-            </div>
-          </div>
-        </div>
-        <button
-          className="btn-icon"
-          onClick={() => navigate('/notifications')}
-          style={{ position: 'relative' }}
-        >
-          <Bell size={20} />
-          {unreadNotifications > 0 && (
-            <span className="nav-badge">{unreadNotifications}</span>
-          )}
-        </button>
-      </div>
-
-      {/* ── Quick Stats ────────────────────────────────────────── */}
-      <div className="stat-grid animate-slide-up delay-1">
-        <div className="stat-card glass-card-interactive" onClick={() => navigate('/upcoming')} style={{ cursor: 'pointer' }}>
-          <div className="stat-value">{pendingInvitations.length}</div>
-          <div className="stat-label">Pending</div>
-        </div>
-        <div className="stat-card glass-card-interactive" onClick={() => navigate('/reminders')} style={{ cursor: 'pointer' }}>
-          <div className="stat-value" style={{ color: 'var(--color-confirmed)' }}>
-            {confirmedInvitations.length}
-          </div>
-          <div className="stat-label">Confirmed</div>
-        </div>
-        <div className="stat-card glass-card-interactive" onClick={() => navigate('/conflicts')} style={{ cursor: 'pointer' }}>
-          <div className="stat-value" style={{ color: conflictDates.length > 0 ? 'var(--color-danger)' : 'var(--color-text-muted)' }}>
-            {conflictDates.length}
-          </div>
-          <div className="stat-label">Conflicts</div>
-        </div>
-      </div>
-
-      {/* ── Next Important Event ───────────────────────────────── */}
-      {nextPending && (
-        <div className="animate-slide-up delay-2" style={{ marginTop: 'var(--space-5)' }}>
-          <div className="section-header">
-            <span className="section-title">
-              <Sparkles size={14} style={{ display: 'inline', marginRight: '6px', color: 'var(--color-gold)' }} />
-              Next Invitation — Review Required
-            </span>
-          </div>
-
-          <div className="hero-event-card" onClick={() => navigate(`/event/${nextPending.id}`)}>
-            <div className="flex items-start justify-between mb-2">
-              <span style={{ fontSize: '28px' }}>{getEventTypeIcon(nextPending.eventType)}</span>
-              <span className={`badge badge-${nextPending.priority}`}>
-                {nextPending.priority}
-              </span>
-            </div>
-
-            <h3 style={{ marginBottom: 'var(--space-1)', fontSize: 'var(--text-lg)' }}>
-              {nextPending.nickname || nextPending.title}
-            </h3>
-
-            <div className="flex flex-col gap-2 mt-3" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-text-secondary)' }}>
-              <div className="flex items-center gap-2">
-                <Calendar size={14} /> {formatDate(nextPending.date)}
-                {nextPending.time && (
-                  <><Clock size={14} style={{ marginLeft: '8px' }} /> {formatTime(nextPending.time)}</>
-                )}
-              </div>
-              {nextPending.venue && (
-                <div className="flex items-center gap-2">
-                  <MapPin size={14} /> {nextPending.venue}
-                </div>
-              )}
-            </div>
-
-            {/* AI Reason */}
-            {nextPending.aiReason && (
-              <div className="insight-card" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="insight-card-icon">
-                  <Sparkles size={14} />
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)', lineHeight: '1.5' }}>
-                  <strong style={{ color: 'var(--color-gold)' }}>AI Insight:</strong> {nextPending.aiReason.substring(0, 120)}...
-                </div>
-              </div>
-            )}
-
-            {/* Conflict warning */}
-            {schedule.some((s) => s.date === nextPending.date) && (
-              <div className="conflict-card" style={{ marginTop: 'var(--space-3)' }}>
-                <div className="conflict-icon">
-                  <AlertTriangle size={14} />
-                </div>
-                <div style={{ fontSize: 'var(--text-xs)' }}>
-                  <strong style={{ color: 'var(--color-danger)' }}>Schedule Conflict:</strong>{' '}
-                  {schedule.filter((s) => s.date === nextPending.date).map((s) => s.title).join(', ')}
-                </div>
-              </div>
-            )}
-
-            {/* Confirm / Ignore */}
-            <div className="flex gap-3" style={{ marginTop: 'var(--space-4)' }}>
-              <button
-                className="btn btn-confirm flex-1"
-                onClick={(e) => { e.stopPropagation(); handleConfirm(nextPending.id); }}
-              >
-                ✓ Confirm
-              </button>
-              <button
-                className="btn btn-ignore flex-1"
-                onClick={(e) => { e.stopPropagation(); handleIgnore(nextPending.id); }}
-              >
-                ✕ Ignore
-              </button>
-            </div>
-
-            <div style={{
-              textAlign: 'center',
-              marginTop: 'var(--space-2)',
-              fontSize: 'var(--text-xs)',
-              color: 'var(--color-text-muted)',
-            }}>
-              {daysUntil(nextPending.date) > 0
-                ? `${daysUntil(nextPending.date)} days away`
-                : 'Today'}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Upcoming Invitations ──────────────────────────────── */}
-      {pendingInvitations.length > 1 && (
-        <div className="animate-slide-up delay-3" style={{ marginTop: 'var(--space-5)' }}>
-          <div className="section-header">
-            <span className="section-title">Upcoming Invitations</span>
-            <span className="section-action" onClick={() => navigate('/upcoming')}>
-              View All <ChevronRight size={14} style={{ display: 'inline' }} />
-            </span>
-          </div>
-
-          <div className="overflow-x-auto" style={{ margin: '0 calc(-1 * var(--space-4))', padding: '0 var(--space-4)' }}>
-            <div className="flex gap-3" style={{ paddingRight: 'var(--space-4)' }}>
-              {pendingInvitations.slice(1, 5).map((inv) => (
-                <div
-                  key={inv.id}
-                  className={`event-card event-card-${inv.priority}`}
-                  onClick={() => navigate(`/event/${inv.id}`)}
-                  style={{ minWidth: '240px', flexShrink: 0 }}
+                  className="section-action flex items-center gap-1 cursor-pointer"
+                  onClick={() => navigate(`/event/${nextPending.id}`)}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span>{getEventTypeIcon(inv.eventType)}</span>
-                    <span className={`badge badge-${inv.priority}`} style={{ fontSize: '9px' }}>{inv.priority}</span>
-                  </div>
-                  <div className="event-card-title truncate" style={{ maxWidth: '200px' }}>
-                    {inv.nickname || inv.title}
-                  </div>
-                  <div className="event-card-meta" style={{ marginTop: 'var(--space-2)' }}>
-                    <span className="event-card-meta-item">
-                      <Calendar size={12} /> {formatDate(inv.date)}
-                    </span>
-                    {inv.time && (
-                      <span className="event-card-meta-item">
-                        <Clock size={12} /> {formatTime(inv.time)}
+                  {t('common.details')}
+                  <ChevronRight size={13} strokeWidth={2} />
+                </span>
+              </div>
+
+              <div
+                className="hero-event-card cursor-pointer"
+                onClick={() => navigate(`/event/${nextPending.id}`)}
+              >
+                {/* Top Pass Header */}
+                <div className="flex items-start justify-between" style={{ marginBottom: '14px' }}>
+                  <EventBadgeIcon type={nextPending.eventType} size="hero" showGlow />
+                  <div className="flex items-center gap-2">
+                    <PriorityBadge priority={nextPending.priority} />
+                    {daysUntil(nextPending.date) <= 3 && (
+                      <span
+                        style={{
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '6px',
+                          background: 'rgba(245, 158, 11, 0.15)',
+                          color: '#fbbf24',
+                          border: '1px solid rgba(245, 158, 11, 0.3)',
+                          fontFamily: 'var(--font-mono)',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {daysUntil(nextPending.date) === 0
+                          ? 'TODAY'
+                          : `${daysUntil(nextPending.date)}D LEFT`}
                       </span>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* ── Today's Schedule ───────────────────────────────────── */}
-      {(todaySchedule.length > 0 || todayInvitations.length > 0) && (
-        <div className="animate-slide-up delay-4" style={{ marginTop: 'var(--space-5)' }}>
-          <div className="section-header">
-            <span className="section-title">📅 Today's Schedule</span>
-          </div>
+                {/* Event Headline */}
+                <h2
+                  className="font-heading font-semibold text-white tracking-tight"
+                  style={{ fontSize: '19px', letterSpacing: '-0.02em', marginBottom: '8px' }}
+                >
+                  {nextPending.nickname || nextPending.title}
+                </h2>
 
-          <div className="flex flex-col gap-2">
-            {todaySchedule.map((item) => (
-              <div key={item.id} className="glass-card flex items-center gap-3" style={{ padding: 'var(--space-3)' }}>
-                <div style={{
-                  width: '4px', height: '36px', borderRadius: '2px',
-                  background: 'var(--color-info)',
-                }} />
-                <div className="flex-1">
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 500 }}>{item.title}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)' }}>
-                    {formatTime(item.startTime)}{item.endTime ? ` - ${formatTime(item.endTime)}` : ''}
+                {/* Event Metadata */}
+                <div
+                  className="flex flex-col gap-2"
+                  style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}
+                >
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Calendar size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                    <span>{formatDate(nextPending.date)}</span>
+                    {nextPending.time && (
+                      <>
+                        <span style={{ color: 'var(--color-text-quaternary)' }}>•</span>
+                        <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                        <span>{formatTime(nextPending.time)}</span>
+                      </>
+                    )}
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Smart Insights ─────────────────────────────────────── */}
-      <div className="animate-slide-up delay-4" style={{ marginTop: 'var(--space-5)' }}>
-        <div className="section-header">
-          <span className="section-title">
-            <TrendingUp size={14} style={{ display: 'inline', marginRight: '6px', color: 'var(--color-gold)' }} />
-            Smart Insights
-          </span>
-        </div>
-
-        <div className="flex flex-col gap-2">
-          {conflictDates.length > 0 && (
-            <div
-              className="conflict-card glass-card-interactive"
-              onClick={() => navigate('/conflicts')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="conflict-icon">
-                <AlertTriangle size={14} />
-              </div>
-              <div style={{ fontSize: 'var(--text-sm)', flex: 1 }}>
-                <strong style={{ color: 'var(--color-danger)' }}>{conflictDates.length} schedule conflict{conflictDates.length > 1 ? 's' : ''}</strong>
-                <span style={{ color: 'var(--color-text-muted)' }}> detected. Tap to review & resolve.</span>
-              </div>
-              <ChevronRight size={16} className="text-muted" />
-            </div>
-          )}
-
-          {upcomingConfirmed.length > 0 && (
-            <div
-              className="insight-card glass-card-interactive"
-              onClick={() => navigate('/reminders')}
-              style={{ cursor: 'pointer' }}
-            >
-              <div className="insight-card-icon">
-                <Calendar size={14} />
-              </div>
-              <div style={{ fontSize: 'var(--text-sm)', flex: 1 }}>
-                <strong>{upcomingConfirmed.length} confirmed event{upcomingConfirmed.length > 1 ? 's' : ''}</strong>
-                <span style={{ color: 'var(--color-text-muted)' }}> in next 7 days. Tap for reminders.</span>
-              </div>
-              <ChevronRight size={16} className="text-muted" />
-            </div>
-          )}
-
-          <div
-            className="insight-card glass-card-interactive"
-            onClick={() => navigate('/people')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="insight-card-icon" style={{ background: 'rgba(212, 168, 83, 0.12)' }}>
-              <Users size={14} style={{ color: 'var(--color-gold)' }} />
-            </div>
-            <div style={{ fontSize: 'var(--text-sm)', flex: 1 }}>
-              <strong>{people.length} VIP contacts</strong>
-              <span style={{ color: 'var(--color-text-muted)' }}> with relationship memory.</span>
-            </div>
-            <ChevronRight size={16} className="text-muted" />
-          </div>
-
-          <div
-            className="insight-card glass-card-interactive"
-            onClick={() => navigate('/past-events')}
-            style={{ cursor: 'pointer' }}
-          >
-            <div className="insight-card-icon" style={{ background: 'rgba(34, 197, 94, 0.12)' }}>
-              <Gift size={14} style={{ color: 'var(--color-confirmed)' }} />
-            </div>
-            <div style={{ fontSize: 'var(--text-sm)', flex: 1 }}>
-              <strong>{familyEvents.length} family events & gifts</strong>
-              <span style={{ color: 'var(--color-text-muted)' }}> stored in relationship vault.</span>
-            </div>
-            <ChevronRight size={16} className="text-muted" />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Quick Hub Grid ─────────────────────────────────────── */}
-      <div className="animate-slide-up delay-4" style={{ marginTop: 'var(--space-5)' }}>
-        <div className="section-header">
-          <span className="section-title">Relationship & Event Vault</span>
-        </div>
-        <div className="grid-2">
-          <div
-            className="glass-card glass-card-interactive flex items-center gap-3"
-            onClick={() => navigate('/calendar')}
-            style={{ padding: 'var(--space-3)', cursor: 'pointer' }}
-          >
-            <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', background: 'rgba(212, 168, 83, 0.12)', color: 'var(--color-gold)' }}>
-              <Calendar size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Calendar</div>
-              <div className="text-xs text-muted">Monthly Grid</div>
-            </div>
-          </div>
-
-          <div
-            className="glass-card glass-card-interactive flex items-center gap-3"
-            onClick={() => navigate('/gifts')}
-            style={{ padding: 'var(--space-3)', cursor: 'pointer' }}
-          >
-            <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', background: 'rgba(34, 197, 94, 0.12)', color: 'var(--color-confirmed)' }}>
-              <Gift size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Gift History</div>
-              <div className="text-xs text-muted">Memory Ledger</div>
-            </div>
-          </div>
-
-          <div
-            className="glass-card glass-card-interactive flex items-center gap-3"
-            onClick={() => navigate('/past-events')}
-            style={{ padding: 'var(--space-3)', cursor: 'pointer' }}
-          >
-            <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', background: 'rgba(59, 130, 246, 0.12)', color: 'var(--color-info)' }}>
-              <Users size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Past Events</div>
-              <div className="text-xs text-muted">Guest Attendance</div>
-            </div>
-          </div>
-
-          <div
-            className="glass-card glass-card-interactive flex items-center gap-3"
-            onClick={() => navigate('/add-event')}
-            style={{ padding: 'var(--space-3)', cursor: 'pointer' }}
-          >
-            <div style={{ padding: '8px', borderRadius: 'var(--radius-md)', background: 'rgba(245, 158, 11, 0.12)', color: 'var(--color-pending)' }}>
-              <Sparkles size={18} />
-            </div>
-            <div>
-              <div className="text-sm font-semibold">Add Event</div>
-              <div className="text-xs text-muted">Record Function</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Recent Activity ────────────────────────────────────── */}
-      {activityLogs.length > 0 && (
-        <div className="animate-slide-up delay-5" style={{ marginTop: 'var(--space-5)', marginBottom: 'var(--space-6)' }}>
-          <div className="section-header">
-            <span className="section-title">Recent Activity</span>
-            <span className="section-action" onClick={() => navigate('/activity')}>
-              View All <ChevronRight size={14} style={{ display: 'inline' }} />
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            {activityLogs.slice(0, 3).map((log) => (
-              <div key={log.id} className="glass-card flex items-start gap-3" style={{ padding: 'var(--space-3)' }}>
-                <div className="avatar avatar-sm">
-                  {getInitials(log.userName)}
-                </div>
-                <div className="flex-1">
-                  <div style={{ fontSize: 'var(--text-sm)' }}>
-                    <strong>{log.userName}</strong>{' '}
-                    <span style={{ color: 'var(--color-text-secondary)' }}>{log.action}</span>
-                  </div>
-                  {log.entityName && (
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                      {log.entityName}
+                  {nextPending.venue && (
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                      <span className="truncate">{nextPending.venue}</span>
                     </div>
                   )}
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                    {formatTimeAgo(log.timestamp)}
+                </div>
+
+                {/* Executive Protocol Intelligence Briefing */}
+                {nextPending.aiReason && (
+                  <div className="apple-intelligence-card" style={{ marginTop: '14px' }}>
+                    <div className="flex items-start gap-2.5">
+                      <IconBadge icon={Sparkles} variant="cyan" size="xs" glow />
+                      <div style={{ fontSize: '12px', lineHeight: '1.45', color: 'var(--color-text-secondary)', alignSelf: 'center' }}>
+                        <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>Protocol Analysis: </strong>
+                        {nextPending.aiReason}
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                {/* Conflict Warning Pill */}
+                {schedule.some((s) => s.date === nextPending.date) && (
+                  <div className="conflict-card" style={{ marginTop: '12px' }}>
+                    <div className="conflict-icon">
+                      <AlertTriangle size={14} strokeWidth={2} />
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#ff453a' }}>
+                      <strong>Conflict Detected: </strong>
+                      {schedule.filter((s) => s.date === nextPending.date).map((s) => s.title).join(', ')}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Bar */}
+                <div className="flex gap-2.5" style={{ marginTop: '16px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-confirm flex-1 font-heading flex items-center justify-center gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleConfirm(nextPending.id);
+                    }}
+                    style={{ fontSize: '13px', padding: '10px 14px' }}
+                  >
+                    <CheckCircle2 size={15} strokeWidth={2.4} />
+                    <span>Confirm</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ignore flex-1 font-heading flex items-center justify-center gap-1.5"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleIgnore(nextPending.id);
+                    }}
+                    style={{ fontSize: '13px', padding: '10px 14px' }}
+                  >
+                    <span>Decline</span>
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </section>
+          )}
 
-      {/* ── Empty State ────────────────────────────────────────── */}
+          {/* ── Upcoming Queue (Apple Horizontal Carousel) ─────────────────────── */}
+          {pendingInvitations.length > 1 && (
+            <section style={{ marginBottom: '24px' }}>
+              <div className="section-header">
+                <span className="section-title">Pending Queue</span>
+                <span
+                  className="section-action flex items-center gap-1"
+                  onClick={() => navigate('/upcoming')}
+                >
+                  <span>See All</span>
+                  <ChevronRight size={13} strokeWidth={2} />
+                </span>
+              </div>
+
+              <div
+                className="flex overflow-x-auto gap-3 pb-2 hide-scrollbar snap-x snap-mandatory"
+                style={{ margin: '0 calc(-1 * var(--space-4))', padding: '0 var(--space-4)' }}
+              >
+                {pendingInvitations.slice(1, 6).map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="event-card flex flex-col justify-between snap-start"
+                    onClick={() => navigate(`/event/${inv.id}`)}
+                    style={{
+                      minWidth: '220px',
+                      maxWidth: '240px',
+                      flexShrink: 0,
+                      padding: '14px',
+                    }}
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <EventBadgeIcon type={inv.eventType} size="sm" />
+                      <PriorityBadge priority={inv.priority} size="sm" showLabel={false} />
+                    </div>
+                    <div>
+                      <h3
+                        className="font-heading font-semibold text-white truncate"
+                        style={{ fontSize: '14px', marginBottom: '4px', letterSpacing: '-0.01em' }}
+                      >
+                        {inv.nickname || inv.title}
+                      </h3>
+                      <div
+                        className="flex items-center gap-2"
+                        style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}
+                      >
+                        <span className="flex items-center gap-1">
+                          <Calendar size={12} strokeWidth={1.8} style={{ color: 'var(--color-text-muted)' }} />
+                          {formatDate(inv.date)}
+                        </span>
+                        {inv.time && (
+                          <span className="flex items-center gap-1">
+                            <Clock size={12} strokeWidth={1.8} style={{ color: 'var(--color-text-muted)' }} />
+                            {formatTime(inv.time)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+
+        {/* ── Column 2: Today's Schedule, Protocol Ledger & Audit Trail ──────── */}
+        <div className="flex flex-col gap-5">
+          {/* ── Today's Schedule (Apple Grouped List) ─────────────────────────── */}
+          {(todaySchedule.length > 0 || todayInvitations.length > 0) && (
+            <section>
+              <div className="section-header">
+                <span className="section-title">{t('dashboard.todayAgenda')}</span>
+              </div>
+
+              <div className="ios-grouped-list">
+                {todaySchedule.map((item) => (
+                  <div key={item.id} className="ios-grouped-item">
+                    <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                      <Calendar size={16} strokeWidth={2} />
+                    </div>
+                    <div className="flex-1">
+                      <div style={{ fontSize: '14px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{item.title}</div>
+                      <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                        {formatTime(item.startTime)}{item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Apple Inset Grouped Vault / Navigation ─────────────────────────── */}
+          <section>
+            <div className="section-header">
+              <span className="section-title">Event Vault</span>
+            </div>
+
+            <div className="ios-grouped-list">
+              <div
+                className="ios-grouped-item"
+                onClick={() => navigate('/calendar')}
+              >
+                <div className="ios-icon-squircle" style={{ background: 'rgba(255, 69, 58, 0.15)', color: '#ff453a' }}>
+                  <Calendar size={16} strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>Event Calendar</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Monthly timeline & schedules</div>
+                </div>
+                <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+
+              <div
+                className="ios-grouped-item"
+                onClick={() => navigate('/gifts')}
+              >
+                <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
+                  <Gift size={16} strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>Gift History</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Gift exchanges & history</div>
+                </div>
+                <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+
+              <div
+                className="ios-grouped-item"
+                onClick={() => navigate('/past-events')}
+              >
+                <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                  <Users size={16} strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>Past Functions</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Archive of attended events</div>
+                </div>
+                <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+
+              <div
+                className="ios-grouped-item"
+                onClick={() => navigate('/add-event')}
+              >
+                <div className="ios-icon-squircle" style={{ background: 'rgba(48, 209, 88, 0.15)', color: '#30d158' }}>
+                  <Plus size={16} strokeWidth={2} />
+                </div>
+                <div className="flex-1">
+                  <div style={{ fontSize: '14px', fontWeight: 500 }}>Record Function</div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Directly register a new event</div>
+                </div>
+                <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+              </div>
+            </div>
+          </section>
+
+          {/* ── Apple Audit Trail (Recent Activity) ────────────────────────────── */}
+          {activityLogs.length > 0 && (
+            <section>
+              <div className="section-header">
+                <span className="section-title">History/ Logs</span>
+                <span className="section-action" onClick={() => navigate('/activity')}>
+                  View All
+                </span>
+              </div>
+
+              <div className="ios-grouped-list">
+                {activityLogs.slice(0, 3).map((log) => (
+                  <div key={log.id} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                    <div className="avatar avatar-sm">
+                      {getInitials(log.userName)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                        <span style={{ fontWeight: 600 }}>{log.userName}</span>{' '}
+                        <span style={{ color: 'var(--color-text-secondary)' }}>{log.action}</span>
+                      </div>
+                      {log.entityName && (
+                        <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px' }} className="truncate">
+                          {log.entityName}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', flexShrink: 0 }}>
+                      {formatTimeAgo(log.timestamp)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      </div>
+
+      {/* ── Empty State ────────────────────────────────────────────────────── */}
       {pendingInvitations.length === 0 && confirmedInvitations.length === 0 && (
-        <div className="empty-state" style={{ marginTop: 'var(--space-10)' }}>
-          <div className="empty-state-icon">
-            <Crown size={28} />
+        <div className="empty-state" style={{ marginTop: '40px' }}>
+          <div className="empty-state-title" style={{ fontSize: '20px', fontWeight: 600 }}>All Caught Up</div>
+          <div className="empty-state-text" style={{ fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            No pending invitations in the ledger.
           </div>
-          <div className="empty-state-title">All Clear</div>
-          <div className="empty-state-text">
-            No pending invitations. Scan a new invitation to get started.
-          </div>
-          <div className="flex gap-3 mt-6">
+          <div className="flex gap-2 mt-4" style={{ maxWidth: '300px', margin: '16px auto 0' }}>
             <button className="btn btn-gold flex-1" onClick={() => navigate('/scan')}>
-              Scan Invitation
+              Scan
             </button>
             <button className="btn btn-outline flex-1" onClick={() => navigate('/add-invitation')}>
-              Add Manually
+              Manual
             </button>
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
