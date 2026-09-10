@@ -1,10 +1,7 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
+import { mobileNotificationService, type PermissionResult } from './mobileNotificationService';
 
-export interface PermissionResult {
-  granted: boolean;
-  status: 'granted' | 'denied' | 'prompt';
-  canAskAgain: boolean;
-}
+export type { PermissionResult };
 
 export interface AppPermissionsPluginInterface {
   checkCameraPermission(): Promise<PermissionResult>;
@@ -46,57 +43,15 @@ export const permissionService = {
   },
 
   async checkNotifications(): Promise<PermissionResult> {
-    if (!this.isNative()) {
-      if (typeof Notification !== 'undefined') {
-        const perm = Notification.permission;
-        return {
-          granted: perm === 'granted',
-          status: perm === 'granted' ? 'granted' : perm === 'denied' ? 'denied' : 'prompt',
-          canAskAgain: perm !== 'denied',
-        };
-      }
-      return { granted: true, status: 'granted', canAskAgain: true };
-    }
-    try {
-      return await NativeAppPermissions.checkNotificationPermission();
-    } catch (e) {
-      console.warn('Error checking notification permission:', e);
-      return { granted: false, status: 'denied', canAskAgain: true };
-    }
+    return await mobileNotificationService.checkPermission();
   },
 
   async requestNotifications(): Promise<PermissionResult> {
-    if (!this.isNative()) {
-      if (typeof Notification !== 'undefined') {
-        try {
-          const res = await Notification.requestPermission();
-          return {
-            granted: res === 'granted',
-            status: res === 'granted' ? 'granted' : 'denied',
-            canAskAgain: res !== 'denied',
-          };
-        } catch {
-          return { granted: false, status: 'denied', canAskAgain: false };
-        }
-      }
-      return { granted: true, status: 'granted', canAskAgain: true };
-    }
-    try {
-      return await NativeAppPermissions.requestNotificationPermission();
-    } catch (e) {
-      console.warn('Error requesting notification permission:', e);
-      return { granted: false, status: 'denied', canAskAgain: true };
-    }
+    return await mobileNotificationService.requestPermission();
   },
 
   async openSettings(): Promise<boolean> {
-    if (!this.isNative()) return false;
-    try {
-      const res = await NativeAppPermissions.openAppSettings();
-      return !!res.opened;
-    } catch (e) {
-      console.warn('Error opening app settings:', e);
-      return false;
-    }
+    return await mobileNotificationService.openSettings();
   },
 };
+

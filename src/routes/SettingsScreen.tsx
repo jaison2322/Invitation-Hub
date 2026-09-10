@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -26,6 +26,7 @@ import { getInitials } from '../utils/formatters';
 import { exportToExcel } from '../services/exportService';
 import { useTranslation } from '../i18n/useTranslation';
 import { permissionService } from '../services/permissionService';
+import { mobileNotificationService } from '../services/mobileNotificationService';
 
 export default function SettingsScreen() {
   const navigate = useNavigate();
@@ -75,6 +76,14 @@ export default function SettingsScreen() {
   const [notifNewInvitations, setNotifNewInvitations] = useState(true);
   const [notifScheduleChanges, setNotifScheduleChanges] = useState(true);
   const [notifReminders, setNotifReminders] = useState(true);
+  const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
+  const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    mobileNotificationService.checkPermission().then((res) => {
+      setPermissionStatus(res.status);
+    });
+  }, [activeModal]);
 
   const handleToggleNotification = async (
     setter: (val: boolean) => void,
@@ -82,23 +91,26 @@ export default function SettingsScreen() {
   ) => {
     if (!currentVal) {
       try {
-        const check = await permissionService.checkNotifications();
+        const check = await mobileNotificationService.checkPermission();
         if (check.granted) {
           setter(true);
+          setPermissionStatus('granted');
           return;
         }
 
-        const res = await permissionService.requestNotifications();
+        const res = await mobileNotificationService.requestPermission();
         if (res.granted) {
           setter(true);
+          setPermissionStatus('granted');
         } else {
           setter(false);
+          setPermissionStatus('denied');
           if (!res.canAskAgain) {
             const open = window.confirm(
               'Notification permission is disabled in your device settings. Would you like to open App Settings to enable notifications?'
             );
             if (open) {
-              permissionService.openSettings();
+              mobileNotificationService.openSettings();
             }
           } else {
             alert('Notification permission was not granted. You will not receive system alerts.');
@@ -110,6 +122,33 @@ export default function SettingsScreen() {
       }
     } else {
       setter(false);
+    }
+  };
+
+  const handleSendTestNotification = async () => {
+    try {
+      setTestNotificationStatus('Dispatching...');
+      const check = await mobileNotificationService.checkPermission();
+      if (!check.granted) {
+        const req = await mobileNotificationService.requestPermission(true);
+        if (!req.granted) {
+          setTestNotificationStatus('Permission required');
+          setTimeout(() => setTestNotificationStatus(null), 3500);
+          return;
+        }
+        setPermissionStatus('granted');
+      }
+
+      const ok = await mobileNotificationService.sendTestNotification();
+      if (ok) {
+        setTestNotificationStatus('Alert delivered to device!');
+      } else {
+        setTestNotificationStatus('Delivered to notification shade.');
+      }
+      setTimeout(() => setTestNotificationStatus(null), 3500);
+    } catch (err: any) {
+      setTestNotificationStatus('Failed to send test alert');
+      setTimeout(() => setTestNotificationStatus(null), 3500);
     }
   };
 
@@ -874,8 +913,59 @@ export default function SettingsScreen() {
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
           <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle" />
-            <h3 style={{ marginBottom: 'var(--space-2)' }}>Notification Preferences</h3>
-            <p className="text-xs text-secondary mb-4">Choose which alerts you receive</p>
+            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
+              <h3 style={{ margin: 0 }}>Notification Preferences</h3>
+              <span
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  padding: '2px 8px',
+                  borderRadius: 'var(--radius-full)',
+                  background:
+                    permissionStatus === 'granted'
+                      ? 'rgba(34, 197, 94, 0.15)'
+                      : permissionStatus === 'denied'
+                      ? 'rgba(239, 68, 68, 0.15)'
+                      : 'rgba(245, 158, 11, 0.15)',
+                  color:
+                    permissionStatus === 'granted'
+                      ? '#22c55e'
+                      : permissionStatus === 'denied'
+                      ? '#ef4444'
+                      : '#f59e0b',
+                }}
+              >
+                {permissionStatus === 'granted'
+                  ? 'Active'
+                  : permissionStatus === 'denied'
+                  ? 'Blocked'
+                  : 'Not Allowed'}
+              </span>
+            </div>
+            <p className="text-xs text-secondary mb-4">Choose which alerts you receive on this device</p>
+
+            {permissionStatus === 'denied' && (
+              <div
+                className="glass-card mb-4"
+                style={{
+                  padding: 'var(--space-3)',
+                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                  background: 'rgba(239, 68, 68, 0.05)',
+                }}
+              >
+                <div className="text-xs" style={{ color: '#ef4444', marginBottom: '8px' }}>
+                  Notifications are disabled in your OS/browser settings.
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm w-full"
+                  style={{ fontSize: '11px', background: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', border: 'none' }}
+                  onClick={() => mobileNotificationService.openSettings()}
+                >
+                  Open Device Settings
+                </button>
+              </div>
+            )}
 
             <div className="flex flex-col gap-3 mb-5">
               <div className="glass-card flex items-center justify-between p-3">
@@ -931,9 +1021,20 @@ export default function SettingsScreen() {
               </div>
             </div>
 
-            <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
-              Save Preferences
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost w-full"
+                style={{ fontSize: '12px', border: '1px solid var(--color-border)' }}
+                onClick={handleSendTestNotification}
+              >
+                {testNotificationStatus || 'Send Test Mobile Alert'}
+              </button>
+
+              <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
+                Save Preferences
+              </button>
+            </div>
           </div>
         </div>
       )}

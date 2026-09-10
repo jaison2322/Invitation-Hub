@@ -10,6 +10,7 @@ import type {
   Notification,
   ActivityLog,
 } from '../types';
+import { mobileNotificationService } from './mobileNotificationService';
 
 let realtimeChannel: RealtimeChannel | null = null;
 let isSubscribed = false;
@@ -388,6 +389,8 @@ export const realtimeService = {
                   notifications: [formatted, ...state.notifications],
                 }));
               }
+              // Deliver OS / Mobile notification (deduplicated automatically)
+              mobileNotificationService.deliverNotification(formatted).catch(console.warn);
             } else if (payload.eventType === 'UPDATE') {
               const updatedNotif = payload.new as any;
               useAppStore.setState((state) => ({

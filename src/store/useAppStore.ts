@@ -21,6 +21,7 @@ import { hashPassword } from '../utils/crypto';
 import { supabaseDbService } from '../services/supabaseDbService';
 import { seedPrivilegedUsers } from '../data/seedData';
 import { daysUntil } from '../utils/formatters';
+import { mobileNotificationService } from '../services/mobileNotificationService';
 
 // ─── Store Interface ─────────────────────────────────────────────────────────
 
@@ -581,6 +582,7 @@ export const useAppStore = create<AppState>()(
             });
           }
           supabaseDbService.updateUserLastLogin(dbAccount.username);
+          mobileNotificationService.registerDevice(dbAccount.username).catch(console.warn);
           return { success: true };
         };
 
@@ -606,6 +608,7 @@ export const useAppStore = create<AppState>()(
             const pwMatch = currentUser.passwordHash === passwordHash || password === 'admin123';
             if (pwMatch) {
               set({ isAuthenticated: true, isVIP: true, currentPrivilegedUser: null });
+              mobileNotificationService.registerDevice(currentUser.username || 'vip').catch(console.warn);
               return { success: true };
             }
             return { success: false, error: 'Incorrect password for VIP account.' };
@@ -625,6 +628,7 @@ export const useAppStore = create<AppState>()(
           const pwMatch = privUser.passwordHash === passwordHash || password === 'staff123';
           if (pwMatch) {
             set({ isAuthenticated: true, isVIP: false, currentPrivilegedUser: privUser });
+            mobileNotificationService.registerDevice(privUser.username || privUser.name).catch(console.warn);
             return { success: true };
           }
           return { success: false, error: `Incorrect password for "${privUser.name}".` };
@@ -637,6 +641,7 @@ export const useAppStore = create<AppState>()(
       },
 
       logout: () => {
+        mobileNotificationService.clearUserAssociation();
         set({
           isAuthenticated: false,
           isVIP: false,
@@ -915,6 +920,7 @@ export const useAppStore = create<AppState>()(
           notifications: [notification, ...state.notifications],
         }));
         supabaseDbService.insertNotification(notification).catch(console.error);
+        mobileNotificationService.deliverNotification(notification).catch(console.warn);
         return notification;
       },
 

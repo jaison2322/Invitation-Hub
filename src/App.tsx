@@ -32,6 +32,7 @@ import SettingsScreen from './routes/SettingsScreen';
 import PeopleListScreen from './routes/PeopleListScreen';
 
 import { realtimeService } from './services/realtimeService';
+import { mobileNotificationService } from './services/mobileNotificationService';
 import AppHeader from './components/AppHeader';
 import { useTranslation } from './i18n/useTranslation';
 
@@ -135,15 +136,23 @@ function BottomNavigation() {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { syncWithSupabase } = useAppStore();
+  const { syncWithSupabase, isAuthenticated, currentUser, currentPrivilegedUser } = useAppStore();
 
   useEffect(() => {
+    // Initialize PWA / mobile notification service worker and channel
+    mobileNotificationService.init();
+
+    if (isAuthenticated) {
+      const activeUser = currentUser?.username || currentPrivilegedUser?.username;
+      mobileNotificationService.registerDevice(activeUser).catch(console.warn);
+    }
+
     syncWithSupabase();
     const unsubscribe = realtimeService.subscribeAll();
     return () => {
       unsubscribe();
     };
-  }, [syncWithSupabase]);
+  }, [syncWithSupabase, isAuthenticated, currentUser, currentPrivilegedUser]);
 
   return (
     <BrowserRouter>

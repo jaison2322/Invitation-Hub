@@ -1,0 +1,24 @@
+{
+  "short_name": "VIP Intel",
+  "name": "VIP Event Intelligence & Relationship Memory",
+  "description": "AI-powered invitation management and relationship memory system for VIPs, executives, and business leaders.",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0a0b0e",
+  "theme_color": "#0a0b0e",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/"
+}
