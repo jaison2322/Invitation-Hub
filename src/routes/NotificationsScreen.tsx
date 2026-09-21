@@ -43,7 +43,11 @@ export default function NotificationsScreen() {
   const handleNotificationClick = (notif: (typeof notifications)[0]) => {
     markNotificationRead(notif.id);
     if (notif.actionUrl) {
-      navigate(notif.actionUrl);
+      const targetUrl =
+        notif.actionUrl === '/settings/privileged-users'
+          ? '/privileged-users'
+          : notif.actionUrl;
+      navigate(targetUrl);
     } else if (notif.relatedEntityId) {
       navigate(`/event/${notif.relatedEntityId}`);
     }

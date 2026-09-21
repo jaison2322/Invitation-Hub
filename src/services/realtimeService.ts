@@ -68,17 +68,25 @@ export const realtimeService = {
                 }
               }
 
-              // Also update permissions for privileged users
+              // Also update permissions, name, and approval status for privileged users
               if (updatedAccount.role === 'staff') {
                 const { privilegedUsers } = store;
                 const existing = privilegedUsers.find(
                   (u) => u.username && u.username.toLowerCase() === updatedAccount.username?.toLowerCase()
                 );
-                if (existing && updatedAccount.permissions) {
+                if (existing) {
                   useAppStore.setState({
                     privilegedUsers: privilegedUsers.map((u) =>
                       u.id === existing.id
-                        ? { ...u, permissions: sanitizePermissions(updatedAccount.permissions), name: updatedAccount.name }
+                        ? {
+                            ...u,
+                            permissions: updatedAccount.permissions ? sanitizePermissions(updatedAccount.permissions) : u.permissions,
+                            name: updatedAccount.name || u.name,
+                            role: updatedAccount.staff_title || u.role,
+                            staffTitle: updatedAccount.staff_title || u.staffTitle,
+                            approvalStatus: updatedAccount.approval_status || u.approvalStatus,
+                            phoneVerified: updatedAccount.phone_verified !== undefined ? !!updatedAccount.phone_verified : u.phoneVerified,
+                          }
                         : u
                     ),
                   });
@@ -101,13 +109,18 @@ export const realtimeService = {
                       {
                         id: 'priv-' + Date.now(),
                         vipId: targetVipId,
+                        targetVipUsername: newAccount.target_vip_username,
+                        approvalStatus: newAccount.approval_status || 'APPROVED',
                         username: newAccount.username,
                         passwordHash: newAccount.password_hash,
                         name: newAccount.name,
                         role: newAccount.staff_title || 'Personal Assistant',
+                        staffTitle: newAccount.staff_title,
                         pin: newAccount.pin || '1111',
                         phone: newAccount.phone,
                         email: newAccount.email,
+                        phoneVerified: !!newAccount.phone_verified,
+                        phoneVerifiedAt: newAccount.phone_verified_at,
                         permissions: sanitizePermissions(newAccount.permissions),
                         addedBy: targetVipId,
                         addedAt: newAccount.created_at,

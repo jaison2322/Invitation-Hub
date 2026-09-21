@@ -261,7 +261,7 @@ BEGIN
     false,
     now(),
     trim(p_username),
-    '/settings/privileged-users'
+    '/privileged-users'
   );
 
   RETURN jsonb_build_object(
@@ -313,7 +313,12 @@ BEGIN
   LIMIT 1;
 
   IF v_staff.username IS NULL THEN
-    RETURN jsonb_build_object('success', false, 'error', 'Staff request not found for this VIP');
+    UPDATE public.notifications
+    SET read = true
+    WHERE vip_id = v_caller_vip
+      AND related_entity_id = lower(trim(p_staff_username))
+      AND type = 'staff_request';
+    RETURN jsonb_build_object('success', false, 'error', 'Staff request account not found for this VIP');
   END IF;
 
   v_new_status := CASE WHEN p_accept THEN 'APPROVED' ELSE 'REJECTED' END;
@@ -410,7 +415,7 @@ BEGIN
     false,
     now(),
     v_staff.username,
-    '/settings/privileged-users'
+    '/privileged-users'
   );
 
   RETURN jsonb_build_object(

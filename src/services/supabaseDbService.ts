@@ -1012,6 +1012,27 @@ export const supabaseDbService = {
       if (!data?.success) {
         return { success: false, error: data?.error || 'Registration request failed' };
       }
+
+      // Dispatch cloud push notification directly to VIP Principal's registered devices
+      const targetVipId = data?.vip_id || `vip_${params.vipUsername.trim().toLowerCase()}`;
+      supabase.functions.invoke('send-push-notification', {
+        body: {
+          record: {
+            id: data?.notif_id || `notif_req_${Date.now()}`,
+            vip_id: targetVipId,
+            type: 'staff_request',
+            title: `Staff Request: ${params.name.trim()}`,
+            message: `${params.name.trim()} (${params.staffTitle}) requested access. Username: ${params.username.trim()}${params.phone ? ` | Phone: ${params.phone.trim()}` : ''}`,
+            read: false,
+            timestamp: new Date().toISOString(),
+            action_url: '/privileged-users',
+            related_entity_id: params.username.trim().toLowerCase(),
+          }
+        }
+      }).catch((e) => {
+        console.warn('[Push Dispatch] Exception invoking send-push-notification for staff request:', e);
+      });
+
       return { success: true, data };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to submit staff registration request' };
