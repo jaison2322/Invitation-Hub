@@ -16,11 +16,35 @@ export type RelationshipType =
 
 export type PermissionKey =
   | 'canAddInvitations'
+  | 'canConfirmIgnoreInvitations'
   | 'canEditEvents'
   | 'canChangePriority'
   | 'canManageSchedule'
   | 'canViewGiftHistory'
   | 'canAddPeople';
+
+export const DEFAULT_STAFF_PERMISSIONS: Record<PermissionKey, boolean> = {
+  canAddInvitations: true,
+  canConfirmIgnoreInvitations: false,
+  canEditEvents: false,
+  canChangePriority: false,
+  canManageSchedule: false,
+  canViewGiftHistory: false,
+  canAddPeople: false,
+};
+
+export function sanitizePermissions(raw?: any): Record<PermissionKey, boolean> {
+  const p = raw || {};
+  return {
+    canAddInvitations: Boolean(p.canAddInvitations ?? DEFAULT_STAFF_PERMISSIONS.canAddInvitations),
+    canConfirmIgnoreInvitations: Boolean(p.canConfirmIgnoreInvitations ?? DEFAULT_STAFF_PERMISSIONS.canConfirmIgnoreInvitations),
+    canEditEvents: Boolean(p.canEditEvents ?? DEFAULT_STAFF_PERMISSIONS.canEditEvents),
+    canChangePriority: Boolean(p.canChangePriority ?? DEFAULT_STAFF_PERMISSIONS.canChangePriority),
+    canManageSchedule: Boolean(p.canManageSchedule ?? DEFAULT_STAFF_PERMISSIONS.canManageSchedule),
+    canViewGiftHistory: Boolean(p.canViewGiftHistory ?? DEFAULT_STAFF_PERMISSIONS.canViewGiftHistory),
+    canAddPeople: Boolean(p.canAddPeople ?? DEFAULT_STAFF_PERMISSIONS.canAddPeople),
+  };
+}
 
 export type EventType =
   | 'wedding'
@@ -40,12 +64,19 @@ export type EventType =
 
 // ─── Core Entities ───────────────────────────────────────────────────────────
 
+export type ApprovalStatus = 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+
 export interface UserAccount {
+  id?: string;
   username: string; // Primary key in database
+  vipId?: string;
+  authToken?: string;
   passwordHash: string;
   name: string;
   role: 'vip' | 'staff';
   staffTitle?: string;
+  targetVipUsername?: string;
+  approvalStatus?: ApprovalStatus;
   phone?: string;
   email?: string;
   phoneVerified?: boolean;
@@ -62,6 +93,8 @@ export interface UserAccount {
 
 export interface VIPUser {
   id: string;
+  vipId?: string;
+  authToken?: string;
   username?: string;
   passwordHash?: string;
   name: string;
@@ -78,10 +111,14 @@ export interface VIPUser {
 
 export interface PrivilegedUser {
   id: string;
+  vipId?: string;
   username?: string;
   passwordHash?: string;
   name: string;
   role: string;
+  staffTitle?: string;
+  targetVipUsername?: string;
+  approvalStatus?: ApprovalStatus;
   pin?: string;
   phone?: string;
   email?: string;
@@ -106,12 +143,16 @@ export interface VerificationSession {
   verified: boolean;
   lastSentAt: number;
   isSupabaseLive?: boolean;
+  isFirebase?: boolean;
+  isSandbox?: boolean;
+  firebaseConfirmationResult?: any;
   supabaseMessage?: string;
   supabaseUserId?: string;
 }
 
 export interface Person {
   id: string;
+  vipId?: string;
   name: string;
   nickname: string;
   relationship: RelationshipType;
@@ -124,6 +165,7 @@ export interface Person {
 
 export interface Invitation {
   id: string;
+  vipId?: string;
   personId?: string;
   eventType: EventType;
   title: string;
@@ -148,6 +190,7 @@ export interface Invitation {
 
 export interface FamilyEvent {
   id: string;
+  vipId?: string;
   name: string;
   eventType: EventType;
   date: string;
@@ -175,6 +218,7 @@ export interface GuestRecord {
 
 export interface ScheduleItem {
   id: string;
+  vipId?: string;
   title: string;
   date: string;
   startTime: string;
@@ -187,6 +231,7 @@ export interface ScheduleItem {
 
 export interface Reminder {
   id: string;
+  vipId?: string;
   eventId: string;
   eventTitle: string;
   daysBeforeEvent: number;
@@ -198,6 +243,7 @@ export interface Reminder {
 
 export interface ActivityLog {
   id: string;
+  vipId?: string;
   userId: string;
   userName: string;
   action: string;
@@ -211,7 +257,8 @@ export interface ActivityLog {
 
 export interface Notification {
   id: string;
-  type: 'change_alert' | 'new_invitation' | 'reminder' | 'conflict_warning' | 'system';
+  vipId?: string;
+  type: 'change_alert' | 'new_invitation' | 'reminder' | 'conflict_warning' | 'system' | 'staff_request';
   title: string;
   message: string;
   read: boolean;
@@ -224,6 +271,10 @@ export interface AIAnalysis {
   id: string;
   invitationId: string;
   ocrText: string;
+  rawOcr?: {
+    rawText: string;
+    confidence: number;
+  };
   extractedFields: ExtractedFields;
   confidence: number;
   relatedPerson?: Person;

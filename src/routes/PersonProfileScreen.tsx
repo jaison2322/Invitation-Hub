@@ -10,6 +10,9 @@ import {
   User,
   Trash2,
   Phone,
+  PhoneCall,
+  Copy,
+  Check,
   FileText,
 } from 'lucide-react';
 import {
@@ -70,6 +73,65 @@ export default function PersonProfileScreen() {
   const giftHist = getGiftHistory(person.id, familyEvents);
   const personInvitations = invitations.filter((i) => i.personId === person.id);
   const totalGiftValue = giftHist.reduce((sum, g) => sum + (g.estimatedValue || 0), 0);
+
+  const [copiedPhone, setCopiedPhone] = useState(false);
+
+  const handleCopyPhone = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!person?.phone) return;
+
+    let copied = false;
+
+    // 1. Try modern clipboard API first
+    if (navigator?.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(person.phone);
+        copied = true;
+      } catch (err) {
+        console.warn('navigator.clipboard.writeText failed, attempting execCommand fallback:', err);
+      }
+    }
+
+    // 2. Fallback using invisible textarea (reliable in Android WebViews)
+    if (!copied) {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = person.phone;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
+        textArea.style.padding = '0';
+        textArea.style.border = 'none';
+        textArea.style.outline = 'none';
+        textArea.style.boxShadow = 'none';
+        textArea.style.background = 'transparent';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        textArea.setSelectionRange(0, 99999);
+        copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error('execCommand copy failed:', err);
+      }
+    }
+
+    setCopiedPhone(true);
+    setTimeout(() => setCopiedPhone(false), 2000);
+  };
+
+  const handleCallPhone = (e?: React.MouseEvent) => {
+    if (!person?.phone) return;
+    const cleanNumber = person.phone.replace(/[^0-9+*#]/g, '');
+    window.location.href = `tel:${cleanNumber}`;
+  };
 
   const relationships: RelationshipType[] = [
     'family',
@@ -172,12 +234,78 @@ export default function PersonProfileScreen() {
           <span className="badge badge-gold">{getRelationshipLabel(person.relationship)}</span>
         </div>
 
-        {/* Contact info badges */}
+        {/* Contact info with Phone, Copy and Call actions */}
         {person.phone && (
-          <div className="flex items-center justify-center gap-3 mt-3 text-xs text-muted">
-            <span className="flex items-center gap-1">
-              <Phone size={12} className="text-gold" /> {person.phone}
-            </span>
+          <div className="flex flex-col items-center justify-center mt-3.5">
+            <div className="flex items-center justify-center gap-3">
+              {/* Phone Icon & Number */}
+              <div className="flex items-center gap-2">
+                <Phone size={14} className="text-gold" />
+                <span className="text-sm font-mono font-medium text-slate-200 tracking-wider">
+                  {person.phone}
+                </span>
+              </div>
+
+              {/* Action Buttons with Proper Spacing */}
+              <div className="flex items-center gap-2.5 ml-2">
+                {/* Copy Button */}
+                <button
+                  type="button"
+                  className="btn-icon"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: copiedPhone ? 'rgba(34, 197, 94, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                    color: copiedPhone ? '#4ade80' : 'var(--color-text-secondary)',
+                    transition: 'all 0.2s ease',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                  }}
+                  onClick={handleCopyPhone}
+                  title={copiedPhone ? 'Copied to clipboard!' : 'Copy phone number'}
+                  aria-label="Copy phone number"
+                >
+                  {copiedPhone ? <Check size={14} strokeWidth={2.5} /> : <Copy size={14} strokeWidth={1.8} />}
+                </button>
+
+                {/* Call / Redirect to Phone Call Page Button */}
+                <a
+                  href={`tel:${person.phone.replace(/[^0-9+*#]/g, '')}`}
+                  className="btn-icon"
+                  style={{
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    background: 'rgba(34, 197, 94, 0.2)',
+                    color: '#4ade80',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textDecoration: 'none',
+                    transition: 'all 0.2s ease',
+                    border: 'none',
+                    padding: 0,
+                    cursor: 'pointer',
+                  }}
+                  onClick={handleCallPhone}
+                  title="Call phone number"
+                  aria-label="Call phone number"
+                >
+                  <PhoneCall size={14} strokeWidth={2} />
+                </a>
+              </div>
+            </div>
+
+            {copiedPhone && (
+              <span className="text-[11px] text-emerald-400 font-medium mt-1.5 animate-fade-in">
+                Phone number copied to clipboard!
+              </span>
+            )}
           </div>
         )}
 

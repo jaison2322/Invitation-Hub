@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -15,6 +15,7 @@ import {
   Shield,
   FileText,
   UserPlus,
+  X,
 } from 'lucide-react';
 import type { EventType, Priority, InvitationStatus } from '../types';
 import { getEventTypeLabel } from '../utils/formatters';
@@ -36,6 +37,7 @@ export default function AddInvitationScreen() {
 
   // Permission check for Privileged User
   const canAdd = isVIP || currentPrivilegedUser?.permissions?.canAddInvitations !== false;
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
   const canChangePriority = isVIP || currentPrivilegedUser?.permissions?.canChangePriority === true;
 
   // Form State
@@ -49,7 +51,7 @@ export default function AddInvitationScreen() {
   const [mainPerson, setMainPerson] = useState('');
   const [personId, setPersonId] = useState('');
   const [priority, setPriority] = useState<Priority>('medium');
-  const [status, setStatus] = useState<InvitationStatus>(isVIP ? 'confirmed' : 'pending');
+  const [status, setStatus] = useState<InvitationStatus>(canConfirmIgnore ? 'confirmed' : 'pending');
   const [description, setDescription] = useState('');
 
   // Quick Add Person inline modal state
@@ -77,6 +79,28 @@ export default function AddInvitationScreen() {
   // Conflict Check
   const hasDateConflict = date ? invitations.some((i) => i.date === date && i.status !== 'ignored') || schedule.some((s) => s.date === date) : false;
 
+  const openAddPersonModal = () => {
+    setShowAddPersonModal(true);
+    window.history.pushState({ modal: 'quickAddContact' }, '');
+  };
+
+  const closeAddPersonModal = () => {
+    setShowAddPersonModal(false);
+    if (window.history.state?.modal === 'quickAddContact') {
+      window.history.back();
+    }
+  };
+
+  useEffect(() => {
+    const handlePop = () => {
+      setShowAddPersonModal(false);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+    };
+  }, []);
+
   const handleQuickAddPerson = () => {
     if (!newPersonName.trim()) return;
     const created = addPerson({
@@ -87,9 +111,9 @@ export default function AddInvitationScreen() {
     });
     setPersonId(created.id);
     if (!hostName) setHostName(created.name);
-    setShowAddPersonModal(false);
     setNewPersonName('');
     setNewPersonNickname('');
+    closeAddPersonModal();
   };
 
   const handleSave = (e: React.FormEvent) => {
@@ -110,7 +134,7 @@ export default function AddInvitationScreen() {
       mainPerson: mainPerson.trim() || undefined,
       personId: personId || undefined,
       priority,
-      status,
+      status: canConfirmIgnore ? status : 'pending',
       description: description.trim() || undefined,
       createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
     });
@@ -163,7 +187,17 @@ export default function AddInvitationScreen() {
       {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
       <div className="screen-stationary-header">
         <div className="top-bar">
-          <button className="top-bar-back" onClick={() => navigate(-1)}>
+          <button
+            className="top-bar-back"
+            onClick={() => {
+              if (showAddPersonModal) {
+                closeAddPersonModal();
+              } else {
+                navigate(-1);
+              }
+            }}
+            aria-label="Go Back"
+          >
             <ArrowLeft size={18} />
           </button>
           <span className="top-bar-title">Add Invitation Manually</span>
@@ -221,7 +255,7 @@ export default function AddInvitationScreen() {
         <div>
           <label className="label">
             <FileText size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-            Invitation / Event Title *
+            Invitation by *
           </label>
           <input
             className="input"
@@ -307,35 +341,19 @@ export default function AddInvitationScreen() {
           </div>
         </div>
 
-        {/* Host & Celebrant */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-          <div>
-            <label className="label">
-              <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-              Host Name
-            </label>
-            <input
-              className="input"
-              type="text"
-              placeholder="e.g. Ramesh Kumar"
-              value={hostName}
-              onChange={(e) => setHostName(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="label">
-              <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-              Bride / Groom / Celebrant
-            </label>
-            <input
-              className="input"
-              type="text"
-              placeholder="e.g. Karthik & Sneha"
-              value={mainPerson}
-              onChange={(e) => setMainPerson(e.target.value)}
-            />
-          </div>
+        {/* Host Name */}
+        <div>
+          <label className="label">
+            <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+            Host Name
+          </label>
+          <input
+            className="input"
+            type="text"
+            placeholder="e.g. Ramesh Kumar"
+            value={hostName}
+            onChange={(e) => setHostName(e.target.value)}
+          />
         </div>
 
         {/* Link to Known VIP Person */}
@@ -349,7 +367,7 @@ export default function AddInvitationScreen() {
               type="button"
               className="btn btn-sm btn-ghost text-gold"
               style={{ fontSize: 'var(--text-xs)', padding: '2px 8px' }}
-              onClick={() => setShowAddPersonModal(true)}
+              onClick={openAddPersonModal}
             >
               <UserPlus size={12} /> + New Contact
             </button>
@@ -463,7 +481,7 @@ export default function AddInvitationScreen() {
             style={{ padding: '14px', fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
             <Check size={18} />
-            <span>{isVIP ? 'Save & Confirm Invitation' : 'Submit Invitation'}</span>
+            <span>{canConfirmIgnore ? 'Save & Confirm Invitation' : 'Submit for VIP Approval (Pending)'}</span>
           </button>
         </div>
       </form>
@@ -471,9 +489,36 @@ export default function AddInvitationScreen() {
 
       {/* Quick Add Person Modal */}
       {showAddPersonModal && (
-        <div className="modal-backdrop">
-          <div className="modal animate-scale-in" style={{ maxWidth: '340px' }}>
-            <h3 style={{ marginBottom: 'var(--space-3)' }}>Quick Add VIP Contact</h3>
+        <div
+          className="modal-overlay modal-centered"
+          style={{ zIndex: 100000 }}
+          onClick={closeAddPersonModal}
+        >
+          <div
+            className="modal-dialog animate-scale-in"
+            style={{
+              maxWidth: '360px',
+              maxHeight: '85vh',
+              overflowY: 'auto',
+              padding: '20px',
+              textAlign: 'left',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 style={{ fontSize: '17px', fontWeight: 600, color: '#fff', margin: 0 }}>
+                Quick Add VIP Contact
+              </h3>
+              <button
+                type="button"
+                className="btn-icon"
+                style={{ width: '30px', height: '30px' }}
+                onClick={closeAddPersonModal}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
 
             <div className="flex flex-col gap-3">
               <div>
@@ -517,7 +562,7 @@ export default function AddInvitationScreen() {
                 <button
                   type="button"
                   className="btn btn-ghost flex-1"
-                  onClick={() => setShowAddPersonModal(false)}
+                  onClick={closeAddPersonModal}
                 >
                   Cancel
                 </button>

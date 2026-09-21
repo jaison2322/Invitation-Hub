@@ -22,7 +22,15 @@ self.addEventListener('push', (event) => {
   try {
     if (event.data) {
       const json = event.data.json();
-      data = { ...data, ...json };
+      if (json.notification) {
+        data.title = json.notification.title || data.title;
+        data.body = json.notification.body || data.body;
+      }
+      if (json.data) {
+        data = { ...data, ...json.data };
+      } else {
+        data = { ...data, ...json };
+      }
     }
   } catch (e) {
     if (event.data) {
@@ -31,10 +39,10 @@ self.addEventListener('push', (event) => {
   }
 
   const options = {
-    body: data.body,
+    body: data.body || '',
     icon: '/icon.png',
     badge: '/favicon.svg',
-    tag: data.tag || 'vip-notification',
+    tag: data.tag || ('vip-notification-' + Date.now()),
     data: {
       actionUrl: data.actionUrl || '/notifications',
     },

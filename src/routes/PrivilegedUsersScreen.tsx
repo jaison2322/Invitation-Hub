@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, UserPlus, Shield, Trash2, Clock, AtSign, Lock, CheckCircle2, Copy } from 'lucide-react';
+import { ArrowLeft, UserPlus, Shield, Trash2, Clock, AtSign, Lock, CheckCircle2, Copy, Check, Phone, PhoneCall } from 'lucide-react';
 import { getInitials, formatTimeAgo } from '../utils/formatters';
 import type { PermissionKey, PrivilegedUser } from '../types';
 
 export default function PrivilegedUsersScreen() {
   const navigate = useNavigate();
-  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser } = useAppStore();
+  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser, activeVipId, currentUser, respondToStaffRequest } = useAppStore();
 
   useEffect(() => {
     if (!isVIP) {
@@ -25,6 +25,46 @@ export default function PrivilegedUsersScreen() {
   const [createdUser, setCreatedUser] = useState<PrivilegedUser | null>(null);
   const [createdPassword, setCreatedPassword] = useState('');
   const [copiedField, setCopiedField] = useState('');
+  const [copiedPhoneId, setCopiedPhoneId] = useState<string | null>(null);
+
+  const handleCopyPhone = async (phone: string, id: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    let copied = false;
+    if (navigator?.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(phone);
+        copied = true;
+      } catch (err) {
+        console.warn('navigator.clipboard.writeText failed in PrivilegedUsersScreen:', err);
+      }
+    }
+    if (!copied) {
+      try {
+        const textArea = document.createElement('textarea');
+        textArea.value = phone;
+        textArea.setAttribute('readonly', '');
+        textArea.style.position = 'fixed';
+        textArea.style.top = '0';
+        textArea.style.left = '0';
+        textArea.style.width = '2em';
+        textArea.style.height = '2em';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        textArea.setSelectionRange(0, 99999);
+        copied = document.execCommand('copy');
+        document.body.removeChild(textArea);
+      } catch (err) {
+        console.error('execCommand copy failed in PrivilegedUsersScreen:', err);
+      }
+    }
+    setCopiedPhoneId(id);
+    setTimeout(() => setCopiedPhoneId(null), 2000);
+  };
 
   // Auto-suggest username from name
   const suggestedUsername = newName
@@ -41,6 +81,7 @@ export default function PrivilegedUsersScreen() {
 
     const defaultPerms: Record<PermissionKey, boolean> = {
       canAddInvitations: true,
+      canConfirmIgnoreInvitations: false,
       canEditEvents: false,
       canChangePriority: false,
       canManageSchedule: false,
@@ -49,13 +90,14 @@ export default function PrivilegedUsersScreen() {
     };
 
     const passToUse = newPassword.trim();
+    const actorVipId = activeVipId || currentUser?.vipId || (currentUser?.username ? `vip_${currentUser.username}` : 'vip_jaison');
     const result = await addPrivilegedUser({
       name: newName.trim(),
       username: effectiveUsername,
       role: newRole.trim(),
       phone: newPhone.trim() || undefined,
       permissions: defaultPerms,
-      addedBy: 'vip',
+      addedBy: actorVipId,
       password: passToUse,
     } as any);
 
@@ -174,7 +216,19 @@ export default function PrivilegedUsersScreen() {
             <div className="flex items-center gap-3">
               <div className="avatar">{getInitials(user.name)}</div>
               <div className="flex-1">
-                <div className="font-semibold text-sm">{user.name}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-sm">{user.name}</span>
+                  {user.approvalStatus === 'PENDING_APPROVAL' && (
+                    <span className="badge badge-warning" style={{ fontSize: '8px', padding: '1px 5px', color: '#fbbf24' }}>
+                      Pending Approval
+                    </span>
+                  )}
+                  {user.approvalStatus === 'REJECTED' && (
+                    <span className="badge badge-danger" style={{ fontSize: '8px', padding: '1px 5px', color: '#f87171' }}>
+                      Rejected
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs text-muted">{user.role}</div>
                 {user.username && (
                   <div className="flex items-center gap-1 mt-1">
@@ -184,8 +238,50 @@ export default function PrivilegedUsersScreen() {
                   </div>
                 )}
                 {user.phone && (
-                  <div className="text-xs text-muted mt-1">
-                    {user.phone}
+                  <div className="flex items-center gap-2 mt-1.5 text-xs text-muted">
+                    <span className="font-mono">{user.phone}</span>
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: copiedPhoneId === user.id ? 'rgba(34, 197, 94, 0.25)' : 'rgba(255, 255, 255, 0.08)',
+                        color: copiedPhoneId === user.id ? '#4ade80' : 'var(--color-text-secondary)',
+                        border: 'none',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      onClick={(e) => handleCopyPhone(user.phone!, user.id, e)}
+                      title={copiedPhoneId === user.id ? 'Copied!' : 'Copy phone number'}
+                      aria-label="Copy phone number"
+                    >
+                      {copiedPhoneId === user.id ? <Check size={11} strokeWidth={2.5} /> : <Copy size={11} />}
+                    </button>
+                    <a
+                      href={`tel:${user.phone.replace(/[^0-9+*#]/g, '')}`}
+                      className="btn-icon"
+                      style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        background: 'rgba(34, 197, 94, 0.2)',
+                        color: '#4ade80',
+                        border: 'none',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        textDecoration: 'none',
+                      }}
+                      title="Call phone number"
+                      aria-label="Call phone number"
+                    >
+                      <PhoneCall size={11} strokeWidth={2} />
+                    </a>
                   </div>
                 )}
                 {user.lastActive && (
@@ -194,25 +290,48 @@ export default function PrivilegedUsersScreen() {
                   </div>
                 )}
               </div>
-              <div className="flex gap-2">
-                <button className="btn btn-sm btn-outline" onClick={() => navigate(`/permissions/${user.id}`)}>
-                  Manage
-                </button>
-                {isVIP && (
-                  <button className="btn btn-sm btn-danger" onClick={() => removePrivilegedUser(user.id)}>
-                    <Trash2 size={14} />
-                  </button>
+              <div className="flex gap-2 items-center">
+                {user.approvalStatus === 'PENDING_APPROVAL' ? (
+                  <>
+                    <button
+                      className="btn btn-sm btn-primary"
+                      style={{ fontSize: '11px', padding: '4px 8px' }}
+                      onClick={() => respondToStaffRequest(user.username || user.name, true)}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ fontSize: '11px', padding: '4px 8px', color: 'var(--color-danger)' }}
+                      onClick={() => respondToStaffRequest(user.username || user.name, false)}
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn btn-sm btn-outline" onClick={() => navigate(`/permissions/${user.id}`)}>
+                      Manage
+                    </button>
+                    {isVIP && (
+                      <button className="btn btn-sm btn-danger" onClick={() => removePrivilegedUser(user.id)}>
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
             {/* Permission Summary */}
             <div className="flex flex-wrap gap-1 mt-3">
-              {Object.entries(user.permissions).filter(([, v]) => v).map(([key]) => (
-                <span key={key} className="badge badge-info" style={{ fontSize: '8px' }}>
-                  {key.replace('can', '').replace(/([A-Z])/g, ' $1').trim()}
-                </span>
-              ))}
+              {Object.entries(user.permissions || {})
+                .filter(([key, v]) => key.startsWith('can') && v === true)
+                .map(([key]) => (
+                  <span key={key} className="badge badge-info" style={{ fontSize: '8px' }}>
+                    {key.replace('can', '').replace(/([A-Z])/g, ' $1').trim()}
+                  </span>
+                ))}
             </div>
           </div>
         ))}

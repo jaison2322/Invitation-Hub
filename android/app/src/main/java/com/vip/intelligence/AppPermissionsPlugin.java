@@ -48,12 +48,13 @@ public class AppPermissionsPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
-        createNotificationChannel();
+        createNotificationChannel(getContext());
+        BackgroundNotificationSync.startSync(getContext());
     }
 
-    private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationManager manager = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+    public static void createNotificationChannel(Context context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && context != null) {
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (manager != null) {
                 NotificationChannel channel = new NotificationChannel(
                     NOTIFICATION_CHANNEL_ID,
@@ -220,6 +221,60 @@ public class AppPermissionsPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    public static boolean showNotificationDirectly(Context context, int id, String title, String body, String actionUrl) {
+        if (context == null) return false;
+        try {
+            boolean hasPermission = true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                hasPermission = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED;
+            } else {
+                hasPermission = NotificationManagerCompat.from(context).areNotificationsEnabled();
+            }
+
+            if (!hasPermission) {
+                android.util.Log.w("AppPermissionsPlugin", "POST_NOTIFICATIONS permission not granted");
+                return false;
+            }
+
+            createNotificationChannel(context);
+
+            Intent intent = new Intent(context, MainActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            intent.putExtra("actionUrl", actionUrl != null ? actionUrl : "/notifications");
+
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            PendingIntent pendingIntent = PendingIntent.getActivity(context, id, intent, flags);
+
+            int smallIcon = context.getApplicationInfo().icon;
+            if (smallIcon == 0) {
+                smallIcon = android.R.drawable.ic_dialog_info;
+            }
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
+                .setSmallIcon(smallIcon)
+                .setContentTitle(title != null ? title : "VIP Intelligence Alert")
+                .setContentText(body != null ? body : "")
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body != null ? body : ""))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setDefaults(NotificationCompat.DEFAULT_ALL)
+                .setAutoCancel(true)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setContentIntent(pendingIntent);
+
+            NotificationManagerCompat.from(context).notify(id, builder.build());
+            return true;
+        } catch (Exception e) {
+            android.util.Log.e("AppPermissionsPlugin", "showNotificationDirectly error: " + e.getMessage(), e);
+            return false;
+        }
+    }
+
     @PluginMethod
     public void showLocalNotification(PluginCall call) {
         String title = call.getString("title", "VIP Intelligence Alert");
@@ -227,61 +282,29 @@ public class AppPermissionsPlugin extends Plugin {
         int id = call.getInt("id", (int) (System.currentTimeMillis() % 1000000));
         String actionUrl = call.getString("actionUrl", "/notifications");
 
-        boolean hasPermission = true;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            hasPermission = ContextCompat.checkSelfPermission(
-                getContext(),
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED;
-        } else {
-            hasPermission = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+        boolean delivered = showNotificationDirectly(getContext(), id, title, body, actionUrl);
+        JSObject ret = new JSObject();
+        ret.put("delivered", delivered);
+        ret.put("id", id);
+        if (!delivered) {
+            ret.put("error", "Failed to deliver or permission not granted");
         }
+        call.resolve(ret);
+    }
 
-        if (!hasPermission) {
-            JSObject ret = new JSObject();
-            ret.put("delivered", false);
-            ret.put("error", "POST_NOTIFICATIONS permission not granted");
-            call.resolve(ret);
-            return;
-        }
+    @PluginMethod
+    public void configureBackgroundSync(PluginCall call) {
+        String username = call.getString("username", "");
+        String token = call.getString("token", "");
+        String url = call.getString("supabaseUrl", BackgroundNotificationSync.DEFAULT_URL);
+        String key = call.getString("supabaseKey", BackgroundNotificationSync.DEFAULT_KEY);
 
-        createNotificationChannel();
+        BackgroundNotificationSync.saveConfig(getContext(), username, token, url, key);
+        BackgroundNotificationSync.startSync(getContext());
 
-        Intent intent = new Intent(getContext(), MainActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        intent.putExtra("actionUrl", actionUrl);
-
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            flags |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        PendingIntent pendingIntent = PendingIntent.getActivity(getContext(), id, intent, flags);
-
-        int smallIcon = getContext().getApplicationInfo().icon;
-        if (smallIcon == 0) {
-            smallIcon = android.R.drawable.ic_dialog_info;
-        }
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(getContext(), NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(smallIcon)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setDefaults(NotificationCompat.DEFAULT_ALL)
-            .setAutoCancel(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setContentIntent(pendingIntent);
-
-        try {
-            NotificationManagerCompat.from(getContext()).notify(id, builder.build());
-            JSObject ret = new JSObject();
-            ret.put("delivered", true);
-            ret.put("id", id);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Failed to display notification: " + e.getMessage(), e);
-        }
+        JSObject ret = new JSObject();
+        ret.put("configured", true);
+        call.resolve(ret);
     }
 
     @PluginMethod
@@ -300,17 +323,51 @@ public class AppPermissionsPlugin extends Plugin {
     @PluginMethod
     public void getDevicePushToken(PluginCall call) {
         try {
-            String androidId = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ANDROID_ID);
-            String token = "android-" + (androidId != null && !androidId.isEmpty() ? androidId : UUID.randomUUID().toString());
-            JSObject ret = new JSObject();
-            ret.put("token", token);
-            ret.put("platform", "android");
-            call.resolve(ret);
+            // First check if we have a cached FCM token from VIPFirebaseMessagingService
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences(
+                BackgroundNotificationSync.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+            String cachedFcmToken = prefs.getString("fcm_token", null);
+
+            if (cachedFcmToken != null && !cachedFcmToken.isEmpty()) {
+                // Return cached FCM token immediately
+                JSObject ret = new JSObject();
+                ret.put("token", cachedFcmToken);
+                ret.put("platform", "android");
+                ret.put("tokenType", "fcm");
+                call.resolve(ret);
+                return;
+            }
+
+            // Attempt to get FCM token asynchronously
+            com.google.firebase.messaging.FirebaseMessaging.getInstance().getToken()
+                .addOnSuccessListener(token -> {
+                    // Cache the FCM token
+                    prefs.edit().putString("fcm_token", token).apply();
+                    prefs.edit().putString(BackgroundNotificationSync.KEY_DEVICE_TOKEN, token).apply();
+
+                    JSObject ret = new JSObject();
+                    ret.put("token", token);
+                    ret.put("platform", "android");
+                    ret.put("tokenType", "fcm");
+                    call.resolve(ret);
+                })
+                .addOnFailureListener(e -> {
+                    // Fallback to Android ID if FCM isn't available
+                    android.util.Log.w("AppPermissionsPlugin", "FCM token unavailable, falling back to Android ID: " + e.getMessage());
+                    String androidId = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ANDROID_ID);
+                    String fallbackToken = "android-" + (androidId != null && !androidId.isEmpty() ? androidId : UUID.randomUUID().toString());
+                    JSObject ret = new JSObject();
+                    ret.put("token", fallbackToken);
+                    ret.put("platform", "android");
+                    ret.put("tokenType", "device_id");
+                    call.resolve(ret);
+                });
         } catch (Exception e) {
             String fallbackToken = "android-device-" + UUID.randomUUID().toString();
             JSObject ret = new JSObject();
             ret.put("token", fallbackToken);
             ret.put("platform", "android");
+            ret.put("tokenType", "fallback");
             call.resolve(ret);
         }
     }

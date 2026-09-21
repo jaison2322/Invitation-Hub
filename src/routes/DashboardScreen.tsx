@@ -23,6 +23,7 @@ export default function DashboardScreen() {
   const activeUser = isVIP ? currentUser : currentPrivilegedUser;
   const activeUserName = activeUser?.name || (isVIP ? t('dashboard.vipPrincipal') : t('dashboard.privilegedStaff'));
   const activeUserRole = isVIP ? t('dashboard.vipPrincipal') : (currentPrivilegedUser?.role || t('dashboard.privilegedStaff'));
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
   const pendingInvitations = invitations.filter((i) => i.status === 'pending');
   const confirmedInvitations = invitations.filter((i) => i.status === 'confirmed');
@@ -76,13 +77,16 @@ export default function DashboardScreen() {
             className="flex items-center gap-3 cursor-pointer"
             onClick={() => navigate('/settings')}
           >
-            <div className="avatar avatar-sm">
+            <div
+              className="avatar avatar-sm"
+              style={{ width: '38px', height: '38px', fontSize: '16px' }}
+            >
               {getInitials(activeUserName)}
             </div>
             <div>
               <div
                 style={{
-                  fontSize: '11px',
+                  fontSize: '15px',
                   fontWeight: 500,
                   color: 'var(--color-text-secondary)',
                   letterSpacing: '-0.01em',
@@ -92,7 +96,7 @@ export default function DashboardScreen() {
               </div>
               <div
                 className="font-heading font-semibold text-white truncate"
-                style={{ fontSize: '15px', maxWidth: '160px', letterSpacing: '-0.01em' }}
+                style={{ fontSize: '21px', maxWidth: '200px', letterSpacing: '-0.01em' }}
               >
                 {activeUserName}
               </div>
@@ -105,17 +109,17 @@ export default function DashboardScreen() {
             className="btn-icon"
             onClick={() => navigate('/notifications')}
             aria-label="Notifications"
-            style={{ position: 'relative' }}
+            style={{ position: 'relative', width: '40px', height: '40px' }}
           >
-            <Bell size={18} strokeWidth={1.8} />
+            <Bell size={20} strokeWidth={1.8} />
             {unreadNotifications > 0 && (
               <span
                 style={{
                   position: 'absolute',
-                  top: '6px',
-                  right: '6px',
-                  width: '7px',
-                  height: '7px',
+                  top: '7px',
+                  right: '7px',
+                  width: '8px',
+                  height: '8px',
                   borderRadius: '50%',
                   background: 'var(--color-danger)',
                 }}
@@ -291,32 +295,60 @@ export default function DashboardScreen() {
                   </div>
                 )}
 
-                {/* Action Bar */}
-                <div className="flex gap-2.5" style={{ marginTop: '16px' }}>
-                  <button
-                    type="button"
-                    className="btn btn-confirm flex-1 font-heading flex items-center justify-center gap-1.5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleConfirm(nextPending.id);
+                {/* Action Bar / Pending VIP Notice */}
+                {canConfirmIgnore ? (
+                  <div className="flex gap-2.5" style={{ marginTop: '16px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-confirm flex-1 font-heading flex items-center justify-center gap-1.5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleConfirm(nextPending.id);
+                      }}
+                      style={{ fontSize: '13px', padding: '10px 14px' }}
+                    >
+                      <CheckCircle2 size={15} strokeWidth={2.4} />
+                      <span>Confirm</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ignore flex-1 font-heading flex items-center justify-center gap-1.5"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleIgnore(nextPending.id);
+                      }}
+                      style={{ fontSize: '13px', padding: '10px 14px' }}
+                    >
+                      <span>Decline</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className="flex items-center justify-between"
+                    style={{
+                      marginTop: '16px',
+                      padding: '10px 14px',
+                      borderRadius: '10px',
+                      background: 'rgba(255, 179, 64, 0.08)',
+                      border: '1px solid rgba(255, 179, 64, 0.2)',
                     }}
-                    style={{ fontSize: '13px', padding: '10px 14px' }}
                   >
-                    <CheckCircle2 size={15} strokeWidth={2.4} />
-                    <span>Confirm</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-ignore flex-1 font-heading flex items-center justify-center gap-1.5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleIgnore(nextPending.id);
-                    }}
-                    style={{ fontSize: '13px', padding: '10px 14px' }}
-                  >
-                    <span>Decline</span>
-                  </button>
-                </div>
+                    <span style={{ fontSize: '12.5px', color: '#ffb340', fontWeight: 500 }}>
+                      Pending VIP Principal Review
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '12px',
+                        color: 'var(--color-text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '2px',
+                      }}
+                    >
+                      View <ChevronRight size={12} />
+                    </span>
+                  </div>
+                )}
               </div>
             </section>
           )}

@@ -1,5 +1,7 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import { useAppStore } from './store/useAppStore';
 import {
   LayoutDashboard, Calendar, ScanLine, Users, Settings,
@@ -30,6 +32,9 @@ import NotificationsScreen from './routes/NotificationsScreen';
 import ActivityHistoryScreen from './routes/ActivityHistoryScreen';
 import SettingsScreen from './routes/SettingsScreen';
 import PeopleListScreen from './routes/PeopleListScreen';
+import WaitingApprovalScreen from './routes/WaitingApprovalScreen';
+import ApprovalRejectedScreen from './routes/ApprovalRejectedScreen';
+import PhoneVerificationGateScreen from './routes/PhoneVerificationGateScreen';
 
 import { realtimeService } from './services/realtimeService';
 import { mobileNotificationService } from './services/mobileNotificationService';
@@ -38,8 +43,36 @@ import { useTranslation } from './i18n/useTranslation';
 
 // ─── Protected Route ────────────────────────────────────────────────────────
 function ProtectedRoute({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAppStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  const { isAuthenticated, isVIP, currentPrivilegedUser } = useAppStore();
+
+  if (!isAuthenticated) {
+    if (currentPrivilegedUser) {
+      if (currentPrivilegedUser.approvalStatus === 'PENDING_APPROVAL') {
+        return <Navigate to="/waiting-approval" replace />;
+      }
+      if (currentPrivilegedUser.approvalStatus === 'REJECTED') {
+        return <Navigate to="/approval-rejected" replace />;
+      }
+      if (!currentPrivilegedUser.phoneVerified) {
+        return <Navigate to="/verify-phone" replace />;
+      }
+    }
+    return <Navigate to="/login" replace />;
+  }
+
+  // If authenticated but is a staff user with unverified phone or pending approval
+  if (!isVIP && currentPrivilegedUser) {
+    if (currentPrivilegedUser.approvalStatus === 'PENDING_APPROVAL') {
+      return <Navigate to="/waiting-approval" replace />;
+    }
+    if (currentPrivilegedUser.approvalStatus === 'REJECTED') {
+      return <Navigate to="/approval-rejected" replace />;
+    }
+    if (!currentPrivilegedUser.phoneVerified) {
+      return <Navigate to="/verify-phone" replace />;
+    }
+  }
+
   return <>{children}</>;
 }
 
@@ -52,7 +85,8 @@ function BottomNavigation() {
 
   // Pages that should NOT show bottom nav
   const hideNavPages = [
-    '/', '/login', '/ai-processing', '/extracted-details', '/confirm-ignore', '/add-invitation',
+    '/', '/login', '/waiting-approval', '/approval-rejected', '/verify-phone',
+    '/ai-processing', '/extracted-details', '/confirm-ignore', '/add-invitation',
   ];
 
   // Also hide on detail pages
@@ -134,36 +168,130 @@ function BottomNavigation() {
   );
 }
 
+// ─── Android Hardware Back Button & Gesture Handler ─────────────────────────
+function AndroidBackButtonHandler() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const locationRef = useRef(location);
+
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    let isMounted = true;
+    let removeListener: (() => void) | undefined;
+
+    CapApp.addListener('backButton', ({ canGoBack }) => {
+      const currentPath = locationRef.current.pathname;
+      const rootPaths = ['/dashboard', '/login', '/', '/waiting-approval', '/approval-rejected', '/verify-phone'];
+      const isRootScreen = rootPaths.includes(currentPath);
+
+      if (isRootScreen) {
+        // User is on root/home screen: allow normal Android behavior to exit/minimize
+        CapApp.exitApp();
+      } else if (canGoBack || (window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0)) {
+        // Previous screen exists in navigation stack: pop back to it
+        navigate(-1);
+      } else {
+        // Fallback for cold start on sub-screen without history: navigate safely to home
+        navigate('/dashboard', { replace: true });
+      }
+    }).then((handle) => {
+      if (isMounted) {
+        removeListener = () => handle.remove();
+      } else {
+        handle.remove();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (removeListener) removeListener();
+    };
+  }, [navigate]);
+
+  return null;
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { syncWithSupabase, isAuthenticated, currentUser, currentPrivilegedUser } = useAppStore();
+  const { isAuthenticated, currentUser, currentPrivilegedUser, activeVipId } = useAppStore();
 
   useEffect(() => {
     // Initialize PWA / mobile notification service worker and channel
     mobileNotificationService.init();
 
-    if (isAuthenticated) {
-      const activeUser = currentUser?.username || currentPrivilegedUser?.username;
-      mobileNotificationService.registerDevice(activeUser).catch(console.warn);
+    const store = useAppStore.getState();
+    const activeUser = store.currentUser?.username || store.currentPrivilegedUser?.username;
+    const vipId = store.activeVipId || store.currentUser?.vipId || store.currentPrivilegedUser?.vipId;
+
+    let unsubscribe = () => {};
+
+    if (store.isAuthenticated && vipId) {
+      if (activeUser) {
+        mobileNotificationService.registerDevice(activeUser, vipId).catch(console.warn);
+      }
+      store.syncWithSupabase(vipId);
+      unsubscribe = realtimeService.subscribeAll(vipId);
+
+      // Catch up on any recent unread notifications missed while offline/closed/locked
+      if (activeUser) {
+        mobileNotificationService.checkRecentUnreadNotifications(activeUser, vipId).catch(console.warn);
+      }
     }
 
-    syncWithSupabase();
-    const unsubscribe = realtimeService.subscribeAll();
+    // Automatic re-synchronization when app becomes active, regains focus, or reconnects to the network
+    const handleReactivation = () => {
+      console.log('[VIP Sync] Device active/online: synchronizing latest state from Supabase...');
+      const latestStore = useAppStore.getState();
+      if (!latestStore.isAuthenticated) return;
+      const currentVipId = latestStore.activeVipId || latestStore.currentUser?.vipId || latestStore.currentPrivilegedUser?.vipId;
+      if (currentVipId) {
+        latestStore.syncWithSupabase(currentVipId);
+        const currentActive = latestStore.currentUser?.username || latestStore.currentPrivilegedUser?.username;
+        if (currentActive) {
+          mobileNotificationService.checkRecentUnreadNotifications(currentActive, currentVipId).catch(console.warn);
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleReactivation();
+      }
+    };
+
+    window.addEventListener('online', handleReactivation);
+    window.addEventListener('focus', handleReactivation);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    document.addEventListener('resume', handleReactivation);
+
     return () => {
       unsubscribe();
+      window.removeEventListener('online', handleReactivation);
+      window.removeEventListener('focus', handleReactivation);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('resume', handleReactivation);
     };
-  }, [syncWithSupabase, isAuthenticated, currentUser, currentPrivilegedUser]);
+  }, []);
 
   return (
     <BrowserRouter>
+      <AndroidBackButtonHandler />
       <div className="app-shell">
         <div className="status-bar-scrim" aria-hidden="true" />
         <AppHeader />
         <div className="app-container">
           <Routes>
-            {/* Public */}
+            {/* Public / Auth Gate Screens */}
             <Route path="/" element={<SplashScreen />} />
             <Route path="/login" element={<LoginScreen />} />
+            <Route path="/waiting-approval" element={<WaitingApprovalScreen />} />
+            <Route path="/approval-rejected" element={<ApprovalRejectedScreen />} />
+            <Route path="/verify-phone" element={<PhoneVerificationGateScreen />} />
 
             {/* Protected — Core Flow */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardScreen /></ProtectedRoute>} />

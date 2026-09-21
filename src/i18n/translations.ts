@@ -219,9 +219,9 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       total: 'Total',
     },
     dashboard: {
-      title: 'Executive Briefing',
-      executiveBriefing: 'Executive Briefing',
-      protocolLedger: 'Protocol & Ledger',
+      title: 'Event Dashboard',
+      executiveBriefing: 'Event Dashboard',
+      protocolLedger: 'Event Reviews',
       upcomingProtocols: 'Upcoming Protocols',
       activeEngagements: 'Active Engagements',
       highPriorityAlert: 'High Priority Alert',
@@ -239,7 +239,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       privilegedStaff: 'Privileged Staff',
     },
     events: {
-      title: 'Protocol Registry',
+      title: 'Invitation Dashboard',
       all: 'All Events',
       confirmed: 'Confirmed',
       pending: 'Pending Review',
@@ -1265,7 +1265,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       privilegedStaff: 'Personal Privilegiado',
     },
     events: {
-      title: 'Registro de Protocolo',
+      title: 'Panel de Invitaciones',
       all: 'Todos los Eventos',
       confirmed: 'Confirmado',
       pending: 'Pendiente',
@@ -1436,7 +1436,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       privilegedStaff: 'Personnel Privilégié',
     },
     events: {
-      title: 'Registre du Protocole',
+      title: 'Tableau de Bord des Invitations',
       all: 'Tous les Événements',
       confirmed: 'Confirmé',
       pending: 'En Attente',

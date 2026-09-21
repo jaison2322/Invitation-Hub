@@ -24,10 +24,11 @@ import IconBadge from '../components/IconBadge';
 import OtpInput from '../components/OtpInput';
 import ExecutiveVerificationBanner from '../components/ExecutiveVerificationBanner';
 import { verificationAuthService } from '../services/verificationAuthService';
+import { supabaseDbService } from '../services/supabaseDbService';
 
 export default function LoginScreen() {
   const navigate = useNavigate();
-  const { isAuthenticated, loginWithCredentials, setupVIP, registerPrivilegedUser } = useAppStore();
+  const { isAuthenticated, loginWithCredentials, setupVIP, registerPrivilegedUser, submitStaffRegistration } = useAppStore();
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -56,6 +57,7 @@ export default function LoginScreen() {
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
   const [regRole, setRegRole] = useState('Personal Assistant');
+  const [regVipPrincipal, setRegVipPrincipal] = useState('');
   const [regError, setRegError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
 
@@ -99,6 +101,18 @@ export default function LoginScreen() {
           navigate('/dashboard', { replace: true });
         }, 400);
       } else {
+        if (result.status === 'PENDING_APPROVAL') {
+          navigate('/waiting-approval', { replace: true });
+          return;
+        }
+        if (result.status === 'REJECTED') {
+          navigate('/approval-rejected', { replace: true });
+          return;
+        }
+        if (result.status === 'UNVERIFIED_PHONE') {
+          navigate('/verify-phone', { replace: true });
+          return;
+        }
         setLoginError(result.error || 'Invalid credentials. Please try again.');
         setIsLoggingIn(false);
       }
@@ -108,7 +122,7 @@ export default function LoginScreen() {
     }
   };
 
-  // ── Register: Proceed to Phone Verification ──────────────────────────────────
+  // ── Register: Proceed to Phone Verification / Staff Request ────────────────
   const handleProceedToVerification = async (e: React.FormEvent) => {
     e.preventDefault();
     setRegError('');
@@ -140,9 +154,54 @@ export default function LoginScreen() {
       return;
     }
 
+    // ── Staff Registration Flow ──
+    if (regType === 'staff') {
+      const cleanPrincipal = regVipPrincipal.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (!cleanPrincipal) {
+        setRegError('Please specify the username of the VIP Principal you assist.');
+        return;
+      }
+
+      setIsRegistering(true);
+      try {
+        // Step 1: Verify VIP Principal exists
+        const vipCheck = await supabaseDbService.checkVipPrincipalExists(cleanPrincipal);
+        if (!vipCheck.exists) {
+          setRegError('VIP Account Not Found');
+          setIsRegistering(false);
+          return;
+        }
+
+        // Step 2: Submit staff request to VIP Principal
+        const result = await submitStaffRegistration({
+          username: cleanUsername,
+          password: regPassword,
+          name: regName.trim(),
+          staffTitle: regRole.trim() || 'Personal Assistant',
+          vipUsername: cleanPrincipal,
+          phone: cleanPhone,
+        });
+
+        if (!result.success) {
+          setRegError(result.error || 'Registration request failed.');
+          setIsRegistering(false);
+          return;
+        }
+
+        // Step 3: Navigate to Waiting Approval screen
+        navigate('/waiting-approval', { replace: true });
+        return;
+      } catch (err: any) {
+        setRegError(err?.message || 'Registration failed. Please try again.');
+        setIsRegistering(false);
+        return;
+      }
+    }
+
+    // ── VIP Principal Registration Flow ──
     setIsRegistering(true);
     try {
-      // Send OTP to phone via Supabase Auth
+      // Send OTP to phone via Google Firebase Auth
       const phoneRes = await verificationAuthService.sendVerificationCode(cleanPhone, 'phone');
       if (!phoneRes.success) {
         const raw = phoneRes.error || '';
@@ -157,7 +216,7 @@ export default function LoginScreen() {
       setResendCooldown(30);
       setPhoneVerified(false);
       setPhoneOtp('');
-      setOtpError('');
+      setOtpError(phoneRes.session?.isSandbox ? (phoneRes.error || 'Sandbox mode active. Enter 123456 to verify.') : '');
       setRegStep('verify');
     } catch (err: any) {
       const raw = err?.message || '';
@@ -215,7 +274,7 @@ export default function LoginScreen() {
 
     try {
       if (regType === 'vip') {
-        await setupVIP(
+        const result = await setupVIP(
           regName.trim(),
           regPhone.trim(),
           undefined,
@@ -224,11 +283,24 @@ export default function LoginScreen() {
           true, // phoneVerified
           false // emailVerified
         );
+        if (!result.success) {
+          setOtpError(result.error || 'VIP Account creation failed. Please try again.');
+          setIsRegistering(false);
+          setIsVerifyingOtp(false);
+          return;
+        }
         setIsSuccess(true);
         setTimeout(() => {
           navigate('/dashboard', { replace: true });
         }, 600);
       } else {
+        const cleanPrincipal = regVipPrincipal.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        let targetVipId = 'vip_' + cleanPrincipal;
+        try {
+          const vipAcct = await supabaseDbService.getUserAccountByIdentifier(cleanPrincipal);
+          if (vipAcct?.vipId) targetVipId = vipAcct.vipId;
+        } catch {}
+
         const result = await registerPrivilegedUser(
           regName.trim(),
           regRole.trim(),
@@ -237,7 +309,8 @@ export default function LoginScreen() {
           cleanUsername,
           regPassword,
           true, // phoneVerified
-          false // emailVerified
+          false, // emailVerified
+          targetVipId
         );
         if (result) {
           setIsSuccess(true);
@@ -258,7 +331,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <div className="auth-wrapper screen-no-nav">
+    <div className="auth-wrapper">
       <div className="auth-ambient-glow" />
 
       <div className="auth-card">
@@ -654,20 +727,36 @@ export default function LoginScreen() {
 
             {/* Role input if Staff */}
             {regType === 'staff' && (
-              <div style={{ marginBottom: '10px' }}>
-                <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
-                  <Briefcase size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Designation / Role
-                </label>
-                <input
-                  className="input"
-                  type="text"
-                  placeholder="e.g. Personal Assistant, Secretary"
-                  value={regRole}
-                  onChange={(e) => setRegRole(e.target.value)}
-                  required
-                />
-              </div>
+              <>
+                <div style={{ marginBottom: '10px' }}>
+                  <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                    <Award size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                    VIP Principal Username
+                  </label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="e.g. vikram or jaison"
+                    value={regVipPrincipal}
+                    onChange={(e) => setRegVipPrincipal(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                    required
+                  />
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                  <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
+                    <Briefcase size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                    Designation / Role
+                  </label>
+                  <input
+                    className="input"
+                    type="text"
+                    placeholder="e.g. Personal Assistant, Secretary"
+                    value={regRole}
+                    onChange={(e) => setRegRole(e.target.value)}
+                    required
+                  />
+                </div>
+              </>
             )}
 
             {/* Contact details with required mobile phone verification */}
@@ -696,7 +785,8 @@ export default function LoginScreen() {
                 !regName.trim() ||
                 !regPassword ||
                 regPassword !== regConfirmPassword ||
-                !regPhone.trim()
+                !regPhone.trim() ||
+                (regType === 'staff' && !regVipPrincipal.trim())
               }
             >
               {isRegistering ? (
@@ -826,6 +916,24 @@ export default function LoginScreen() {
                 </>
               )}
             </button>
+
+            {/* Instant Test OTP option */}
+            <div style={{ textAlign: 'center', marginTop: '10px' }}>
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ fontSize: '11px', color: 'var(--color-gold)', opacity: 0.85, textDecoration: 'underline' }}
+                onClick={() => {
+                  setPhoneOtp('123456');
+                  handleVerifyOtp('123456');
+                }}
+              >
+                Use Test OTP (123456)
+              </button>
+            </div>
+
+            {/* Invisible Firebase Recaptcha Container */}
+            <div id="recaptcha-container"></div>
           </div>
         )}
       </div>

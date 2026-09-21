@@ -2174,17 +2174,25 @@ h4 { font-size: var(--text-lg); }
 }
 
 /* ─── Apple ID / Passkey Authentication Modal ──────────────────────────────── */
-.auth-wrapper {
+.auth-wrapper,
+.auth-wrapper.screen-no-nav {
+  width: 100%;
   min-height: 100vh;
   min-height: 100dvh;
+  height: auto !important;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: var(--space-6) var(--space-4);
+  justify-content: flex-start;
+  padding: calc(var(--mobile-status-bar, 20px) + 20px) var(--space-4) calc(var(--safe-area-bottom, 16px) + 120px);
   position: relative;
   background: #000000;
-  overflow-y: auto;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  box-sizing: border-box;
 }
 
 .auth-ambient-glow {
@@ -2205,6 +2213,7 @@ h4 { font-size: var(--text-lg); }
   z-index: 1;
   width: 100%;
   max-width: 390px;
+  margin: auto 0;
   background: rgba(28, 28, 30, 0.85);
   backdrop-filter: blur(25px) saturate(180%);
   -webkit-backdrop-filter: blur(25px) saturate(180%);
@@ -2212,6 +2221,14 @@ h4 { font-size: var(--text-lg); }
   border-radius: 20px;
   padding: 28px 24px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  flex-shrink: 0;
+}
+
+.auth-card input,
+.auth-card select,
+.auth-card button {
+  scroll-margin-top: 70px;
+  scroll-margin-bottom: 70px;
 }
 
 .auth-header {

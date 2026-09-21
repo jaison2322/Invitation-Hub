@@ -34,7 +34,12 @@ export default function AppHeader() {
   const unreadCount = getUnreadCount();
 
   // Hide header on splash or auth pages
-  const isAuthPage = location.pathname === '/' || location.pathname === '/login';
+  const isAuthPage =
+    location.pathname === '/' ||
+    location.pathname === '/login' ||
+    location.pathname === '/waiting-approval' ||
+    location.pathname === '/approval-rejected' ||
+    location.pathname === '/verify-phone';
   if (isAuthPage) return null;
 
   const navItems = [

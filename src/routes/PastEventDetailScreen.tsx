@@ -92,7 +92,7 @@ export default function PastEventDetailScreen() {
           </div>
           <h3 className="font-heading font-semibold text-white mb-2">Record Not Found</h3>
           <p className="text-xs text-secondary mb-5">
-            This past family function dossier does not exist or has been relocated in the protocol archive.
+            This past family function dossier does not exist or has been relocated.
           </p>
           <button className="btn btn-gold w-full flex items-center justify-center gap-2" onClick={() => navigate('/past-events')}>
             <ArrowLeft size={16} />
@@ -273,9 +273,6 @@ export default function PastEventDetailScreen() {
               <ArrowLeft size={18} strokeWidth={2.2} />
             </button>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-gold)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Protocol Archive
-              </div>
               <h2 className="font-heading font-semibold text-white tracking-tight" style={{ fontSize: '17px', margin: 0 }}>
                 Event Dossier
               </h2>

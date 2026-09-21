@@ -2,18 +2,56 @@ import { useState, useRef, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Upload, ArrowLeft, Sparkles, PenLine } from 'lucide-react';
 import { permissionService } from '../services/permissionService';
+import { setCachedScanImage } from '../utils/imagePreprocess';
 
 export default function ScanInvitationScreen() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleFile = (file: File) => {
+    setIsAnalyzing(false);
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      setPreview(dataUrl);
+      const rawDataUrl = e.target?.result as string;
+      if (!rawDataUrl) return;
+
+      // Downscale high-resolution camera images to avoid memory pressure and storage quotas
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1400;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            const optimized = canvas.toDataURL('image/jpeg', 0.88);
+            setPreview(optimized);
+            setCachedScanImage(optimized);
+            return;
+          }
+        }
+        setPreview(rawDataUrl);
+        setCachedScanImage(rawDataUrl);
+      };
+      img.onerror = () => {
+        setPreview(rawDataUrl);
+        setCachedScanImage(rawDataUrl);
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -24,10 +62,15 @@ export default function ScanInvitationScreen() {
   };
 
   const handleAnalyze = () => {
-    if (preview) {
+    if (isAnalyzing || !preview) return;
+    setIsAnalyzing(true);
+    try {
       sessionStorage.setItem('scan-image', preview);
-      navigate('/ai-processing');
+    } catch {
+      // Fallback handled via cachedScanImage
     }
+    setCachedScanImage(preview);
+    navigate('/ai-processing');
   };
 
   const handleOpenCamera = async () => {
@@ -198,7 +241,8 @@ export default function ScanInvitationScreen() {
                   padding: '10px',
                 }}
                 onClick={() => {
-                  sessionStorage.setItem('scan-image', 'demo');
+                  try { sessionStorage.setItem('scan-image', 'demo'); } catch {}
+                  setCachedScanImage('demo');
                   navigate('/ai-processing');
                 }}
               >

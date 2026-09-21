@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { ArrowLeft, AlertCircle, CheckCircle2, Sparkles } from 'lucide-react';
@@ -21,6 +21,17 @@ export default function ExtractedDetailsScreen() {
       ? `${analysis.relatedPerson.nickname} — ${getEventTypeLabel(fields.eventType || 'other')}`
       : (fields.title || '')
   );
+
+  useEffect(() => {
+    if (currentScanResult?.extractedFields) {
+      setFields({ ...currentScanResult.extractedFields });
+      setNickname(
+        currentScanResult.analysis.relatedPerson
+          ? `${currentScanResult.analysis.relatedPerson.nickname} — ${getEventTypeLabel(currentScanResult.extractedFields.eventType || 'other')}`
+          : (currentScanResult.extractedFields.title || '')
+      );
+    }
+  }, [currentScanResult]);
 
   const updateField = (key: string, value: string) => {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -82,6 +93,45 @@ export default function ExtractedDetailsScreen() {
           Amber highlighted fields were predicted with lower confidence. Tap to edit.
         </p>
       </div>
+
+      {/* ── Low Confidence Warning Banner ──────────────────────────────────── */}
+      {(() => {
+        const fieldKeys = ['eventType', 'date', 'time', 'venue', 'mainPerson'];
+        const lowConfCount = fieldKeys.filter(
+          (k) => (fields.confidence[k] || 0) < 0.5
+        ).length;
+        const emptyCount = fieldKeys.filter(
+          (k) => !fields[k as keyof typeof fields]
+        ).length;
+
+        if (lowConfCount >= 3 || emptyCount >= 3) {
+          return (
+            <div
+              className="mb-3"
+              style={{
+                padding: '10px 12px',
+                borderRadius: '12px',
+                background: 'rgba(255, 159, 10, 0.1)',
+                border: '1px solid rgba(255, 159, 10, 0.25)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '8px',
+              }}
+            >
+              <AlertCircle size={16} strokeWidth={2} style={{ color: '#ff9f0a', marginTop: '1px', flexShrink: 0 }} />
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#ff9f0a' }}>
+                  Several fields could not be extracted
+                </div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  The image may be blurry or in an unsupported format. Please review and fill in the missing details manually.
+                </div>
+              </div>
+            </div>
+          );
+        }
+        return null;
+      })()}
 
       {/* ── Matched Person Badge ───────────────────────────────────────────── */}
       {analysis.relatedPerson && (
@@ -209,7 +259,7 @@ export default function ExtractedDetailsScreen() {
           className="btn btn-gold w-full"
           onClick={handleContinue}
         >
-          Continue to Protocol Review
+          Continue to Review
         </button>
       </div>
     </div>

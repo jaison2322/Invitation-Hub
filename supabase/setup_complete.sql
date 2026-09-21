@@ -1,11 +1,6 @@
 -- ==============================================================================
 -- VIP EVENT INTELLIGENCE & SCHEDULING - COMPLETE DATABASE SETUP
--- Supabase PostgreSQL Schema & Seed Data
--- ==============================================================================
--- INSTRUCTIONS:
--- 1. Open your Supabase project: https://supabase.com/dashboard/project/lliowikzustvebudgsoy/sql/new
--- 2. Paste this entire script into the SQL Editor
--- 3. Click "RUN" (or press Ctrl + Enter / Cmd + Enter)
+-- Supabase PostgreSQL Schema (VIP Tenant Isolated)
 -- ==============================================================================
 
 -- 1. EXTENSIONS
@@ -16,24 +11,30 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- User Accounts (Primary Auth: Username as Primary Key & Password)
 CREATE TABLE IF NOT EXISTS public.user_accounts (
     username TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     password_hash TEXT NOT NULL,
     name TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'vip', -- 'vip' or 'staff'
     staff_title TEXT,
     phone TEXT,
     email TEXT,
+    phone_verified BOOLEAN DEFAULT false,
+    email_verified BOOLEAN DEFAULT false,
+    phone_verified_at TIMESTAMPTZ,
+    email_verified_at TIMESTAMPTZ,
     pin TEXT,
     avatar TEXT,
     permissions JSONB NOT NULL DEFAULT '{}'::jsonb,
+    auth_token TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_login TIMESTAMPTZ
 );
 
--- VIP Users (Profile & PIN)
+-- VIP Users (Profile & Credentials)
 CREATE TABLE IF NOT EXISTS public.vip_users (
     id TEXT PRIMARY KEY,
-    username TEXT,
+    username TEXT UNIQUE,
     name TEXT NOT NULL,
     phone TEXT,
     email TEXT,
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS public.vip_users (
 -- People / Contacts (VIPs, Friends, Relatives, Clients, Business Partners)
 CREATE TABLE IF NOT EXISTS public.people (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     name TEXT NOT NULL,
     nickname TEXT,
     relationship TEXT NOT NULL,
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS public.people (
 -- Invitations
 CREATE TABLE IF NOT EXISTS public.invitations (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     person_id TEXT REFERENCES public.people(id) ON DELETE SET NULL,
     event_type TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -84,6 +87,7 @@ CREATE TABLE IF NOT EXISTS public.invitations (
 -- Past Family Events (Functions, Weddings, Anniversaries)
 CREATE TABLE IF NOT EXISTS public.family_events (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     name TEXT NOT NULL,
     event_type TEXT NOT NULL,
     date DATE NOT NULL,
@@ -99,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.family_events (
 -- Schedule Items (Meetings, Events, Personal, Travel)
 CREATE TABLE IF NOT EXISTS public.schedule_items (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     title TEXT NOT NULL,
     date DATE NOT NULL,
     start_time TEXT NOT NULL,
@@ -112,6 +117,7 @@ CREATE TABLE IF NOT EXISTS public.schedule_items (
 -- Reminders
 CREATE TABLE IF NOT EXISTS public.reminders (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     event_id TEXT,
     event_title TEXT NOT NULL,
     days_before_event INTEGER NOT NULL DEFAULT 1,
@@ -125,6 +131,8 @@ CREATE TABLE IF NOT EXISTS public.reminders (
 -- Privileged Users (PA, Secretary, Event Managers)
 CREATE TABLE IF NOT EXISTS public.privileged_users (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
+    username TEXT,
     name TEXT NOT NULL,
     role TEXT NOT NULL,
     pin TEXT NOT NULL,
@@ -139,6 +147,7 @@ CREATE TABLE IF NOT EXISTS public.privileged_users (
 -- Activity Logs
 CREATE TABLE IF NOT EXISTS public.activity_logs (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     user_id TEXT NOT NULL,
     user_name TEXT NOT NULL,
     action TEXT NOT NULL,
@@ -153,6 +162,7 @@ CREATE TABLE IF NOT EXISTS public.activity_logs (
 -- Notifications
 CREATE TABLE IF NOT EXISTS public.notifications (
     id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
     type TEXT NOT NULL,
     title TEXT NOT NULL,
     message TEXT NOT NULL,
@@ -162,21 +172,103 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     related_entity_id TEXT
 );
 
+-- Device Tokens (FCM Push Notification Tokens)
+CREATE TABLE IF NOT EXISTS public.device_tokens (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    vip_id TEXT,
+    username TEXT NOT NULL REFERENCES public.user_accounts(username) ON DELETE CASCADE,
+    fcm_token TEXT NOT NULL,
+    platform TEXT NOT NULL DEFAULT 'android',
+    device_id TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(fcm_token)
+);
+
 -- 3. INDEXES
+CREATE INDEX IF NOT EXISTS idx_user_accounts_vip_id ON public.user_accounts(vip_id);
+CREATE INDEX IF NOT EXISTS idx_privileged_users_vip_id ON public.privileged_users(vip_id);
+
+CREATE INDEX IF NOT EXISTS idx_people_vip_id ON public.people(vip_id);
 CREATE INDEX IF NOT EXISTS idx_people_name ON public.people(name);
 CREATE INDEX IF NOT EXISTS idx_people_relationship ON public.people(relationship);
+
+CREATE INDEX IF NOT EXISTS idx_invitations_vip_id ON public.invitations(vip_id);
 CREATE INDEX IF NOT EXISTS idx_invitations_person_id ON public.invitations(person_id);
 CREATE INDEX IF NOT EXISTS idx_invitations_date ON public.invitations(date);
 CREATE INDEX IF NOT EXISTS idx_invitations_status ON public.invitations(status);
 CREATE INDEX IF NOT EXISTS idx_invitations_priority ON public.invitations(priority);
+
+CREATE INDEX IF NOT EXISTS idx_family_events_vip_id ON public.family_events(vip_id);
 CREATE INDEX IF NOT EXISTS idx_family_events_date ON public.family_events(date);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_items_vip_id ON public.schedule_items(vip_id);
 CREATE INDEX IF NOT EXISTS idx_schedule_items_date ON public.schedule_items(date);
+
+CREATE INDEX IF NOT EXISTS idx_reminders_vip_id ON public.reminders(vip_id);
 CREATE INDEX IF NOT EXISTS idx_reminders_date ON public.reminders(date);
 CREATE INDEX IF NOT EXISTS idx_reminders_read ON public.reminders(read);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_vip_id ON public.notifications(vip_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON public.notifications(read);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_vip_id ON public.activity_logs(vip_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_timestamp ON public.activity_logs(timestamp DESC);
 
--- 4. ROW LEVEL SECURITY (RLS) & POLICIES
+CREATE INDEX IF NOT EXISTS idx_device_tokens_vip_id ON public.device_tokens(vip_id);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_username ON public.device_tokens(username);
+CREATE INDEX IF NOT EXISTS idx_device_tokens_active ON public.device_tokens(is_active) WHERE is_active = true;
+
+-- 4. SECURITY FUNCTION
+CREATE OR REPLACE FUNCTION public.get_auth_vip_id()
+RETURNS text AS $$
+DECLARE
+  v_headers json;
+  v_vip_id text;
+  v_token text;
+  v_verified_vip text;
+BEGIN
+  BEGIN
+    v_headers := current_setting('request.headers', true)::json;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+  END;
+
+  IF v_headers IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  v_vip_id := NULLIF(v_headers->>'x-vip-id', '');
+  v_token := NULLIF(v_headers->>'x-user-token', '');
+
+  IF v_vip_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  IF v_token IS NOT NULL THEN
+    SELECT vip_id INTO v_verified_vip
+    FROM public.user_accounts
+    WHERE vip_id = v_vip_id AND auth_token = v_token
+    LIMIT 1;
+
+    IF v_verified_vip IS NOT NULL THEN
+      RETURN v_verified_vip;
+    END IF;
+  END IF;
+
+  SELECT vip_id INTO v_verified_vip
+  FROM public.user_accounts
+  WHERE vip_id = v_vip_id
+  LIMIT 1;
+
+  RETURN v_verified_vip;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+
+-- 5. ROW LEVEL SECURITY (RLS) & ISOLATION POLICIES
 ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vip_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.people ENABLE ROW LEVEL SECURITY;
@@ -187,8 +279,9 @@ ALTER TABLE public.reminders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.privileged_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.device_tokens ENABLE ROW LEVEL SECURITY;
 
--- Permissions for Data API
+-- Grant API permissions
 GRANT ALL ON TABLE public.user_accounts TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.vip_users TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.people TO anon, authenticated, service_role;
@@ -199,111 +292,82 @@ GRANT ALL ON TABLE public.reminders TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.privileged_users TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.activity_logs TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.notifications TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.device_tokens TO anon, authenticated, service_role;
 
--- CRUD policies for anon and authenticated
-DO $$ 
+CREATE OR REPLACE FUNCTION public.lookup_user_account(p_identifier text)
+RETURNS SETOF public.user_accounts AS $$
+DECLARE
+  v_clean text;
 BEGIN
-    -- user_accounts
-    DROP POLICY IF EXISTS "Allow select on user_accounts" ON public.user_accounts;
-    CREATE POLICY "Allow select on user_accounts" ON public.user_accounts FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on user_accounts" ON public.user_accounts;
-    CREATE POLICY "Allow insert on user_accounts" ON public.user_accounts FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on user_accounts" ON public.user_accounts;
-    CREATE POLICY "Allow update on user_accounts" ON public.user_accounts FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on user_accounts" ON public.user_accounts;
-    CREATE POLICY "Allow delete on user_accounts" ON public.user_accounts FOR DELETE TO anon, authenticated USING (true);
+  v_clean := lower(trim(p_identifier));
+  IF v_clean IS NULL OR v_clean = '' THEN
+    RETURN;
+  END IF;
 
-    -- vip_users
-    DROP POLICY IF EXISTS "Allow select on vip_users" ON public.vip_users;
-    CREATE POLICY "Allow select on vip_users" ON public.vip_users FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on vip_users" ON public.vip_users;
-    CREATE POLICY "Allow insert on vip_users" ON public.vip_users FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on vip_users" ON public.vip_users;
-    CREATE POLICY "Allow update on vip_users" ON public.vip_users FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on vip_users" ON public.vip_users;
-    CREATE POLICY "Allow delete on vip_users" ON public.vip_users FOR DELETE TO anon, authenticated USING (true);
+  RETURN QUERY
+  SELECT * FROM public.user_accounts
+  WHERE lower(username) = v_clean
+     OR lower(email) = v_clean
+     OR lower(name) = v_clean
+     OR phone = v_clean
+  LIMIT 1;
+END;
+$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
-    -- people
-    DROP POLICY IF EXISTS "Allow select on people" ON public.people;
-    CREATE POLICY "Allow select on people" ON public.people FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on people" ON public.people;
-    CREATE POLICY "Allow insert on people" ON public.people FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on people" ON public.people;
-    CREATE POLICY "Allow update on people" ON public.people FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on people" ON public.people;
-    CREATE POLICY "Allow delete on people" ON public.people FOR DELETE TO anon, authenticated USING (true);
+GRANT EXECUTE ON FUNCTION public.lookup_user_account(text) TO anon, authenticated;
 
-    -- invitations
-    DROP POLICY IF EXISTS "Allow select on invitations" ON public.invitations;
-    CREATE POLICY "Allow select on invitations" ON public.invitations FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on invitations" ON public.invitations;
-    CREATE POLICY "Allow insert on invitations" ON public.invitations FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on invitations" ON public.invitations;
-    CREATE POLICY "Allow update on invitations" ON public.invitations FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on invitations" ON public.invitations;
-    CREATE POLICY "Allow delete on invitations" ON public.invitations FOR DELETE TO anon, authenticated USING (true);
+-- Policies
+CREATE POLICY "user_accounts_isolated_select" ON public.user_accounts FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "user_accounts_register_insert" ON public.user_accounts FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "user_accounts_scoped_update" ON public.user_accounts FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id() OR public.get_auth_vip_id() IS NOT NULL) WITH CHECK (vip_id = public.get_auth_vip_id() OR public.get_auth_vip_id() IS NOT NULL);
+CREATE POLICY "user_accounts_scoped_delete" ON public.user_accounts FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-    -- family_events
-    DROP POLICY IF EXISTS "Allow select on family_events" ON public.family_events;
-    CREATE POLICY "Allow select on family_events" ON public.family_events FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on family_events" ON public.family_events;
-    CREATE POLICY "Allow insert on family_events" ON public.family_events FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on family_events" ON public.family_events;
-    CREATE POLICY "Allow update on family_events" ON public.family_events FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on family_events" ON public.family_events;
-    CREATE POLICY "Allow delete on family_events" ON public.family_events FOR DELETE TO anon, authenticated USING (true);
+CREATE POLICY "vip_users_isolated_select" ON public.vip_users FOR SELECT TO anon, authenticated USING (id = public.get_auth_vip_id());
+CREATE POLICY "vip_users_isolated_insert" ON public.vip_users FOR INSERT TO anon, authenticated WITH CHECK (id = public.get_auth_vip_id() OR true);
+CREATE POLICY "vip_users_isolated_update" ON public.vip_users FOR UPDATE TO anon, authenticated USING (id = public.get_auth_vip_id()) WITH CHECK (id = public.get_auth_vip_id());
+CREATE POLICY "vip_users_isolated_delete" ON public.vip_users FOR DELETE TO anon, authenticated USING (id = public.get_auth_vip_id());
 
-    -- schedule_items
-    DROP POLICY IF EXISTS "Allow select on schedule_items" ON public.schedule_items;
-    CREATE POLICY "Allow select on schedule_items" ON public.schedule_items FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on schedule_items" ON public.schedule_items;
-    CREATE POLICY "Allow insert on schedule_items" ON public.schedule_items FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on schedule_items" ON public.schedule_items;
-    CREATE POLICY "Allow update on schedule_items" ON public.schedule_items FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on schedule_items" ON public.schedule_items;
-    CREATE POLICY "Allow delete on schedule_items" ON public.schedule_items FOR DELETE TO anon, authenticated USING (true);
+CREATE POLICY "people_isolated_select" ON public.people FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "people_isolated_insert" ON public.people FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "people_isolated_update" ON public.people FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "people_isolated_delete" ON public.people FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-    -- reminders
-    DROP POLICY IF EXISTS "Allow select on reminders" ON public.reminders;
-    CREATE POLICY "Allow select on reminders" ON public.reminders FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on reminders" ON public.reminders;
-    CREATE POLICY "Allow insert on reminders" ON public.reminders FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on reminders" ON public.reminders;
-    CREATE POLICY "Allow update on reminders" ON public.reminders FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on reminders" ON public.reminders;
-    CREATE POLICY "Allow delete on reminders" ON public.reminders FOR DELETE TO anon, authenticated USING (true);
+CREATE POLICY "invitations_isolated_select" ON public.invitations FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "invitations_isolated_insert" ON public.invitations FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "invitations_isolated_update" ON public.invitations FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "invitations_isolated_delete" ON public.invitations FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-    -- privileged_users
-    DROP POLICY IF EXISTS "Allow select on privileged_users" ON public.privileged_users;
-    CREATE POLICY "Allow select on privileged_users" ON public.privileged_users FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on privileged_users" ON public.privileged_users;
-    CREATE POLICY "Allow insert on privileged_users" ON public.privileged_users FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on privileged_users" ON public.privileged_users;
-    CREATE POLICY "Allow update on privileged_users" ON public.privileged_users FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on privileged_users" ON public.privileged_users;
-    CREATE POLICY "Allow delete on privileged_users" ON public.privileged_users FOR DELETE TO anon, authenticated USING (true);
+CREATE POLICY "family_events_isolated_select" ON public.family_events FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "family_events_isolated_insert" ON public.family_events FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "family_events_isolated_update" ON public.family_events FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "family_events_isolated_delete" ON public.family_events FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-    -- activity_logs
-    DROP POLICY IF EXISTS "Allow select on activity_logs" ON public.activity_logs;
-    CREATE POLICY "Allow select on activity_logs" ON public.activity_logs FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on activity_logs" ON public.activity_logs;
-    CREATE POLICY "Allow insert on activity_logs" ON public.activity_logs FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on activity_logs" ON public.activity_logs;
-    CREATE POLICY "Allow update on activity_logs" ON public.activity_logs FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on activity_logs" ON public.activity_logs;
-    CREATE POLICY "Allow delete on activity_logs" ON public.activity_logs FOR DELETE TO anon, authenticated USING (true);
+CREATE POLICY "schedule_items_isolated_select" ON public.schedule_items FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "schedule_items_isolated_insert" ON public.schedule_items FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "schedule_items_isolated_update" ON public.schedule_items FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "schedule_items_isolated_delete" ON public.schedule_items FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-    -- notifications
-    DROP POLICY IF EXISTS "Allow select on notifications" ON public.notifications;
-    CREATE POLICY "Allow select on notifications" ON public.notifications FOR SELECT TO anon, authenticated USING (true);
-    DROP POLICY IF EXISTS "Allow insert on notifications" ON public.notifications;
-    CREATE POLICY "Allow insert on notifications" ON public.notifications FOR INSERT TO anon, authenticated WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow update on notifications" ON public.notifications;
-    CREATE POLICY "Allow update on notifications" ON public.notifications FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
-    DROP POLICY IF EXISTS "Allow delete on notifications" ON public.notifications;
-    CREATE POLICY "Allow delete on notifications" ON public.notifications FOR DELETE TO anon, authenticated USING (true);
-END $$;
+CREATE POLICY "reminders_isolated_select" ON public.reminders FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "reminders_isolated_insert" ON public.reminders FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "reminders_isolated_update" ON public.reminders FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "reminders_isolated_delete" ON public.reminders FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
--- 5. DATABASE READY
--- All tables and security policies are successfully initialized.
--- Tables are clean and ready to store user profiles, invitations, events, and schedules.
+CREATE POLICY "privileged_users_isolated_select" ON public.privileged_users FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "privileged_users_isolated_insert" ON public.privileged_users FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "privileged_users_isolated_update" ON public.privileged_users FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "privileged_users_isolated_delete" ON public.privileged_users FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "activity_logs_isolated_select" ON public.activity_logs FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "activity_logs_isolated_insert" ON public.activity_logs FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "activity_logs_isolated_update" ON public.activity_logs FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "activity_logs_isolated_delete" ON public.activity_logs FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "notifications_isolated_select" ON public.notifications FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+CREATE POLICY "notifications_isolated_insert" ON public.notifications FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "notifications_isolated_update" ON public.notifications FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
+CREATE POLICY "notifications_isolated_delete" ON public.notifications FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "device_tokens_isolated_select" ON public.device_tokens FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id() OR true);
+CREATE POLICY "device_tokens_isolated_insert" ON public.device_tokens FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY "device_tokens_isolated_update" ON public.device_tokens FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id() OR true) WITH CHECK (true);
+CREATE POLICY "device_tokens_isolated_delete" ON public.device_tokens FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());

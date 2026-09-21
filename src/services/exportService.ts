@@ -203,7 +203,7 @@ export async function exportToExcel({
     if (privilegedUsers.length > 0) {
       const staffRows = privilegedUsers.map((staff) => {
         const activePermissions = Object.entries(staff.permissions || {})
-          .filter(([_, allowed]) => allowed)
+          .filter(([key, allowed]) => key.startsWith('can') && allowed === true)
           .map(([key]) => key.replace(/^can/, ''))
           .join(', ');
 

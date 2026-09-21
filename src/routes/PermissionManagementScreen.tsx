@@ -7,6 +7,10 @@ import type { PermissionKey } from '../types';
 
 const PERMISSION_LABELS: Record<PermissionKey, { label: string; desc: string }> = {
   canAddInvitations: { label: 'Add Invitations', desc: 'Can scan and add new invitations' },
+  canConfirmIgnoreInvitations: {
+    label: 'Confirm / Decline Invitations',
+    desc: 'Can directly confirm attendance or decline invitations. When disabled, invitations are saved as Pending.',
+  },
   canEditEvents: { label: 'Edit Events', desc: 'Can modify event details and past events' },
   canChangePriority: { label: 'Change Priority', desc: 'Can change event priority levels' },
   canManageSchedule: { label: 'Manage Schedule', desc: 'Can add and modify schedule items' },
@@ -17,7 +21,7 @@ const PERMISSION_LABELS: Record<PermissionKey, { label: string; desc: string }> 
 export default function PermissionManagementScreen() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { privilegedUsers, isVIP, updatePrivilegedUser, addActivityLog } = useAppStore();
+  const { privilegedUsers, isVIP, updatePrivilegedUser, addActivityLog, currentUser, activeVipId } = useAppStore();
 
   useEffect(() => {
     if (!isVIP) {
@@ -37,9 +41,11 @@ export default function PermissionManagementScreen() {
   const togglePermission = (key: PermissionKey) => {
     const newPerms = { ...user.permissions, [key]: !user.permissions[key] };
     updatePrivilegedUser(user.id, { permissions: newPerms });
+    const actorId = activeVipId || currentUser?.vipId || (currentUser?.username ? `vip_${currentUser.username}` : 'vip_jaison');
+    const actorName = currentUser?.name || 'VIP Principal';
     addActivityLog({
-      userId: 'vip-main',
-      userName: 'VIP',
+      userId: actorId,
+      userName: actorName,
       action: `${!user.permissions[key] ? 'Granted' : 'Revoked'} permission "${PERMISSION_LABELS[key].label}"`,
       entityType: 'permission',
       entityId: user.id,

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231396570699",
+    "project_id": "vipapp-schedule",
+    "storage_bucket": "vipapp-schedule.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231396570699:android:00a02c25386b400923bfce",
+        "android_client_info": {
+          "package_name": "com.vip.intelligence"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbh8i96MYkjztsWPRYLF7xcDBLycrEu0I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

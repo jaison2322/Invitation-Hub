@@ -11,6 +11,7 @@ const TYPE_ICONS: Record<string, ReactNode> = {
   reminder: <Bell size={16} />,
   conflict_warning: <AlertTriangle size={16} />,
   system: <Bell size={16} />,
+  staff_request: <UserCheck size={16} />,
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -19,6 +20,7 @@ const TYPE_COLORS: Record<string, string> = {
   reminder: 'var(--color-info)',
   conflict_warning: 'var(--color-danger)',
   system: 'var(--color-text-muted)',
+  staff_request: 'var(--color-gold)',
 };
 
 export default function NotificationsScreen() {
@@ -29,6 +31,7 @@ export default function NotificationsScreen() {
     markAllNotificationsRead,
     deleteNotification,
     clearNotifications,
+    respondToStaffRequest,
   } = useAppStore();
 
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
@@ -175,6 +178,38 @@ export default function NotificationsScreen() {
                   <p className="text-sm text-secondary" style={{ marginTop: '2px', lineHeight: '1.4' }}>
                     {notif.message}
                   </p>
+
+                  {notif.type === 'staff_request' && !notif.read && (
+                    <div className="flex items-center gap-2 mt-3 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        style={{ fontSize: '11px', padding: '4px 10px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (notif.relatedEntityId) {
+                            respondToStaffRequest(notif.relatedEntityId, true);
+                          }
+                        }}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-secondary"
+                        style={{ fontSize: '11px', padding: '4px 10px', color: 'var(--color-danger)' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (notif.relatedEntityId) {
+                            respondToStaffRequest(notif.relatedEntityId, false);
+                          }
+                        }}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+
                   <div className="text-xs text-muted mt-1">{formatTimeAgo(notif.timestamp)}</div>
                 </div>
 

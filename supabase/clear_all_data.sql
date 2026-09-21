@@ -8,17 +8,20 @@
 -- 3. Click "RUN" (or press Ctrl + Enter / Cmd + Enter)
 -- ==============================================================================
 
--- Delete all records from every table in dependency order
-DELETE FROM public.reminders;
-DELETE FROM public.invitations;
-DELETE FROM public.family_events;
-DELETE FROM public.schedule_items;
-DELETE FROM public.activity_logs;
-DELETE FROM public.notifications;
-DELETE FROM public.people;
-DELETE FROM public.privileged_users;
-DELETE FROM public.vip_users;
-DELETE FROM public.user_accounts;
+-- Option 1 (Recommended): Fast TRUNCATE all public tables and reset sequences
+TRUNCATE TABLE 
+    public.device_tokens,
+    public.notifications,
+    public.activity_logs,
+    public.reminders,
+    public.schedule_items,
+    public.family_events,
+    public.invitations,
+    public.people,
+    public.privileged_users,
+    public.vip_users,
+    public.user_accounts
+RESTART IDENTITY CASCADE;
 
 -- Verification: Check that all tables are now 0 rows
 SELECT 
@@ -31,4 +34,5 @@ SELECT
     (SELECT COUNT(*) FROM public.schedule_items) AS schedule_items_count,
     (SELECT COUNT(*) FROM public.reminders) AS reminders_count,
     (SELECT COUNT(*) FROM public.activity_logs) AS activity_logs_count,
-    (SELECT COUNT(*) FROM public.notifications) AS notifications_count;
+    (SELECT COUNT(*) FROM public.notifications) AS notifications_count,
+    (SELECT COUNT(*) FROM public.device_tokens) AS device_tokens_count;

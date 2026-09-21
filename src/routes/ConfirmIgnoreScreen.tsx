@@ -10,7 +10,7 @@ import {
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
-import type { ExtractedFields } from '../types';
+import type { ExtractedFields, InvitationStatus } from '../types';
 
 export default function ConfirmIgnoreScreen() {
   const navigate = useNavigate();
@@ -28,7 +28,11 @@ export default function ConfirmIgnoreScreen() {
     : analysis.extractedFields;
   const nickname = sessionStorage.getItem('invitation-nickname') || '';
 
-  const handleDecision = (status: 'confirmed' | 'ignored') => {
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
+
+  const handleDecision = (status: 'confirmed' | 'ignored' | 'pending') => {
+    const effectiveStatus: InvitationStatus = canConfirmIgnore ? status : 'pending';
+
     const created = addInvitation({
       personId: analysis.relatedPerson?.id,
       eventType: fields.eventType || 'other',
@@ -44,7 +48,7 @@ export default function ConfirmIgnoreScreen() {
       priority: analysis.suggestedPriority,
       aiSuggestedPriority: analysis.suggestedPriority,
       aiReason: analysis.priorityReason,
-      status,
+      status: effectiveStatus,
       ocrText: analysis.ocrText,
       createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
     });
@@ -60,7 +64,7 @@ export default function ConfirmIgnoreScreen() {
     addActivityLog({
       userId,
       userName,
-      action: `Scanned & recorded invitation "${created.title}" as ${status}`,
+      action: `Scanned & recorded invitation "${created.title}" as ${effectiveStatus}`,
       entityType: 'invitation',
       entityId: created.id,
       entityName: created.title,
@@ -79,8 +83,12 @@ export default function ConfirmIgnoreScreen() {
     } else {
       addNotification({
         type: 'new_invitation',
-        title: `New Invitation Scanned: ${created.title}`,
-        message: `Scanned and recorded as ${status.toUpperCase()} for ${created.date}.`,
+        title: effectiveStatus === 'pending'
+          ? `New Invitation Awaiting Review: ${created.title}`
+          : `New Invitation Scanned: ${created.title}`,
+        message: effectiveStatus === 'pending'
+          ? `Scanned by ${userName} and queued for VIP Principal decision.`
+          : `Scanned and recorded as ${effectiveStatus.toUpperCase()} for ${created.date}.`,
         read: false,
         relatedEntityId: created.id,
         actionUrl: `/event/${created.id}`,
@@ -248,22 +256,55 @@ export default function ConfirmIgnoreScreen() {
       </div>
 
       {/* ── Decision Bar ────────────────────────────────────────────────────── */}
-      <div className="decision-bar">
-        <button
-          type="button"
-          className="btn btn-confirm flex-1 font-heading"
-          onClick={() => handleDecision('confirmed')}
-        >
-          Confirm Attendance
-        </button>
-        <button
-          type="button"
-          className="btn btn-ignore flex-1 font-heading"
-          onClick={() => handleDecision('ignored')}
-        >
-          Decline
-        </button>
-      </div>
+      {canConfirmIgnore ? (
+        <div className="decision-bar" style={{ flexDirection: 'column', gap: '8px' }}>
+          <div className="flex gap-2 w-full">
+            <button
+              type="button"
+              className="btn btn-confirm flex-1 font-heading"
+              onClick={() => handleDecision('confirmed')}
+            >
+              Confirm Attendance
+            </button>
+            <button
+              type="button"
+              className="btn btn-ignore flex-1 font-heading"
+              onClick={() => handleDecision('ignored')}
+            >
+              Decline
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost w-full font-heading text-xs"
+            style={{ padding: '8px', color: 'var(--color-text-secondary)', border: '1px solid var(--glass-border)' }}
+            onClick={() => handleDecision('pending')}
+          >
+            Save to Pending Queue
+          </button>
+        </div>
+      ) : (
+        <div className="decision-bar" style={{ flexDirection: 'column', gap: '10px' }}>
+          <div
+            style={{
+              fontSize: '11.5px',
+              color: 'var(--color-text-secondary)',
+              textAlign: 'center',
+              lineHeight: 1.35,
+            }}
+          >
+            <span style={{ color: 'var(--color-pending)', fontWeight: 600 }}>Authorization Notice:</span> RSVP confirmation is reserved for VIP Principal. This event will be queued as Pending.
+          </div>
+          <button
+            type="button"
+            className="btn btn-gold w-full font-heading"
+            style={{ padding: '13px', fontSize: '15px' }}
+            onClick={() => handleDecision('pending')}
+          >
+            Submit for VIP Review (Pending)
+          </button>
+        </div>
+      )}
     </div>
   );
 }

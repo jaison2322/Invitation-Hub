@@ -1,10 +1,12 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { runAIAnalysis, DEMO_OCR_TEXTS } from '../services/aiService';
-import { preprocessImageForOCR } from '../utils/imagePreprocess';
+import { getCachedScanImage } from '../utils/imagePreprocess';
+import { extractInvitationFromImage, type VisionOcrResult } from '../services/visionOcrService';
 import {
   ScanText, Users, CalendarSearch, Sparkles, Loader2, Check,
+  AlertTriangle, Camera, PenLine, RotateCcw,
 } from 'lucide-react';
 
 interface Step {
@@ -23,9 +25,20 @@ export default function AIProcessingScreen() {
     { label: 'Detecting schedule & calendar conflicts...', icon: <CalendarSearch size={15} strokeWidth={1.8} />, status: 'pending' },
     { label: 'Formulating attendance recommendation...', icon: <Sparkles size={15} strokeWidth={1.8} />, status: 'pending' },
   ]);
+  const [errorState, setErrorState] = useState<string | null>(null);
+  const processingRef = useRef(false);
 
   useEffect(() => {
-    const imageData = sessionStorage.getItem('scan-image');
+    if (processingRef.current) return;
+    processingRef.current = true;
+
+    let imageData: string | null = null;
+    try {
+      imageData = sessionStorage.getItem('scan-image');
+    } catch {}
+    if (!imageData) {
+      imageData = getCachedScanImage();
+    }
     if (!imageData) {
       navigate('/scan', { replace: true });
       return;
@@ -37,40 +50,54 @@ export default function AIProcessingScreen() {
   }, []);
 
   const processInvitation = async (isDemo: boolean, imageDataUrl: string) => {
+    console.log('[Scanner] Image selected');
+    console.log('[Scanner] Image validated');
+    console.log('[Scanner] Processing started');
+
     // Step 1: Reading invitation
     updateStep(0, 'active');
-    await delay(600);
 
     let ocrText = '';
+    let extractedFields: VisionOcrResult['fields'] | null = null;
+    let ocrConfidence = 0.85;
+    let visionMethod: VisionOcrResult['method'] = 'demo';
+
     if (isDemo) {
+      // Demo mode — use sample text
+      await delay(300);
       ocrText = DEMO_OCR_TEXTS[Math.floor(Math.random() * DEMO_OCR_TEXTS.length)];
+      ocrConfidence = 0.95;
+      console.log('[OCR] Demo mode');
+      console.log(`[OCR] Text length: ${ocrText.length}`);
     } else {
+      // Real image — use Gemini Vision API (or Tesseract fallback)
       try {
-        // Preprocess image to enhance contrast, convert to grayscale, and normalize size
-        const processedUrl = await preprocessImageForOCR(imageDataUrl);
+        const visionResult = await extractInvitationFromImage(imageDataUrl, { timeout: 12000 });
+        visionMethod = visionResult.method;
 
-        const { createWorker } = await import('tesseract.js');
-        const worker = await createWorker('eng');
-        const { data } = await worker.recognize(processedUrl);
-        ocrText = data.text?.trim() || '';
-        await worker.terminate();
-
-        // If OCR returned empty or very short text, try raw image as fallback
-        if (ocrText.length < 15 && processedUrl !== imageDataUrl) {
-          const rawWorker = await createWorker('eng');
-          const rawData = await rawWorker.recognize(imageDataUrl);
-          if (rawData.data?.text && rawData.data.text.trim().length > ocrText.length) {
-            ocrText = rawData.data.text.trim();
-          }
-          await rawWorker.terminate();
+        if (visionResult.success) {
+          extractedFields = visionResult.fields;
+          ocrText = visionResult.rawText;
+          ocrConfidence = visionResult.confidence;
+          console.log(`[VisionOCR] Method: ${visionResult.method}`);
+          console.log(`[VisionOCR] Confidence: ${ocrConfidence}`);
+        } else {
+          // Both Vision API and Tesseract failed
+          console.warn('[VisionOCR] All extraction methods failed:', visionResult.error);
+          updateStep(0, 'completed');
+          setErrorState(
+            visionResult.error ||
+            'Could not read the invitation image. The image may be too blurry, dark, or in an unsupported format.'
+          );
+          return;
         }
-      } catch (err) {
-        console.warn('Tesseract OCR error:', err);
-      }
-
-      // If still empty or failed, use a demo text fallback so the user is never stuck
-      if (!ocrText || ocrText.length < 10) {
-        ocrText = DEMO_OCR_TEXTS[0];
+      } catch (err: any) {
+        console.warn('[VisionOCR] Unexpected error:', err);
+        updateStep(0, 'completed');
+        setErrorState(
+          'An unexpected error occurred while analyzing the image. Please try again or enter details manually.'
+        );
+        return;
       }
     }
 
@@ -78,35 +105,54 @@ export default function AIProcessingScreen() {
 
     // Step 2: Extracting details
     updateStep(1, 'active');
-    await delay(500);
+    await delay(200);
     updateStep(1, 'completed');
 
     // Step 3: Checking relationships
     updateStep(2, 'active');
-    await delay(600);
+    await delay(200);
     updateStep(2, 'completed');
 
     // Step 4: Analyzing schedule
     updateStep(3, 'active');
-    await delay(500);
+    await delay(200);
     updateStep(3, 'completed');
 
     // Step 5: Generating recommendation
     updateStep(4, 'active');
-    await delay(600);
+    await delay(200);
 
-    const analysis = runAIAnalysis(ocrText, people, familyEvents, schedule, invitations);
+    const rawOcr = {
+      rawText: ocrText,
+      confidence: ocrConfidence,
+    };
+
+    // If Vision API returned structured fields, use those directly.
+    // Otherwise, fall back to regex parsing of OCR text.
+    const analysis = runAIAnalysis(
+      ocrText,
+      people,
+      familyEvents,
+      schedule,
+      invitations,
+      rawOcr,
+      visionMethod !== 'demo' && visionMethod !== 'tesseract_fallback'
+        ? extractedFields ?? undefined
+        : undefined
+    );
 
     updateStep(4, 'completed');
 
+    console.log('[Form] Auto-fill started');
     setScanResult({
       imageDataUrl: isDemo ? '' : imageDataUrl,
       ocrText,
       extractedFields: analysis.extractedFields,
       analysis,
     });
+    console.log('[Form] Auto-fill completed');
 
-    await delay(400);
+    await delay(300);
     navigate('/extracted-details', { replace: true });
   };
 
@@ -118,6 +164,96 @@ export default function AIProcessingScreen() {
 
   const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  // ── Error State UI ─────────────────────────────────────────────────────────
+  if (errorState) {
+    return (
+      <div className="screen-no-nav flex flex-col items-center justify-center" style={{ minHeight: '100vh' }}>
+        <div style={{ width: '100%', maxWidth: '340px', padding: '0 16px' }}>
+          {/* Error Icon */}
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '20px',
+              background: 'rgba(28, 28, 30, 0.9)',
+              border: '1px solid rgba(255, 159, 10, 0.4)',
+              boxShadow: '0 0 24px rgba(255, 159, 10, 0.25)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 20px',
+              color: '#ff9f0a',
+            }}
+          >
+            <AlertTriangle size={28} strokeWidth={1.8} />
+          </div>
+
+          <h2
+            className="font-heading font-semibold text-white text-center"
+            style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '6px' }}
+          >
+            Recognition Issue
+          </h2>
+          <p
+            className="text-center"
+            style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '28px', lineHeight: '1.5' }}
+          >
+            {errorState}
+          </p>
+
+          <div className="flex flex-col gap-2.5">
+            <button
+              type="button"
+              className="btn btn-gold w-full"
+              onClick={() => {
+                setErrorState(null);
+                processingRef.current = false;
+                navigate('/scan', { replace: true });
+              }}
+            >
+              <Camera size={16} strokeWidth={2} />
+              <span>Try Different Photo</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-ignore w-full"
+              onClick={() => navigate('/add-invitation', { replace: true })}
+            >
+              <PenLine size={16} strokeWidth={2} />
+              <span>Enter Details Manually</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-ghost flex items-center justify-center gap-2"
+              style={{ fontSize: '13px', color: 'var(--color-accent)', marginTop: '4px' }}
+              onClick={() => {
+                setErrorState(null);
+                processingRef.current = false;
+
+                // Re-trigger processing
+                let imageData: string | null = null;
+                try { imageData = sessionStorage.getItem('scan-image'); } catch {}
+                if (!imageData) imageData = getCachedScanImage();
+                if (imageData) {
+                  setSteps((prev) => prev.map((s) => ({ ...s, status: 'pending' as const })));
+                  processInvitation(imageData === 'demo', imageData);
+                } else {
+                  navigate('/scan', { replace: true });
+                }
+              }}
+            >
+              <RotateCcw size={14} strokeWidth={2} />
+              <span>Retry Analysis</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Normal Processing UI ───────────────────────────────────────────────────
   return (
     <div className="screen-no-nav flex flex-col items-center justify-center" style={{ minHeight: '100vh' }}>
       <div style={{ width: '100%', maxWidth: '340px', padding: '0 16px' }}>

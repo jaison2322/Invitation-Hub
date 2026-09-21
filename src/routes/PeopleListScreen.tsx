@@ -173,7 +173,7 @@ export default function PeopleListScreen() {
           )}
         </div>
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
-          {people.length} VIP relationships in ledger
+          {people.length} contact in your relations
         </p>
 
         {/* ── Apple Search Field ──────────────────────────────────────────────── */}

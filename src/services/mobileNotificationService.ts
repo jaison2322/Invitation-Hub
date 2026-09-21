@@ -1,5 +1,6 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import type { Notification } from '../types';
+import { supabaseDbService } from './supabaseDbService';
 
 export interface PermissionResult {
   granted: boolean;
@@ -22,6 +23,12 @@ export interface NativeAppPermissionsInterface {
   cancelNotification(options: { id?: number }): Promise<{ cancelled: boolean }>;
   getDevicePushToken(): Promise<{ token: string; platform: string }>;
   openAppSettings(): Promise<{ opened: boolean }>;
+  configureBackgroundSync(options: {
+    username: string;
+    token: string;
+    supabaseUrl?: string;
+    supabaseKey?: string;
+  }): Promise<{ configured: boolean }>;
 }
 
 export const NativeAppPermissions = registerPlugin<NativeAppPermissionsInterface>('AppPermissions');
@@ -183,7 +190,7 @@ export const mobileNotificationService = {
   /**
    * Registers current device / browser and associates it with the active logged-in user.
    */
-  async registerDevice(username?: string): Promise<DeviceRegistration | null> {
+  async registerDevice(username?: string, vipId?: string): Promise<DeviceRegistration | null> {
     try {
       let token = '';
       const platform = this.getPlatform();
@@ -195,13 +202,18 @@ export const mobileNotificationService = {
         // Web Push or persistent client identifier
         let localToken = localStorage.getItem('vip_web_push_token');
         if (!localToken) {
-          localToken = 'web-' + crypto.randomUUID();
+          const randomId =
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+              ? crypto.randomUUID()
+              : Math.random().toString(36).substring(2, 11) + '-' + Date.now().toString(36);
+          localToken = 'web-' + randomId;
           localStorage.setItem('vip_web_push_token', localToken);
         }
         token = localToken;
       }
 
       const activeUser = username || null;
+      const targetVipId = vipId || undefined;
       const registration: DeviceRegistration = {
         token,
         platform,
@@ -211,6 +223,28 @@ export const mobileNotificationService = {
       };
 
       localStorage.setItem(STORAGE_KEY_REGISTRATION, JSON.stringify(registration));
+
+      // Configure native background sync engine (AlarmManager & JobScheduler) — now a 30min fallback
+      if (this.isNative()) {
+        NativeAppPermissions.configureBackgroundSync({
+          username: activeUser || '',
+          token,
+          supabaseUrl: 'https://lliowikzustvebudgsoy.supabase.co',
+          supabaseKey: 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH',
+        }).catch((e) => console.warn('[VIP Notification] configureBackgroundSync error:', e));
+      }
+
+      // Sync device registration & push token to user account in Supabase
+      if (activeUser) {
+        supabaseDbService.saveDevicePushToken(activeUser, token, platform, registration, targetVipId).catch(console.warn);
+
+        // Also save FCM token to the device_tokens table scoped to this VIP account
+        supabaseDbService.saveDeviceTokenFCM(activeUser, token, platform, undefined, targetVipId).catch((e) =>
+          console.warn('[VIP Notification] saveDeviceTokenFCM error:', e)
+        );
+      }
+
+      console.log('[VIP Notification] Device registered with FCM token for VIP:', targetVipId, token.substring(0, 20) + '...');
       return registration;
     } catch (err) {
       console.warn('[VIP Notification] Device registration warning:', err);
@@ -237,6 +271,13 @@ export const mobileNotificationService = {
     try {
       const reg = this.getDeviceRegistration();
       if (reg) {
+        // Deactivate FCM token in cloud so this device stops receiving pushes for this user
+        if (reg.token) {
+          supabaseDbService.deactivateDeviceToken(reg.token).catch((e) =>
+            console.warn('[VIP Notification] deactivateDeviceToken error:', e)
+          );
+        }
+
         reg.username = null;
         reg.lastActive = new Date().toISOString();
         localStorage.setItem(STORAGE_KEY_REGISTRATION, JSON.stringify(reg));
@@ -344,6 +385,47 @@ export const mobileNotificationService = {
   },
 
   /**
+   * Registers a notification ID as already delivered locally so the actor device does not alert itself.
+   */
+  markDeliveredLocally(id: string): void {
+    pruneDeliveredCache();
+    deliveredNotifIds.set(id, Date.now());
+  },
+
+  /**
+   * Catches up and delivers any recent unread notifications missed while the device was sleeping, locked, or backgrounded.
+   */
+  async checkRecentUnreadNotifications(myUsername?: string, vipId?: string): Promise<void> {
+    try {
+      const recentNotifs = await supabaseDbService.getNotifications(vipId);
+      const cleanMyUser = (myUsername || '').toLowerCase();
+      const now = Date.now();
+      const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
+
+      for (const notif of recentNotifs) {
+        if (notif.read) continue;
+        const notifTime = new Date(notif.timestamp).getTime();
+        if (now - notifTime > FIFTEEN_MINUTES_MS) continue;
+
+        // Check if sender is current user
+        const urlParams = notif.actionUrl ? new URLSearchParams(notif.actionUrl.split('?')[1] || '') : null;
+        const sender = urlParams?.get('sender')?.toLowerCase();
+        if (cleanMyUser && sender && sender === cleanMyUser) {
+          continue; // Do not alert the sender on their own device
+        }
+
+        pruneDeliveredCache();
+        if (!deliveredNotifIds.has(notif.id)) {
+          console.log('=== [DEVICE RECEIVED?] === Catching up missed background notification:', notif.title);
+          await this.deliverNotification(notif);
+        }
+      }
+    } catch (err) {
+      console.warn('checkRecentUnreadNotifications warning:', err);
+    }
+  },
+
+  /**
    * Sends a test notification to verify end-to-end device delivery.
    */
   async sendTestNotification(): Promise<boolean> {
@@ -359,3 +441,4 @@ export const mobileNotificationService = {
     return await this.deliverNotification(testNotif);
   },
 };
+

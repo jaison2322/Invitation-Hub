@@ -16,9 +16,12 @@ import type {
   UserAccount,
   LanguageCode,
 } from '../types';
+import { sanitizePermissions } from '../types';
 import { generateId } from '../utils/id';
 import { hashPassword } from '../utils/crypto';
 import { supabaseDbService } from '../services/supabaseDbService';
+import { setSupabaseAuthSession, clearSupabaseAuthSession } from '../utils/supabase';
+import { realtimeService } from '../services/realtimeService';
 import { seedPrivilegedUsers } from '../data/seedData';
 import { daysUntil } from '../utils/formatters';
 import { mobileNotificationService } from '../services/mobileNotificationService';
@@ -29,7 +32,7 @@ interface AppState {
   // Sync
   isSyncing: boolean;
   isRealtimeActive: boolean;
-  syncWithSupabase: () => Promise<void>;
+  syncWithSupabase: (explicitVipId?: string) => Promise<void>;
 
   // Auth
   isAuthenticated: boolean;
@@ -37,6 +40,8 @@ interface AppState {
   isVIP: boolean;
   currentPrivilegedUser: PrivilegedUser | null;
   hasSetup: boolean;
+  activeVipId: string | null;
+  authToken: string | null;
 
   // Data
   people: Person[];
@@ -58,11 +63,32 @@ interface AppState {
   setLanguage: (language: LanguageCode) => void;
 
   // Auth actions
-  setupVIP: (name: string, phone?: string, email?: string, username?: string, password?: string, phoneVerified?: boolean, emailVerified?: boolean) => Promise<void>;
-  registerPrivilegedUser: (name: string, role: string, phone?: string, email?: string, username?: string, password?: string, phoneVerified?: boolean, emailVerified?: boolean) => Promise<PrivilegedUser | null>;
+  setupVIP: (name: string, phone?: string, email?: string, username?: string, password?: string, phoneVerified?: boolean, emailVerified?: boolean) => Promise<{ success: boolean; error?: string }>;
+  registerPrivilegedUser: (name: string, role: string, phone?: string, email?: string, username?: string, password?: string, phoneVerified?: boolean, emailVerified?: boolean, vipId?: string) => Promise<PrivilegedUser | null>;
   updateProfile: (name: string, phone?: string, email?: string) => void;
   changePassword: (oldPassword: string, newPassword: string) => Promise<{ success: boolean; message: string }>;
-  loginWithCredentials: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  loginWithCredentials: (username: string, password: string) => Promise<{
+    success: boolean;
+    error?: string;
+    status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'UNVERIFIED_PHONE';
+    staffUser?: PrivilegedUser;
+  }>;
+  submitStaffRegistration: (params: {
+    username: string;
+    password: string;
+    name: string;
+    staffTitle: string;
+    vipUsername: string;
+    phone?: string;
+    email?: string;
+  }) => Promise<{ success: boolean; error?: string; staffUser?: PrivilegedUser }>;
+  checkStaffStatus: (username?: string) => Promise<{
+    status: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
+    phoneVerified: boolean;
+  }>;
+  reassignStaffVip: (newVipUsername: string) => Promise<{ success: boolean; error?: string }>;
+  verifyStaffPhoneOtp: (otp: string) => Promise<{ success: boolean; error?: string }>;
+  respondToStaffRequest: (staffUsername: string, accept: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 
   // People actions
@@ -76,7 +102,7 @@ interface AppState {
   addInvitation: (invitation: Omit<Invitation, 'id' | 'createdAt' | 'updatedAt'>) => Invitation;
   updateInvitation: (id: string, updates: Partial<Invitation>) => void;
   updateInvitationStatus: (id: string, status: InvitationStatus) => void;
-  removeInvitation: (id: string) => void;
+  removeInvitation: (id: string) => void | Promise<void>;
   getInvitationById: (id: string) => Invitation | undefined;
   getInvitationsByStatus: (status: InvitationStatus) => Invitation[];
   getInvitationsByDate: (date: string) => Invitation[];
@@ -84,7 +110,7 @@ interface AppState {
   // Family event actions
   addFamilyEvent: (event: Omit<FamilyEvent, 'id' | 'createdAt' | 'updatedAt'>) => FamilyEvent;
   updateFamilyEvent: (id: string, updates: Partial<FamilyEvent>) => void;
-  removeFamilyEvent: (id: string) => void;
+  removeFamilyEvent: (id: string) => void | Promise<void>;
   getFamilyEventById: (id: string) => FamilyEvent | undefined;
 
   // Schedule actions
@@ -132,6 +158,8 @@ export const useAppStore = create<AppState>()(
       isVIP: false,
       currentPrivilegedUser: null,
       hasSetup: false,
+      activeVipId: null,
+      authToken: null,
 
       // Theme & Localization
       theme: 'dark',
@@ -152,12 +180,15 @@ export const useAppStore = create<AppState>()(
 
       // ── Clear All Data ───────────────────────────────────────────────────
       clearAllData: async () => {
+        const { activeVipId } = get();
         set({
           isAuthenticated: false,
           currentUser: null,
           isVIP: false,
           currentPrivilegedUser: null,
           hasSetup: false,
+          activeVipId: null,
+          authToken: null,
           people: [],
           invitations: [],
           familyEvents: [],
@@ -169,8 +200,14 @@ export const useAppStore = create<AppState>()(
           currentScanResult: null,
         });
 
-        // Wipe live database
-        await supabaseDbService.clearAllTables().catch(console.warn);
+        // Wipe live database only for this active VIP
+        if (activeVipId) {
+          await supabaseDbService.clearAllTables(activeVipId).catch(console.warn);
+        }
+
+        clearSupabaseAuthSession();
+        realtimeService.unsubscribe();
+        mobileNotificationService.clearUserAssociation();
 
         // Clear local storage
         localStorage.removeItem('vip-event-intelligence-store-v2');
@@ -178,109 +215,56 @@ export const useAppStore = create<AppState>()(
       },
 
       // ── Supabase Sync ────────────────────────────────────────────────────
-      syncWithSupabase: async () => {
+      syncWithSupabase: async (explicitVipId?: string) => {
+        const state = get();
+        const targetVipId =
+          explicitVipId ||
+          state.activeVipId ||
+          state.currentUser?.vipId ||
+          (state.currentUser ? `vip_${state.currentUser.username}` : null) ||
+          state.currentPrivilegedUser?.vipId;
+
+        if (!targetVipId || !state.isAuthenticated) {
+          return;
+        }
+
         set({ isSyncing: true });
         try {
           const [people, invitations, familyEvents, schedule, reminders, staffAccounts, remoteLogs, remoteNotifs] = await Promise.all([
-            supabaseDbService.getPeople(),
-            supabaseDbService.getInvitations(),
-            supabaseDbService.getFamilyEvents(),
-            supabaseDbService.getSchedule(),
-            supabaseDbService.getReminders(),
-            supabaseDbService.getStaffAccounts(),
-            supabaseDbService.getActivityLogs(),
-            supabaseDbService.getNotifications(),
+            supabaseDbService.getPeople(targetVipId),
+            supabaseDbService.getInvitations(targetVipId),
+            supabaseDbService.getFamilyEvents(targetVipId),
+            supabaseDbService.getSchedule(targetVipId),
+            supabaseDbService.getReminders(targetVipId),
+            supabaseDbService.getStaffAccounts(targetVipId),
+            supabaseDbService.getActivityLogs(targetVipId),
+            supabaseDbService.getNotifications(targetVipId),
           ]);
 
-          // Merge staff accounts from Supabase with local privilegedUsers
-          const { privilegedUsers: localPrivUsers, activityLogs: localLogs, notifications: localNotifs } = get();
-          const mergedPrivUsers = [...localPrivUsers];
+          // Privileged users scoped strictly to this VIP account
+          const privUsers: PrivilegedUser[] = staffAccounts.map((acct) => ({
+            id: acct.id || generateId('priv'),
+            vipId: targetVipId,
+            username: acct.username,
+            passwordHash: acct.passwordHash,
+            name: acct.name,
+            role: acct.staffTitle || 'Personal Assistant',
+            pin: acct.pin || '1111',
+            phone: acct.phone,
+            email: acct.email,
+            permissions: sanitizePermissions(acct.permissions),
+            addedBy: acct.vipId || targetVipId,
+            addedAt: acct.createdAt,
+            lastActive: acct.lastLogin,
+          }));
 
-          for (const acct of staffAccounts) {
-            const existsLocally = mergedPrivUsers.some(
-              (u) => u.username && u.username.toLowerCase() === acct.username.toLowerCase()
-            );
-            if (!existsLocally) {
-              mergedPrivUsers.push({
-                id: generateId('priv'),
-                username: acct.username,
-                passwordHash: acct.passwordHash,
-                name: acct.name,
-                role: acct.staffTitle || 'Personal Assistant',
-                pin: acct.pin || '1111',
-                phone: acct.phone,
-                email: acct.email,
-                permissions: acct.permissions || {
-                  canAddInvitations: true,
-                  canEditEvents: false,
-                  canChangePriority: false,
-                  canManageSchedule: false,
-                  canViewGiftHistory: false,
-                  canAddPeople: false,
-                },
-                addedBy: 'vip',
-                addedAt: acct.createdAt,
-                lastActive: acct.lastLogin,
-              });
-            }
-          }
-
-          // Auto-migrate: fix any existing local privileged users missing username or passwordHash
-          for (const pu of mergedPrivUsers) {
-            if (!pu.username) {
-              pu.username = pu.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'staff_user';
-            }
-            if (!pu.passwordHash) {
-              pu.passwordHash = await hashPassword('staff123');
-            }
-          }
-
-          // Sync any auto-migrated local users to Supabase
-          for (const pu of mergedPrivUsers) {
-            if (pu.username) {
-              const existsInDb = staffAccounts.some(
-                (a) => a.username.toLowerCase() === pu.username!.toLowerCase()
-              );
-              if (!existsInDb) {
-                supabaseDbService.registerUserAccount({
-                  username: pu.username,
-                  passwordHash: pu.passwordHash || '',
-                  name: pu.name,
-                  role: 'staff',
-                  staffTitle: pu.role,
-                  phone: pu.phone,
-                  email: pu.email,
-                  pin: pu.pin,
-                  permissions: pu.permissions,
-                  createdAt: pu.addedAt,
-                }).catch((err) => console.warn('Auto-sync staff to Supabase error:', err));
-              }
-            }
-          }
-
-          // Merge activity logs (remote logs + local logs, sorted newest first)
-          const logMap = new Map<string, ActivityLog>();
-          for (const l of remoteLogs) logMap.set(l.id, l);
-          for (const l of localLogs) {
-            if (!logMap.has(l.id)) {
-              logMap.set(l.id, l);
-              supabaseDbService.insertActivityLog(l).catch(console.warn);
-            }
-          }
-          const mergedLogs = Array.from(logMap.values()).sort(
+          // Sort logs newest first
+          const sortedLogs = [...remoteLogs].sort(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
 
-          // Merge notifications
-          const notifMap = new Map<string, Notification>();
-          for (const n of remoteNotifs) notifMap.set(n.id, n);
-          for (const n of localNotifs) {
-            if (!notifMap.has(n.id)) {
-              notifMap.set(n.id, n);
-              supabaseDbService.insertNotification(n).catch(console.warn);
-            }
-          }
-          const mergedNotifs = Array.from(notifMap.values()).sort(
+          // Notifications
+          const sortedNotifs = [...remoteNotifs].sort(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
 
@@ -291,7 +275,7 @@ export const useAppStore = create<AppState>()(
           });
 
           for (const inv of upcomingConfirmed) {
-            const reminderExists = mergedNotifs.some(
+            const reminderExists = sortedNotifs.some(
               (n) => n.relatedEntityId === inv.id && n.type === 'reminder'
             );
             if (!reminderExists) {
@@ -299,6 +283,7 @@ export const useAppStore = create<AppState>()(
               const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : 'in 2 days';
               const reminderNotif: Notification = {
                 id: generateId('notif'),
+                vipId: targetVipId,
                 type: 'reminder',
                 title: `Upcoming Event: ${inv.title}`,
                 message: `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`,
@@ -307,8 +292,8 @@ export const useAppStore = create<AppState>()(
                 relatedEntityId: inv.id,
                 actionUrl: `/event/${inv.id}`,
               };
-              mergedNotifs.unshift(reminderNotif);
-              supabaseDbService.insertNotification(reminderNotif).catch(console.warn);
+              sortedNotifs.unshift(reminderNotif);
+              supabaseDbService.insertNotification(reminderNotif, targetVipId).catch(console.warn);
             }
           }
 
@@ -318,9 +303,9 @@ export const useAppStore = create<AppState>()(
             familyEvents,
             schedule,
             reminders,
-            privilegedUsers: mergedPrivUsers,
-            activityLogs: mergedLogs,
-            notifications: mergedNotifs,
+            privilegedUsers: privUsers,
+            activityLogs: sortedLogs,
+            notifications: sortedNotifs,
             isSyncing: false,
           });
         } catch (err) {
@@ -339,12 +324,14 @@ export const useAppStore = create<AppState>()(
       },
 
       // ── Auth Actions ─────────────────────────────────────────────────────
-      setupVIP: async (name, phone, email, username, password, phoneVerified = true, emailVerified = true) => {
+      setupVIP: async (name, phone, email, username, password, phoneVerified = true, emailVerified = true): Promise<{ success: boolean; error?: string }> => {
         const cleanUsername = (
           username ||
           name.toLowerCase().replace(/[^a-z0-9_]/g, '') ||
           'jaison'
         ).trim().toLowerCase();
+        const vipId = `vip_${cleanUsername}`;
+        const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
         const passwordHash = password
           ? await hashPassword(password)
@@ -352,7 +339,9 @@ export const useAppStore = create<AppState>()(
 
         const now = new Date().toISOString();
         const user: VIPUser = {
-          id: 'vip-main',
+          id: `vip_${cleanUsername}`,
+          vipId,
+          authToken,
           username: cleanUsername,
           passwordHash,
           name: name.trim(),
@@ -365,8 +354,10 @@ export const useAppStore = create<AppState>()(
           createdAt: now,
         };
 
-        // Sync to Supabase user_accounts
-        supabaseDbService.registerUserAccount({
+        // Persist to Supabase database (user_accounts + vip_users)
+        const regResult = await supabaseDbService.registerUserAccount({
+          vipId,
+          authToken,
           username: cleanUsername,
           passwordHash,
           name: name.trim(),
@@ -378,15 +369,41 @@ export const useAppStore = create<AppState>()(
           phoneVerifiedAt: phoneVerified ? now : undefined,
           emailVerifiedAt: emailVerified ? now : undefined,
           createdAt: user.createdAt,
-        }).catch((err) => console.warn('Supabase register error:', err));
+        });
 
+        if (!regResult.success) {
+          console.error('[Store setupVIP] Database registration failed:', regResult.error);
+          return { success: false, error: regResult.error || 'Failed to create VIP account in database.' };
+        }
+
+        // Configure Supabase HTTP headers for RLS tenant isolation
+        setSupabaseAuthSession(vipId, authToken);
+
+        // Wipe memory and set new authenticated VIP user only after confirmed DB persistence
         set({
           currentUser: user,
           hasSetup: true,
           isAuthenticated: true,
           isVIP: true,
           currentPrivilegedUser: null,
+          activeVipId: vipId,
+          authToken,
+          people: [],
+          invitations: [],
+          familyEvents: [],
+          schedule: [],
+          reminders: [],
+          privilegedUsers: [],
+          activityLogs: [],
+          notifications: [],
+          currentScanResult: null,
         });
+
+        // Register device token and subscribe to isolated realtime channel
+        mobileNotificationService.registerDevice(cleanUsername, vipId).catch(console.warn);
+        realtimeService.subscribeAll(vipId);
+
+        return { success: true };
       },
 
       updateProfile: (name, phone, email) => {
@@ -451,10 +468,19 @@ export const useAppStore = create<AppState>()(
         }
       },
 
-      registerPrivilegedUser: async (name, role, phone, email, username, password, phoneVerified = true, emailVerified = true) => {
-        const { privilegedUsers } = get();
-        if (privilegedUsers.length >= 5) return null;
-
+      registerPrivilegedUser: async (
+        name,
+        role,
+        phone,
+        email,
+        username,
+        password,
+        phoneVerified = true,
+        emailVerified = true,
+        vipIdParam?: string
+      ) => {
+        const state = get();
+        const activeVipId = vipIdParam || state.activeVipId || state.currentUser?.vipId || 'vip_jaison';
         const cleanUsername = (
           username ||
           name.toLowerCase().replace(/[^a-z0-9_]/g, '') ||
@@ -466,8 +492,10 @@ export const useAppStore = create<AppState>()(
           : await hashPassword('staff123');
 
         const now = new Date().toISOString();
+        const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
         const user: PrivilegedUser = {
           id: generateId('priv'),
+          vipId: activeVipId,
           username: cleanUsername,
           passwordHash,
           name: name.trim(),
@@ -480,19 +508,22 @@ export const useAppStore = create<AppState>()(
           emailVerifiedAt: emailVerified ? now : undefined,
           permissions: {
             canAddInvitations: true,
+            canConfirmIgnoreInvitations: false,
             canEditEvents: true,
             canChangePriority: false,
             canManageSchedule: true,
             canViewGiftHistory: true,
             canAddPeople: true,
           },
-          addedBy: 'vip',
+          addedBy: activeVipId,
           addedAt: now,
           lastActive: now,
         };
 
-        // Sync to Supabase user_accounts
-        supabaseDbService.registerUserAccount({
+        // Sync to Supabase user_accounts with vipId
+        const staffRegResult = await supabaseDbService.registerUserAccount({
+          vipId: activeVipId,
+          authToken,
           username: cleanUsername,
           passwordHash,
           name: name.trim(),
@@ -506,14 +537,36 @@ export const useAppStore = create<AppState>()(
           emailVerifiedAt: emailVerified ? now : undefined,
           permissions: user.permissions,
           createdAt: user.addedAt,
-        }).catch((err) => console.warn('Supabase register staff error:', err));
+        });
 
-        set((state) => ({
-          privilegedUsers: [...state.privilegedUsers, user],
+        if (!staffRegResult.success) {
+          console.error('[Store registerPrivilegedUser] Staff registration failed:', staffRegResult.error);
+          return null;
+        }
+
+        // Set session headers for this user
+        setSupabaseAuthSession(activeVipId, authToken);
+
+        set({
+          privilegedUsers: [user],
           currentPrivilegedUser: user,
+          currentUser: null,
           isAuthenticated: true,
           isVIP: false,
-        }));
+          activeVipId,
+          authToken,
+          people: [],
+          invitations: [],
+          familyEvents: [],
+          schedule: [],
+          reminders: [],
+          activityLogs: [],
+          notifications: [],
+          currentScanResult: null,
+        });
+
+        realtimeService.subscribeAll(activeVipId);
+        get().syncWithSupabase(activeVipId);
 
         return user;
       },
@@ -525,10 +578,14 @@ export const useAppStore = create<AppState>()(
         }
 
         const passwordHash = await hashPassword(password);
-        const { currentUser, privilegedUsers } = get();
 
         // Helper: authenticate a DB account
-        const authenticateDbAccount = (dbAccount: UserAccount): { success: boolean; error?: string } => {
+        const authenticateDbAccount = async (dbAccount: UserAccount): Promise<{
+          success: boolean;
+          error?: string;
+          status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'UNVERIFIED_PHONE';
+          staffUser?: PrivilegedUser;
+        }> => {
           const passwordMatches =
             dbAccount.passwordHash === passwordHash ||
             password === 'admin123' ||
@@ -538,65 +595,173 @@ export const useAppStore = create<AppState>()(
             return { success: false, error: `Incorrect password for "${dbAccount.name}".` };
           }
 
+          const targetVipId = dbAccount.vipId || (dbAccount.role === 'vip' ? `vip_${dbAccount.username}` : 'vip_jaison');
+          const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
           if (dbAccount.role === 'vip') {
+            const vipUser: VIPUser = {
+              id: dbAccount.id || `vip_${dbAccount.username}`,
+              vipId: targetVipId,
+              authToken,
+              username: dbAccount.username,
+              passwordHash: dbAccount.passwordHash,
+              name: dbAccount.name,
+              phone: dbAccount.phone,
+              email: dbAccount.email,
+              createdAt: dbAccount.createdAt,
+            };
+
+            // Update auth token in DB and set Supabase session headers for RLS
+            supabaseDbService.updateUserAuthToken(dbAccount.username, authToken).catch(console.warn);
+            setSupabaseAuthSession(targetVipId, authToken);
+
+            // Wipe local arrays to ensure NO cross-account contamination from prior sessions
             set({
               isAuthenticated: true,
               isVIP: true,
               currentPrivilegedUser: null,
-              currentUser: {
-                id: 'vip-main',
-                username: dbAccount.username,
-                passwordHash: dbAccount.passwordHash,
-                name: dbAccount.name,
-                phone: dbAccount.phone,
-                email: dbAccount.email,
-                createdAt: dbAccount.createdAt,
-              },
+              currentUser: vipUser,
+              activeVipId: targetVipId,
+              authToken,
               hasSetup: true,
+              people: [],
+              invitations: [],
+              familyEvents: [],
+              schedule: [],
+              reminders: [],
+              privilegedUsers: [],
+              activityLogs: [],
+              notifications: [],
+              currentScanResult: null,
             });
+
+            supabaseDbService.updateUserLastLogin(dbAccount.username);
+            mobileNotificationService.registerDevice(dbAccount.username, targetVipId).catch(console.warn);
+            realtimeService.subscribeAll(targetVipId);
+            get().syncWithSupabase(targetVipId);
+
+            return { success: true, status: 'APPROVED' };
           } else {
+            const approvalStatus = dbAccount.approvalStatus || 'APPROVED';
+            const isPhoneVerified = !!dbAccount.phoneVerified;
+
             const staffUser: PrivilegedUser = {
-              id: generateId('priv'),
+              id: dbAccount.id || generateId('priv'),
+              vipId: targetVipId,
+              targetVipUsername: dbAccount.targetVipUsername,
+              approvalStatus,
               username: dbAccount.username,
               passwordHash: dbAccount.passwordHash,
               name: dbAccount.name,
               role: dbAccount.staffTitle || 'Personal Assistant',
               phone: dbAccount.phone,
               email: dbAccount.email,
-              permissions: dbAccount.permissions || {
-                canAddInvitations: true,
-                canEditEvents: true,
-                canChangePriority: false,
-                canManageSchedule: true,
-                canViewGiftHistory: true,
-                canAddPeople: true,
-              },
-              addedBy: 'vip',
+              phoneVerified: isPhoneVerified,
+              permissions: sanitizePermissions(dbAccount.permissions),
+              addedBy: targetVipId,
               addedAt: dbAccount.createdAt,
               lastActive: new Date().toISOString(),
             };
+
+            // Gate 1: Check approval status
+            if (approvalStatus === 'PENDING_APPROVAL') {
+              clearSupabaseAuthSession();
+              set({
+                isAuthenticated: false,
+                isVIP: false,
+                currentUser: null,
+                currentPrivilegedUser: staffUser,
+                activeVipId: null,
+                authToken: null,
+              });
+              return {
+                success: false,
+                status: 'PENDING_APPROVAL',
+                error: 'Your request is pending approval by the VIP Principal.',
+                staffUser,
+              };
+            }
+
+            if (approvalStatus === 'REJECTED') {
+              clearSupabaseAuthSession();
+              set({
+                isAuthenticated: false,
+                isVIP: false,
+                currentUser: null,
+                currentPrivilegedUser: staffUser,
+                activeVipId: null,
+                authToken: null,
+              });
+              return {
+                success: false,
+                status: 'REJECTED',
+                error: 'Your request was rejected by VIP Principal.',
+                staffUser,
+              };
+            }
+
+            // Gate 2: Check phone verification
+            if (!isPhoneVerified) {
+              clearSupabaseAuthSession();
+              set({
+                isAuthenticated: false,
+                isVIP: false,
+                currentUser: null,
+                currentPrivilegedUser: staffUser,
+                activeVipId: null,
+                authToken: null,
+              });
+              return {
+                success: false,
+                status: 'UNVERIFIED_PHONE',
+                error: 'Phone verification required before accessing the VIP workspace.',
+                staffUser,
+              };
+            }
+
+            // Gate 3: Approved and phone verified -> establish authenticated session
+            supabaseDbService.updateUserAuthToken(dbAccount.username, authToken).catch(console.warn);
+            setSupabaseAuthSession(targetVipId, authToken);
+
             set({
               isAuthenticated: true,
               isVIP: false,
+              currentUser: null,
               currentPrivilegedUser: staffUser,
+              activeVipId: targetVipId,
+              authToken,
+              people: [],
+              invitations: [],
+              familyEvents: [],
+              schedule: [],
+              reminders: [],
+              privilegedUsers: [],
+              activityLogs: [],
+              notifications: [],
+              currentScanResult: null,
             });
+
+            supabaseDbService.updateUserLastLogin(dbAccount.username);
+            mobileNotificationService.registerDevice(dbAccount.username, targetVipId).catch(console.warn);
+            realtimeService.subscribeAll(targetVipId);
+            get().syncWithSupabase(targetVipId);
+
+            return { success: true, status: 'APPROVED', staffUser };
           }
-          supabaseDbService.updateUserLastLogin(dbAccount.username);
-          mobileNotificationService.registerDevice(dbAccount.username).catch(console.warn);
-          return { success: true };
         };
 
         // 1. Try Supabase: flexible lookup by username, email, name, or phone
         try {
           const dbAccount = await supabaseDbService.getUserAccountByIdentifier(cleanIdentifier);
           if (dbAccount) {
-            return authenticateDbAccount(dbAccount);
+            return await authenticateDbAccount(dbAccount);
           }
         } catch (err) {
-          console.warn('Supabase DB auth fallback to local store:', err);
+          console.warn('Supabase DB auth lookup error:', err);
         }
 
-        // 2. Check Local Store VIP User (by username, name, email, or phone)
+        // 2. Check Local Store VIP User (fallback when offline)
+        const { currentUser, privilegedUsers } = get();
         if (currentUser) {
           const vipMatch =
             (currentUser.username && currentUser.username.toLowerCase() === cleanIdentifier) ||
@@ -607,15 +772,18 @@ export const useAppStore = create<AppState>()(
           if (vipMatch) {
             const pwMatch = currentUser.passwordHash === passwordHash || password === 'admin123';
             if (pwMatch) {
-              set({ isAuthenticated: true, isVIP: true, currentPrivilegedUser: null });
-              mobileNotificationService.registerDevice(currentUser.username || 'vip').catch(console.warn);
-              return { success: true };
+              const vipId = currentUser.vipId || `vip_${currentUser.username}`;
+              setSupabaseAuthSession(vipId, currentUser.authToken || 'offline');
+              set({ isAuthenticated: true, isVIP: true, currentPrivilegedUser: null, activeVipId: vipId });
+              mobileNotificationService.registerDevice(currentUser.username || 'vip', vipId).catch(console.warn);
+              realtimeService.subscribeAll(vipId);
+              return { success: true, status: 'APPROVED' };
             }
             return { success: false, error: 'Incorrect password for VIP account.' };
           }
         }
 
-        // 3. Check Local Store Privileged Users (by username, name, email, or phone)
+        // 3. Check Local Store Privileged Users (fallback when offline)
         const privUser = privilegedUsers.find(
           (u) =>
             (u.username && u.username.toLowerCase() === cleanIdentifier) ||
@@ -627,9 +795,25 @@ export const useAppStore = create<AppState>()(
         if (privUser) {
           const pwMatch = privUser.passwordHash === passwordHash || password === 'staff123';
           if (pwMatch) {
-            set({ isAuthenticated: true, isVIP: false, currentPrivilegedUser: privUser });
-            mobileNotificationService.registerDevice(privUser.username || privUser.name).catch(console.warn);
-            return { success: true };
+            if (privUser.approvalStatus === 'PENDING_APPROVAL') {
+              set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
+              return { success: false, status: 'PENDING_APPROVAL', error: 'Pending approval', staffUser: privUser };
+            }
+            if (privUser.approvalStatus === 'REJECTED') {
+              set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
+              return { success: false, status: 'REJECTED', error: 'Request rejected', staffUser: privUser };
+            }
+            if (!privUser.phoneVerified) {
+              set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
+              return { success: false, status: 'UNVERIFIED_PHONE', error: 'Phone verification required', staffUser: privUser };
+            }
+
+            const vipId = privUser.vipId || 'vip_jaison';
+            setSupabaseAuthSession(vipId, 'offline');
+            set({ isAuthenticated: true, isVIP: false, currentPrivilegedUser: privUser, activeVipId: vipId });
+            mobileNotificationService.registerDevice(privUser.username || privUser.name, vipId).catch(console.warn);
+            realtimeService.subscribeAll(vipId);
+            return { success: true, status: 'APPROVED', staffUser: privUser };
           }
           return { success: false, error: `Incorrect password for "${privUser.name}".` };
         }
@@ -640,42 +824,288 @@ export const useAppStore = create<AppState>()(
         };
       },
 
+      submitStaffRegistration: async (params) => {
+        const cleanUsername = params.username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        const cleanVipPrincipal = params.vipUsername.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+        if (!cleanUsername || cleanUsername.length < 3) {
+          return { success: false, error: 'Username must be at least 3 alphanumeric characters.' };
+        }
+        if (!cleanVipPrincipal) {
+          return { success: false, error: 'VIP Principal username is required.' };
+        }
+
+        // 1. Verify VIP Principal exists
+        const vipCheck = await supabaseDbService.checkVipPrincipalExists(cleanVipPrincipal);
+        if (!vipCheck.exists) {
+          return { success: false, error: 'VIP Account Not Found' };
+        }
+
+        const targetVipId = vipCheck.vipId || `vip_${cleanVipPrincipal}`;
+        const passwordHash = await hashPassword(params.password);
+
+        // 2. Submit staff registration request to Supabase
+        const reqResult = await supabaseDbService.submitStaffApprovalRequest({
+          username: cleanUsername,
+          passwordHash,
+          name: params.name.trim(),
+          staffTitle: params.staffTitle.trim() || 'Personal Assistant',
+          vipUsername: cleanVipPrincipal,
+          phone: params.phone?.trim() || undefined,
+          email: params.email?.trim() || undefined,
+        });
+
+        if (!reqResult.success) {
+          return { success: false, error: reqResult.error || 'Failed to submit registration request' };
+        }
+
+        const staffUser: PrivilegedUser = {
+          id: `priv_${cleanUsername}`,
+          vipId: targetVipId,
+          targetVipUsername: cleanVipPrincipal,
+          approvalStatus: 'PENDING_APPROVAL',
+          username: cleanUsername,
+          passwordHash,
+          name: params.name.trim(),
+          role: params.staffTitle.trim() || 'Personal Assistant',
+          phone: params.phone?.trim() || undefined,
+          email: params.email?.trim() || undefined,
+          phoneVerified: false,
+          permissions: {
+            canAddInvitations: true,
+            canConfirmIgnoreInvitations: false,
+            canEditEvents: true,
+            canChangePriority: false,
+            canManageSchedule: true,
+            canViewGiftHistory: true,
+            canAddPeople: true,
+          },
+          addedBy: targetVipId,
+          addedAt: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
+        };
+
+        // Staff CANNOT access the main app yet
+        clearSupabaseAuthSession();
+        set({
+          isAuthenticated: false,
+          isVIP: false,
+          currentUser: null,
+          currentPrivilegedUser: staffUser,
+          activeVipId: null,
+          authToken: null,
+        });
+
+        return { success: true, staffUser };
+      },
+
+      checkStaffStatus: async (usernameParam) => {
+        const { currentPrivilegedUser } = get();
+        const username = usernameParam || currentPrivilegedUser?.username;
+        if (!username) {
+          return { status: 'PENDING_APPROVAL', phoneVerified: false };
+        }
+
+        try {
+          const dbAccount = await supabaseDbService.getUserAccountByIdentifier(username);
+          if (dbAccount) {
+            const status = dbAccount.approvalStatus || 'APPROVED';
+            const phoneVerified = !!dbAccount.phoneVerified;
+            if (currentPrivilegedUser) {
+              set({
+                currentPrivilegedUser: {
+                  ...currentPrivilegedUser,
+                  approvalStatus: status,
+                  phoneVerified,
+                  vipId: dbAccount.vipId || currentPrivilegedUser.vipId,
+                  targetVipUsername: dbAccount.targetVipUsername || currentPrivilegedUser.targetVipUsername,
+                },
+              });
+            }
+            return { status, phoneVerified };
+          }
+        } catch (err) {
+          console.warn('Error checking staff status:', err);
+        }
+
+        return {
+          status: currentPrivilegedUser?.approvalStatus || 'PENDING_APPROVAL',
+          phoneVerified: !!currentPrivilegedUser?.phoneVerified,
+        };
+      },
+
+      reassignStaffVip: async (newVipUsername) => {
+        const { currentPrivilegedUser } = get();
+        if (!currentPrivilegedUser?.username) {
+          return { success: false, error: 'No active staff profile found.' };
+        }
+
+        const cleanVip = newVipUsername.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (!cleanVip) {
+          return { success: false, error: 'VIP Principal username is required.' };
+        }
+
+        const vipCheck = await supabaseDbService.checkVipPrincipalExists(cleanVip);
+        if (!vipCheck.exists) {
+          return { success: false, error: 'VIP Account Not Found' };
+        }
+
+        const res = await supabaseDbService.reassignStaffVipRequest(currentPrivilegedUser.username, cleanVip);
+        if (!res.success) {
+          return { success: false, error: res.error || 'Failed to reassign VIP' };
+        }
+
+        const updatedUser: PrivilegedUser = {
+          ...currentPrivilegedUser,
+          vipId: res.data?.vip_id || vipCheck.vipId || `vip_${cleanVip}`,
+          targetVipUsername: cleanVip,
+          approvalStatus: 'PENDING_APPROVAL',
+          phoneVerified: false,
+        };
+
+        clearSupabaseAuthSession();
+        set({
+          currentPrivilegedUser: updatedUser,
+          isAuthenticated: false,
+          activeVipId: null,
+          authToken: null,
+        });
+
+        return { success: true };
+      },
+
+      verifyStaffPhoneOtp: async (otp) => {
+        const { currentPrivilegedUser } = get();
+        if (!currentPrivilegedUser?.username) {
+          return { success: false, error: 'No active staff session.' };
+        }
+
+        const res = await supabaseDbService.verifyStaffPhone(currentPrivilegedUser.username, otp);
+        if (!res.success) {
+          return { success: false, error: res.error || 'Verification failed.' };
+        }
+
+        const targetVipId = currentPrivilegedUser.vipId || 'vip_jaison';
+        const authToken = res.authToken || `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        supabaseDbService.updateUserAuthToken(currentPrivilegedUser.username, authToken).catch(console.warn);
+        setSupabaseAuthSession(targetVipId, authToken);
+
+        const updatedUser: PrivilegedUser = {
+          ...currentPrivilegedUser,
+          phoneVerified: true,
+          phoneVerifiedAt: new Date().toISOString(),
+          approvalStatus: 'APPROVED',
+        };
+
+        set({
+          isAuthenticated: true,
+          isVIP: false,
+          currentUser: null,
+          currentPrivilegedUser: updatedUser,
+          activeVipId: targetVipId,
+          authToken,
+          people: [],
+          invitations: [],
+          familyEvents: [],
+          schedule: [],
+          reminders: [],
+          privilegedUsers: [],
+          activityLogs: [],
+          notifications: [],
+          currentScanResult: null,
+        });
+
+        supabaseDbService.updateUserLastLogin(currentPrivilegedUser.username);
+        mobileNotificationService.registerDevice(currentPrivilegedUser.username, targetVipId).catch(console.warn);
+        realtimeService.subscribeAll(targetVipId);
+        get().syncWithSupabase(targetVipId);
+
+        return { success: true };
+      },
+
+      respondToStaffRequest: async (staffUsername, accept) => {
+        const { activeVipId } = get();
+        const res = await supabaseDbService.respondToStaffRequest(staffUsername, accept, activeVipId || undefined);
+        if (!res.success) {
+          return { success: false, error: res.error || 'Failed to respond to request' };
+        }
+
+        // Update local notifications & privileged users
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.relatedEntityId === staffUsername && n.type === 'staff_request'
+              ? { ...n, read: true }
+              : n
+          ),
+          privilegedUsers: state.privilegedUsers.map((u) =>
+            u.username === staffUsername
+              ? { ...u, approvalStatus: accept ? 'APPROVED' : 'REJECTED' }
+              : u
+          ),
+        }));
+
+        if (activeVipId) {
+          get().syncWithSupabase(activeVipId);
+        }
+
+        return { success: true };
+      },
+
       logout: () => {
+        realtimeService.unsubscribe();
+        clearSupabaseAuthSession();
         mobileNotificationService.clearUserAssociation();
         set({
           isAuthenticated: false,
           isVIP: false,
+          currentUser: null,
           currentPrivilegedUser: null,
+          activeVipId: null,
+          authToken: null,
+          people: [],
+          invitations: [],
+          familyEvents: [],
+          schedule: [],
+          reminders: [],
+          privilegedUsers: [],
+          activityLogs: [],
+          notifications: [],
+          currentScanResult: null,
         });
       },
 
       // ── People Actions ───────────────────────────────────────────────────
       addPerson: (personData) => {
+        const { activeVipId } = get();
         const person: Person = {
           ...personData,
           id: generateId('person'),
+          vipId: activeVipId || undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         set((state) => ({ people: [...state.people, person] }));
-        supabaseDbService.insertPerson(person).catch(console.error);
+        supabaseDbService.insertPerson(person, activeVipId || undefined).catch(console.error);
         return person;
       },
 
       updatePerson: (id, updates) => {
+        const { activeVipId } = get();
         set((state) => {
           const updatedPeople = state.people.map((p) =>
             p.id === id ? { ...p, ...updates, updatedAt: new Date().toISOString() } : p
           );
           const changed = updatedPeople.find((p) => p.id === id);
-          if (changed) supabaseDbService.insertPerson(changed).catch(console.error);
+          if (changed) supabaseDbService.insertPerson(changed, activeVipId || undefined).catch(console.error);
           return { people: updatedPeople };
         });
       },
 
       removePerson: (id) => {
+        const { activeVipId } = get();
         set((state) => ({ people: state.people.filter((p) => p.id !== id) }));
-        supabaseDbService.deletePerson(id).catch(console.error);
+        supabaseDbService.deletePerson(id, activeVipId || undefined).catch(console.error);
       },
 
       getPersonById: (id) => get().people.find((p) => p.id === id),
@@ -692,29 +1122,39 @@ export const useAppStore = create<AppState>()(
 
       // ── Invitation Actions ───────────────────────────────────────────────
       addInvitation: (invData) => {
+        const { activeVipId } = get();
         const invitation: Invitation = {
           ...invData,
           id: generateId('inv'),
+          vipId: activeVipId || undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         set((state) => ({ invitations: [...state.invitations, invitation] }));
-        supabaseDbService.insertInvitation(invitation).catch(console.error);
+        supabaseDbService.insertInvitation(invitation, activeVipId || undefined).catch(console.error);
         return invitation;
       },
 
       updateInvitation: (id, updates) => {
+        const { activeVipId } = get();
         set((state) => {
           const updated = state.invitations.map((inv) =>
             inv.id === id ? { ...inv, ...updates, updatedAt: new Date().toISOString() } : inv
           );
           const changed = updated.find((inv) => inv.id === id);
-          if (changed) supabaseDbService.insertInvitation(changed).catch(console.error);
+          if (changed) supabaseDbService.insertInvitation(changed, activeVipId || undefined).catch(console.error);
           return { invitations: updated };
         });
       },
 
       updateInvitationStatus: (id, status) => {
+        const { isVIP, currentPrivilegedUser, currentUser, activeVipId } = get();
+        // Permission check: Only VIP Principal or staff with canConfirmIgnoreInvitations can confirm or ignore
+        if ((status === 'confirmed' || status === 'ignored') && !isVIP && currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations !== true) {
+          console.warn('Unauthorized: Only VIP Principal or privileged staff with canConfirmIgnoreInvitations permission can confirm or ignore invitations.');
+          return;
+        }
+
         const inv = get().invitations.find((item) => item.id === id);
         const prevStatus = inv?.status || 'pending';
         const invTitle = inv?.title || 'Invitation';
@@ -724,10 +1164,9 @@ export const useAppStore = create<AppState>()(
             item.id === id ? { ...item, status, updatedAt: new Date().toISOString() } : item
           ),
         }));
-        supabaseDbService.updateInvitationStatus(id, status).catch(console.error);
+        supabaseDbService.updateInvitationStatus(id, status, activeVipId || undefined).catch(console.error);
 
         // Record Activity Log
-        const { isVIP, currentUser, currentPrivilegedUser } = get();
         const userName = isVIP
           ? (currentUser?.name || 'VIP Principal')
           : (currentPrivilegedUser?.name || 'Staff User');
@@ -736,6 +1175,7 @@ export const useAppStore = create<AppState>()(
           : (currentPrivilegedUser?.id || 'staff');
 
         get().addActivityLog({
+          vipId: activeVipId || undefined,
           userId,
           userName,
           action: `Changed status of "${invTitle}" to ${status}`,
@@ -748,6 +1188,7 @@ export const useAppStore = create<AppState>()(
 
         // Record Notification
         get().addNotification({
+          vipId: activeVipId || undefined,
           type: 'change_alert',
           title: `Status Updated: ${invTitle}`,
           message: `Invitation marked as ${status.toUpperCase()} by ${userName}.`,
@@ -757,11 +1198,65 @@ export const useAppStore = create<AppState>()(
         });
       },
 
-      removeInvitation: (id) => {
+      removeInvitation: async (id) => {
+        const { activeVipId, isVIP, currentUser, currentPrivilegedUser, privilegedUsers } = get();
+        const existing = get().invitations.find((inv) => inv.id === id);
+        const eventTitle = existing?.nickname || existing?.title || 'Scheduled Event';
+        const eventDate = existing?.date || '';
+        const eventVenue = existing?.venue || '';
+
+        const actorUsername = (currentUser?.username || currentPrivilegedUser?.username || (isVIP ? 'vip' : 'staff')).toLowerCase();
+        const actorName = isVIP ? (currentUser?.name || 'VIP Principal') : (currentPrivilegedUser?.name || 'Staff Member');
+
+        // Remove from local store immediately for instant UI update
         set((state) => ({
           invitations: state.invitations.filter((inv) => inv.id !== id),
         }));
-        supabaseDbService.deleteInvitation(id).catch(console.error);
+
+        // Delete from Supabase
+        supabaseDbService.deleteInvitation(id, activeVipId || undefined).catch(console.error);
+
+        // Recipient identified within active VIP account
+        let otherUsernames: string[] = [];
+        try {
+          const staffAccounts = await supabaseDbService.getStaffAccounts(activeVipId || undefined);
+          otherUsernames = staffAccounts
+            .map((u) => u.username.toLowerCase())
+            .filter((u) => u !== actorUsername);
+          if (currentUser?.username && currentUser.username.toLowerCase() !== actorUsername) {
+            otherUsernames.push(currentUser.username.toLowerCase());
+          }
+        } catch {
+          const privUsernames = privilegedUsers.map((u) => (u.username || u.name).toLowerCase());
+          if (currentUser?.username) privUsernames.push(currentUser.username.toLowerCase());
+          otherUsernames = privUsernames.filter((u) => u !== actorUsername);
+        }
+
+        const pushTokens = await supabaseDbService.getUserPushTokens(otherUsernames, activeVipId || undefined);
+
+        const notifId = generateId('notif');
+        const myDeviceToken = mobileNotificationService.getDeviceRegistration()?.token || '';
+        const notification: Notification = {
+          id: notifId,
+          vipId: activeVipId || undefined,
+          type: 'change_alert',
+          title: `Event Deleted: ${eventTitle}`,
+          message: `${actorName} deleted event "${eventTitle}"${eventDate ? ` (${eventDate})` : ''}.`,
+          read: false,
+          timestamp: new Date().toISOString(),
+          actionUrl: `/upcoming?sender=${encodeURIComponent(actorUsername)}&senderDevice=${encodeURIComponent(myDeviceToken)}&deleted=1`,
+          relatedEntityId: id,
+        };
+
+        // Suppress native alert on this sender client
+        mobileNotificationService.markDeliveredLocally(notification.id);
+
+        // Add to local store notifications list
+        set((state) => ({
+          notifications: [notification, ...state.notifications],
+        }));
+
+        supabaseDbService.insertNotification(notification, activeVipId || undefined).catch(console.warn);
       },
 
       getInvitationById: (id) => get().invitations.find((inv) => inv.id === id),
@@ -774,57 +1269,120 @@ export const useAppStore = create<AppState>()(
 
       // ── Family Event Actions ─────────────────────────────────────────────
       addFamilyEvent: (eventData) => {
+        const { activeVipId } = get();
         const event: FamilyEvent = {
           ...eventData,
           id: generateId('event'),
+          vipId: activeVipId || undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };
         set((state) => ({ familyEvents: [...state.familyEvents, event] }));
-        supabaseDbService.insertFamilyEvent(event).catch(console.error);
+        supabaseDbService.insertFamilyEvent(event, activeVipId || undefined).catch(console.error);
         return event;
       },
 
       updateFamilyEvent: (id, updates) => {
-        set((state) => ({
-          familyEvents: state.familyEvents.map((e) =>
+        const { activeVipId } = get();
+        set((state) => {
+          const updatedEvents = state.familyEvents.map((e) =>
             e.id === id ? { ...e, ...updates, updatedAt: new Date().toISOString() } : e
-          ),
-        }));
+          );
+          const changed = updatedEvents.find((e) => e.id === id);
+          if (changed) supabaseDbService.insertFamilyEvent(changed, activeVipId || undefined).catch(console.error);
+          return { familyEvents: updatedEvents };
+        });
       },
 
-      removeFamilyEvent: (id) => {
+      removeFamilyEvent: async (id) => {
+        const { activeVipId, isVIP, currentUser, currentPrivilegedUser, privilegedUsers } = get();
+        const existing = get().familyEvents.find((e) => e.id === id);
+        const eventTitle = existing?.name || 'Past Function';
+        const eventDate = existing?.date || '';
+
+        const actorUsername = (currentUser?.username || currentPrivilegedUser?.username || (isVIP ? 'vip' : 'staff')).toLowerCase();
+        const actorName = isVIP ? (currentUser?.name || 'VIP Principal') : (currentPrivilegedUser?.name || 'Staff Member');
+
         set((state) => ({
           familyEvents: state.familyEvents.filter((e) => e.id !== id),
         }));
+
+        supabaseDbService.deleteFamilyEvent(id, activeVipId || undefined).catch(console.error);
+
+        let otherUsernames: string[] = [];
+        try {
+          const staffAccounts = await supabaseDbService.getStaffAccounts(activeVipId || undefined);
+          otherUsernames = staffAccounts
+            .map((u) => u.username.toLowerCase())
+            .filter((u) => u !== actorUsername);
+          if (currentUser?.username && currentUser.username.toLowerCase() !== actorUsername) {
+            otherUsernames.push(currentUser.username.toLowerCase());
+          }
+        } catch {
+          const privUsernames = privilegedUsers.map((u) => (u.username || u.name).toLowerCase());
+          if (currentUser?.username) privUsernames.push(currentUser.username.toLowerCase());
+          otherUsernames = privUsernames.filter((u) => u !== actorUsername);
+        }
+
+        const pushTokens = await supabaseDbService.getUserPushTokens(otherUsernames, activeVipId || undefined);
+
+        const notifId = generateId('notif');
+        const myDeviceToken = mobileNotificationService.getDeviceRegistration()?.token || '';
+        const notification: Notification = {
+          id: notifId,
+          vipId: activeVipId || undefined,
+          type: 'change_alert',
+          title: `Event Deleted: ${eventTitle}`,
+          message: `${actorName} deleted event "${eventTitle}"${eventDate ? ` (${eventDate})` : ''}.`,
+          read: false,
+          timestamp: new Date().toISOString(),
+          actionUrl: `/past-events?sender=${encodeURIComponent(actorUsername)}&senderDevice=${encodeURIComponent(myDeviceToken)}&deleted=1`,
+          relatedEntityId: id,
+        };
+
+        mobileNotificationService.markDeliveredLocally(notification.id);
+
+        set((state) => ({
+          notifications: [notification, ...state.notifications],
+        }));
+
+        supabaseDbService.insertNotification(notification, activeVipId || undefined).catch(console.warn);
       },
 
       getFamilyEventById: (id) => get().familyEvents.find((e) => e.id === id),
 
       // ── Schedule Actions ─────────────────────────────────────────────────
       addScheduleItem: (itemData) => {
+        const { activeVipId } = get();
         const item: ScheduleItem = {
           ...itemData,
           id: generateId('sched'),
+          vipId: activeVipId || undefined,
           createdAt: new Date().toISOString(),
         };
         set((state) => ({ schedule: [...state.schedule, item] }));
-        supabaseDbService.insertScheduleItem(item).catch(console.error);
+        supabaseDbService.insertScheduleItem(item, activeVipId || undefined).catch(console.error);
         return item;
       },
 
       updateScheduleItem: (id, updates) => {
-        set((state) => ({
-          schedule: state.schedule.map((s) =>
+        const { activeVipId } = get();
+        set((state) => {
+          const updatedSchedule = state.schedule.map((s) =>
             s.id === id ? { ...s, ...updates } : s
-          ),
-        }));
+          );
+          const changed = updatedSchedule.find((s) => s.id === id);
+          if (changed) supabaseDbService.insertScheduleItem(changed, activeVipId || undefined).catch(console.error);
+          return { schedule: updatedSchedule };
+        });
       },
 
       removeScheduleItem: (id) => {
+        const { activeVipId } = get();
         set((state) => ({
           schedule: state.schedule.filter((s) => s.id !== id),
         }));
+        supabaseDbService.deleteScheduleItem(id, activeVipId || undefined).catch(console.error);
       },
 
       getScheduleByDate: (date) =>
@@ -832,8 +1390,10 @@ export const useAppStore = create<AppState>()(
 
       // ── Privileged User Actions ──────────────────────────────────────────
       addPrivilegedUser: async (userData) => {
-        const { privilegedUsers } = get();
+        const { privilegedUsers, activeVipId, currentUser } = get();
         if (privilegedUsers.length >= 5) return null;
+
+        const targetVipId = activeVipId || currentUser?.vipId || (currentUser ? `vip_${currentUser.username}` : 'vip_jaison');
 
         // Derive username if not provided
         const username = userData.username ||
@@ -847,8 +1407,10 @@ export const useAppStore = create<AppState>()(
         const user: PrivilegedUser = {
           ...userData,
           id: generateId('priv'),
+          vipId: targetVipId,
           username,
           passwordHash: pwHash,
+          addedBy: targetVipId,
           addedAt: new Date().toISOString(),
         };
 
@@ -861,6 +1423,7 @@ export const useAppStore = create<AppState>()(
 
         // Sync to Supabase user_accounts
         supabaseDbService.registerUserAccount({
+          vipId: targetVipId,
           username,
           passwordHash: pwHash,
           name: user.name,
@@ -882,7 +1445,15 @@ export const useAppStore = create<AppState>()(
 
         set((state) => ({
           privilegedUsers: state.privilegedUsers.map((u) =>
-            u.id === id ? { ...u, ...updates } : u
+            u.id === id
+              ? {
+                  ...u,
+                  ...updates,
+                  permissions: updates.permissions
+                    ? sanitizePermissions(updates.permissions)
+                    : u.permissions,
+                }
+              : u
           ),
         }));
 
@@ -911,77 +1482,102 @@ export const useAppStore = create<AppState>()(
 
       // ── Notification Actions ─────────────────────────────────────────────
       addNotification: (notifData) => {
+        const { isVIP, currentUser, currentPrivilegedUser, activeVipId } = get();
+        const actorUsername = (currentUser?.username || currentPrivilegedUser?.username || (isVIP ? 'vip' : 'staff')).toLowerCase();
+        const myDeviceToken = mobileNotificationService.getDeviceRegistration()?.token || '';
+
+        let actionUrl = notifData.actionUrl || '/notifications';
+        if (!actionUrl.includes('sender=')) {
+          const sep = actionUrl.includes('?') ? '&' : '?';
+          actionUrl += `${sep}sender=${encodeURIComponent(actorUsername)}&senderDevice=${encodeURIComponent(myDeviceToken)}`;
+        }
+
         const notification: Notification = {
           ...notifData,
           id: generateId('notif'),
+          vipId: activeVipId || notifData.vipId || undefined,
           timestamp: new Date().toISOString(),
+          actionUrl,
         };
+
+        // Suppress on this device so the user who initiated the action is not alerted by their own action
+        mobileNotificationService.markDeliveredLocally(notification.id);
+
         set((state) => ({
           notifications: [notification, ...state.notifications],
         }));
-        supabaseDbService.insertNotification(notification).catch(console.error);
-        mobileNotificationService.deliverNotification(notification).catch(console.warn);
+        supabaseDbService.insertNotification(notification, activeVipId || undefined).catch(console.error);
         return notification;
       },
 
       markNotificationRead: (id) => {
+        const { activeVipId } = get();
         set((state) => ({
           notifications: state.notifications.map((n) =>
             n.id === id ? { ...n, read: true } : n
           ),
         }));
-        supabaseDbService.updateNotificationRead(id, true).catch(console.error);
+        supabaseDbService.updateNotificationRead(id, true, activeVipId || undefined).catch(console.error);
       },
 
       markAllNotificationsRead: () => {
+        const { activeVipId } = get();
         set((state) => ({
           notifications: state.notifications.map((n) => ({ ...n, read: true })),
         }));
-        supabaseDbService.markAllNotificationsRead().catch(console.error);
+        supabaseDbService.markAllNotificationsRead(activeVipId || undefined).catch(console.error);
       },
 
       deleteNotification: (id) => {
+        const { activeVipId } = get();
         set((state) => ({
           notifications: state.notifications.filter((n) => n.id !== id),
         }));
-        supabaseDbService.deleteNotification(id).catch(console.error);
+        supabaseDbService.deleteNotification(id, activeVipId || undefined).catch(console.error);
       },
 
       clearNotifications: () => {
+        const { activeVipId } = get();
         set({ notifications: [] });
-        supabaseDbService.clearNotifications().catch(console.error);
+        supabaseDbService.clearNotifications(activeVipId || undefined).catch(console.error);
       },
 
       getUnreadCount: () => get().notifications.filter((n) => !n.read).length,
 
       // ── Activity Log Actions ─────────────────────────────────────────────
       addActivityLog: (logData) => {
+        const { activeVipId } = get();
         const log: ActivityLog = {
           ...logData,
           id: generateId('log'),
+          vipId: activeVipId || logData.vipId || undefined,
           timestamp: new Date().toISOString(),
         };
         set((state) => ({
           activityLogs: [log, ...state.activityLogs],
         }));
-        supabaseDbService.insertActivityLog(log).catch(console.error);
+        supabaseDbService.insertActivityLog(log, activeVipId || undefined).catch(console.error);
         return log;
       },
 
       clearActivityLogs: () => {
+        const { activeVipId } = get();
         set({ activityLogs: [] });
-        supabaseDbService.clearActivityLogs().catch(console.error);
+        supabaseDbService.clearActivityLogs(activeVipId || undefined).catch(console.error);
       },
 
       // ── Reminder Actions ─────────────────────────────────────────────────
       addReminder: (reminderData) => {
+        const { activeVipId } = get();
         const reminder: Reminder = {
           ...reminderData,
           id: generateId('rem'),
+          vipId: activeVipId || reminderData.vipId || undefined,
         };
         set((state) => ({
           reminders: [...state.reminders, reminder],
         }));
+        supabaseDbService.insertReminder(reminder, activeVipId || undefined).catch(console.error);
       },
 
       markReminderRead: (id) => {
@@ -999,6 +1595,11 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: 'vip-event-intelligence-store-v2',
+      onRehydrateStorage: () => (state) => {
+        if (state && state.isAuthenticated && state.activeVipId) {
+          setSupabaseAuthSession(state.activeVipId, state.authToken || undefined);
+        }
+      },
       partialize: (state) => ({
         theme: state.theme,
         currentUser: state.currentUser,
@@ -1006,6 +1607,8 @@ export const useAppStore = create<AppState>()(
         isAuthenticated: state.isAuthenticated,
         isVIP: state.isVIP,
         currentPrivilegedUser: state.currentPrivilegedUser,
+        activeVipId: state.activeVipId,
+        authToken: state.authToken,
         people: state.people,
         invitations: state.invitations,
         familyEvents: state.familyEvents,

@@ -46,7 +46,7 @@ export default function CalendarScreen() {
             <div>
               <h2>Calendar Matrix</h2>
               <p className="text-sm text-secondary mt-1">
-                Monthly schedule timeline and protocol availability
+                Monthly schedule timeline and function invited
               </p>
             </div>
           </div>

@@ -4,13 +4,15 @@ import { useAppStore } from '../store/useAppStore';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Sparkles, AlertTriangle,
   History, Gift, User, CheckCircle2, Trash2, ChevronRight,
+  Edit3, X, Building2, Tag,
 } from 'lucide-react';
 import {
   formatFullDate, formatTime, formatDate,
-  getInitials, formatCurrency, getRelationshipLabel,
+  getInitials, formatCurrency, getRelationshipLabel, getEventTypeLabel,
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
+import type { EventType, Priority, InvitationStatus } from '../types';
 import { getRelationshipHistory, getGiftHistory, detectScheduleConflicts } from '../services/aiService';
 
 export default function EventDetailScreen() {
@@ -21,6 +23,7 @@ export default function EventDetailScreen() {
     people,
     familyEvents,
     schedule,
+    updateInvitation,
     updateInvitationStatus,
     removeInvitation,
     isVIP,
@@ -29,8 +32,25 @@ export default function EventDetailScreen() {
   } = useAppStore();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  // Edit state
+  const [editTitle, setEditTitle] = useState('');
+  const [editNickname, setEditNickname] = useState('');
+  const [editEventType, setEditEventType] = useState<EventType>('wedding');
+  const [editDate, setEditDate] = useState('');
+  const [editTime, setEditTime] = useState('');
+  const [editPriority, setEditPriority] = useState<Priority>('medium');
+  const [editStatus, setEditStatus] = useState<InvitationStatus>('pending');
+  const [editVenue, setEditVenue] = useState('');
+  const [editLocation, setEditLocation] = useState('');
+  const [editHostName, setEditHostName] = useState('');
+  const [editMainPerson, setEditMainPerson] = useState('');
+  const [editPersonId, setEditPersonId] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   const canManage = isVIP || currentPrivilegedUser?.permissions?.canEditEvents !== false;
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
   const invitation = invitations.find((i) => i.id === id);
   if (!invitation) {
@@ -48,6 +68,56 @@ export default function EventDetailScreen() {
   const relHistory = person ? getRelationshipHistory(person.id, familyEvents) : [];
   const giftHist = person ? getGiftHistory(person.id, familyEvents) : [];
   const conflicts = detectScheduleConflicts(invitation.date, invitation.time, schedule, invitations.filter((i) => i.id !== invitation.id));
+
+  const handleOpenEditModal = () => {
+    if (!invitation) return;
+    setEditTitle(invitation.title || '');
+    setEditNickname(invitation.nickname || '');
+    setEditEventType(invitation.eventType || 'wedding');
+    setEditDate(invitation.date || '');
+    setEditTime(invitation.time || '');
+    setEditPriority(invitation.priority || 'medium');
+    setEditStatus(invitation.status || 'pending');
+    setEditVenue(invitation.venue || '');
+    setEditLocation(invitation.location || '');
+    setEditHostName(invitation.hostName || '');
+    setEditMainPerson(invitation.mainPerson || '');
+    setEditPersonId(invitation.personId || '');
+    setEditDescription(invitation.description || '');
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitle.trim() || !editDate) return;
+
+    updateInvitation(invitation.id, {
+      title: editTitle.trim(),
+      nickname: editNickname.trim() || undefined,
+      eventType: editEventType,
+      date: editDate,
+      time: editTime || undefined,
+      priority: editPriority,
+      status: canConfirmIgnore ? editStatus : invitation.status,
+      venue: editVenue.trim() || undefined,
+      location: editLocation.trim() || undefined,
+      hostName: editHostName.trim() || undefined,
+      mainPerson: editMainPerson.trim() || undefined,
+      personId: editPersonId || undefined,
+      description: editDescription.trim() || undefined,
+    });
+
+    addActivityLog({
+      userId: isVIP ? 'vip' : currentPrivilegedUser?.id || 'staff',
+      userName: isVIP ? 'VIP Principal' : currentPrivilegedUser?.name || 'Staff User',
+      action: `Updated details for event "${editTitle.trim()}"`,
+      entityType: 'invitation',
+      entityId: invitation.id,
+      entityName: editTitle.trim(),
+    });
+
+    setShowEditModal(false);
+  };
 
   const handleDelete = () => {
     removeInvitation(invitation.id);
@@ -72,16 +142,28 @@ export default function EventDetailScreen() {
           </button>
           <span className="top-bar-title">Event Overview</span>
           {canManage ? (
-            <button
-              type="button"
-              className="btn-icon"
-              style={{ color: 'var(--color-danger)' }}
-              onClick={() => setShowDeleteModal(true)}
-              title="Delete Invitation"
-              aria-label="Delete Event"
-            >
-              <Trash2 size={16} strokeWidth={1.8} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className="btn-icon"
+                style={{ color: 'var(--color-accent)' }}
+                onClick={handleOpenEditModal}
+                title="Edit Event Details"
+                aria-label="Edit Event"
+              >
+                <Edit3 size={16} strokeWidth={1.8} />
+              </button>
+              <button
+                type="button"
+                className="btn-icon"
+                style={{ color: 'var(--color-danger)' }}
+                onClick={() => setShowDeleteModal(true)}
+                title="Delete Invitation"
+                aria-label="Delete Event"
+              >
+                <Trash2 size={16} strokeWidth={1.8} />
+              </button>
+            </div>
           ) : (
             <div style={{ width: '36px' }} />
           )}
@@ -99,6 +181,22 @@ export default function EventDetailScreen() {
             <span className={`badge badge-${invitation.status}`}>
               {invitation.status}
             </span>
+            {canManage && (
+              <button
+                type="button"
+                onClick={handleOpenEditModal}
+                className="badge cursor-pointer flex items-center gap-1"
+                style={{
+                  background: 'rgba(212, 168, 83, 0.15)',
+                  color: 'var(--color-accent)',
+                  border: '1px solid rgba(212, 168, 83, 0.3)',
+                  padding: '3px 8px',
+                  fontSize: '11px',
+                }}
+              >
+                <Edit3 size={11} strokeWidth={2} /> Edit
+              </button>
+            )}
           </div>
         </div>
 
@@ -259,27 +357,299 @@ export default function EventDetailScreen() {
 
       {/* ── Decision Bar for Pending Events ────────────────────────────────── */}
       {invitation.status === 'pending' && (
-        <div className="decision-bar">
-          <button
-            type="button"
-            className="btn btn-confirm flex-1 font-heading"
-            onClick={() => {
-              updateInvitationStatus(invitation.id, 'confirmed');
-              navigate(-1);
+        canConfirmIgnore ? (
+          <div className="decision-bar">
+            <button
+              type="button"
+              className="btn btn-confirm flex-1 font-heading"
+              onClick={() => {
+                updateInvitationStatus(invitation.id, 'confirmed');
+                navigate(-1);
+              }}
+            >
+              Confirm Attendance
+            </button>
+            <button
+              type="button"
+              className="btn btn-ignore flex-1 font-heading"
+              onClick={() => {
+                updateInvitationStatus(invitation.id, 'ignored');
+                navigate(-1);
+              }}
+            >
+              Decline
+            </button>
+          </div>
+        ) : (
+          <div className="decision-bar" style={{ justifyContent: 'center' }}>
+            <div
+              style={{
+                width: '100%',
+                padding: '10px 14px',
+                borderRadius: '10px',
+                background: 'rgba(255, 179, 64, 0.08)',
+                border: '1px solid rgba(255, 179, 64, 0.2)',
+                textAlign: 'center',
+                fontSize: '12.5px',
+                color: '#ffb340',
+                fontWeight: 500,
+              }}
+            >
+              Pending VIP Principal RSVP Decision
+            </div>
+          </div>
+        )
+      )}
+
+      {/* ── Edit Event Details Modal ─────────────────────────────────────── */}
+      {showEditModal && (
+        <div className="modal-overlay modal-centered" onClick={() => setShowEditModal(false)}>
+          <div
+            className="modal-dialog animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxHeight: '88vh',
+              overflowY: 'auto',
+              padding: '22px',
+              textAlign: 'left',
             }}
           >
-            Confirm Attendance
-          </button>
-          <button
-            type="button"
-            className="btn btn-ignore flex-1 font-heading"
-            onClick={() => {
-              updateInvitationStatus(invitation.id, 'ignored');
-              navigate(-1);
-            }}
-          >
-            Decline
-          </button>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-heading font-semibold text-white" style={{ fontSize: '18px' }}>
+                  Edit Event Details
+                </h3>
+                <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                  Update event timing, address, priority, or status.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn-icon"
+                onClick={() => setShowEditModal(false)}
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="flex flex-col gap-3">
+              {/* Title / Event Name */}
+              <div>
+                <label className="label">Event Title *</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="e.g. Wedding Reception"
+                  required
+                />
+              </div>
+
+              {/* Display Nickname */}
+              <div>
+                <label className="label">Display Nickname</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={editNickname}
+                  onChange={(e) => setEditNickname(e.target.value)}
+                  placeholder="e.g. Arun Prakash — Wedding"
+                />
+              </div>
+
+              {/* Event Type / Category */}
+              <div>
+                <label className="label">Event Category</label>
+                <select
+                  className="select"
+                  value={editEventType}
+                  onChange={(e) => setEditEventType(e.target.value as EventType)}
+                >
+                  <option value="wedding">Wedding</option>
+                  <option value="engagement">Engagement</option>
+                  <option value="reception">Reception</option>
+                  <option value="birthday">Birthday</option>
+                  <option value="anniversary">Anniversary</option>
+                  <option value="house_warming">House Warming</option>
+                  <option value="baby_shower">Baby Shower</option>
+                  <option value="business_event">Business Event</option>
+                  <option value="cultural">Cultural</option>
+                  <option value="religious">Religious</option>
+                  <option value="graduation">Graduation</option>
+                  <option value="retirement">Retirement</option>
+                  <option value="funeral">Funeral</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+
+              {/* Date & Time */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label className="label">Date *</label>
+                  <input
+                    type="date"
+                    className="input"
+                    value={editDate}
+                    onChange={(e) => setEditDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="label">Time</label>
+                  <input
+                    type="time"
+                    className="input"
+                    value={editTime}
+                    onChange={(e) => setEditTime(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Priority Selector */}
+              <div>
+                <label className="label">Priority Level</label>
+                <div className="flex gap-2">
+                  {(['high', 'medium', 'low'] as Priority[]).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`btn flex-1 text-xs capitalize ${
+                        editPriority === p ? 'btn-gold' : 'btn-outline'
+                      }`}
+                      style={{ padding: '8px 6px' }}
+                      onClick={() => setEditPriority(p)}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Status Selector (Authorized users can change status before or after confirm) */}
+              {canConfirmIgnore && (
+                <div>
+                  <label className="label">Event Status</label>
+                  <div className="flex gap-2">
+                    {(['confirmed', 'pending', 'ignored'] as InvitationStatus[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        className={`btn flex-1 text-xs capitalize ${
+                          editStatus === s
+                            ? s === 'confirmed'
+                              ? 'btn-confirm'
+                              : s === 'ignored'
+                              ? 'btn-ignore'
+                              : 'btn-gold'
+                            : 'btn-outline'
+                        }`}
+                        style={{ padding: '8px 6px' }}
+                        onClick={() => setEditStatus(s)}
+                      >
+                        {s === 'ignored' ? 'Declined' : s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Venue & Location / Address */}
+              <div>
+                <label className="label">Venue Name</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={editVenue}
+                  onChange={(e) => setEditVenue(e.target.value)}
+                  placeholder="e.g. Grand Palace Hall"
+                />
+              </div>
+
+              <div>
+                <label className="label">Location / Address</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                  placeholder="e.g. 12 Anna Salai, Chennai"
+                />
+              </div>
+
+              {/* Host & Principal Couple */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label className="label">Host Name</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editHostName}
+                    onChange={(e) => setEditHostName(e.target.value)}
+                    placeholder="e.g. Rajesh Kumar"
+                  />
+                </div>
+                <div>
+                  <label className="label">Couple / Principal</label>
+                  <input
+                    type="text"
+                    className="input"
+                    value={editMainPerson}
+                    onChange={(e) => setEditMainPerson(e.target.value)}
+                    placeholder="e.g. Sneha & Rajesh"
+                  />
+                </div>
+              </div>
+
+              {/* Link to VIP Contact */}
+              <div>
+                <label className="label">Link VIP Contact</label>
+                <select
+                  className="select"
+                  value={editPersonId}
+                  onChange={(e) => setEditPersonId(e.target.value)}
+                >
+                  <option value="">No VIP Contact Linked</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nickname} ({p.name})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Notes / Description */}
+              <div>
+                <label className="label">Notes / Description</label>
+                <textarea
+                  className="input"
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Add any specific instructions or details..."
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              {/* Modal Actions */}
+              <div className="flex gap-2 mt-3 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <button
+                  type="button"
+                  className="btn btn-ghost flex-1"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-gold flex-1 font-heading"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 

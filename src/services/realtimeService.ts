@@ -10,27 +10,47 @@ import type {
   Notification,
   ActivityLog,
 } from '../types';
+import { sanitizePermissions } from '../types';
 import { mobileNotificationService } from './mobileNotificationService';
 
 let realtimeChannel: RealtimeChannel | null = null;
 let isSubscribed = false;
+let currentSubscribedVipId: string | null = null;
 
 export const realtimeService = {
   /**
-   * Initializes real-time subscriptions to live Supabase PostgreSQL tables.
+   * Initializes real-time subscriptions scoped strictly to the authenticated VIP account.
    */
-  subscribeAll(): () => void {
-    if (isSubscribed && realtimeChannel) {
+  subscribeAll(vipId?: string): () => void {
+    const targetVipId =
+      vipId ||
+      useAppStore.getState().activeVipId ||
+      useAppStore.getState().currentUser?.vipId ||
+      useAppStore.getState().currentPrivilegedUser?.vipId;
+
+    if (!targetVipId) {
+      this.unsubscribe();
+      return () => {};
+    }
+
+    if (isSubscribed && realtimeChannel && currentSubscribedVipId === targetVipId) {
       return () => this.unsubscribe();
     }
 
+    if (realtimeChannel) {
+      this.unsubscribe();
+    }
+
     try {
+      currentSubscribedVipId = targetVipId;
+      const channelName = `vip-realtime-${targetVipId}`;
+
       realtimeChannel = supabase
-        .channel('vip-event-intelligence-realtime-channel')
-        // ── 1. Listen to user_accounts changes ──────────────────────────────
+        .channel(channelName)
+        // ── 1. Listen to user_accounts changes for this VIP ────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'user_accounts' },
+          { event: '*', schema: 'public', table: 'user_accounts', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'UPDATE') {
@@ -58,7 +78,7 @@ export const realtimeService = {
                   useAppStore.setState({
                     privilegedUsers: privilegedUsers.map((u) =>
                       u.id === existing.id
-                        ? { ...u, permissions: updatedAccount.permissions, name: updatedAccount.name }
+                        ? { ...u, permissions: sanitizePermissions(updatedAccount.permissions), name: updatedAccount.name }
                         : u
                     ),
                   });
@@ -66,7 +86,7 @@ export const realtimeService = {
               }
             }
 
-            // Handle new staff account added from another client
+            // Handle new staff account added for this VIP
             if (payload.eventType === 'INSERT') {
               const newAccount = payload.new as any;
               if (newAccount.role === 'staff') {
@@ -80,6 +100,7 @@ export const realtimeService = {
                       ...privilegedUsers,
                       {
                         id: 'priv-' + Date.now(),
+                        vipId: targetVipId,
                         username: newAccount.username,
                         passwordHash: newAccount.password_hash,
                         name: newAccount.name,
@@ -87,15 +108,8 @@ export const realtimeService = {
                         pin: newAccount.pin || '1111',
                         phone: newAccount.phone,
                         email: newAccount.email,
-                        permissions: newAccount.permissions || {
-                          canAddInvitations: true,
-                          canEditEvents: false,
-                          canChangePriority: false,
-                          canManageSchedule: false,
-                          canViewGiftHistory: false,
-                          canAddPeople: false,
-                        },
-                        addedBy: 'vip',
+                        permissions: sanitizePermissions(newAccount.permissions),
+                        addedBy: targetVipId,
                         addedAt: newAccount.created_at,
                       },
                     ],
@@ -104,7 +118,7 @@ export const realtimeService = {
               }
             }
 
-            // Handle staff account deleted from another client
+            // Handle staff account deleted for this VIP
             if (payload.eventType === 'DELETE') {
               const deletedAccount = payload.old as any;
               if (deletedAccount?.username) {
@@ -118,16 +132,17 @@ export const realtimeService = {
             }
           }
         )
-        // ── 2. Listen to invitations changes ────────────────────────────────
+        // ── 2. Listen to invitations changes for this VIP ──────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'invitations' },
+          { event: '*', schema: 'public', table: 'invitations', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
               const newRow = payload.new as any;
               const formatted: Invitation = {
                 id: newRow.id,
+                vipId: targetVipId,
                 personId: newRow.person_id || newRow.personId,
                 eventType: newRow.event_type || newRow.eventType || 'other',
                 title: newRow.title,
@@ -150,10 +165,27 @@ export const realtimeService = {
                 updatedAt: newRow.updated_at || newRow.updatedAt || new Date().toISOString(),
               };
 
-              if (!store.invitations.some((i) => i.id === formatted.id)) {
+              if (!store.invitations.some((inv) => inv.id === formatted.id)) {
                 useAppStore.setState((state) => ({
-                  invitations: [formatted, ...state.invitations],
+                  invitations: [...state.invitations, formatted],
                 }));
+
+                // Alert the device if this was added by another user in this VIP account
+                const myUsername = (store.currentUser?.username || store.currentPrivilegedUser?.username || '').toLowerCase();
+                const creator = (formatted.createdBy || '').toLowerCase();
+                if (myUsername && creator && creator !== myUsername) {
+                  mobileNotificationService.deliverNotification({
+                    id: 'notif-rt-' + Date.now(),
+                    vipId: targetVipId,
+                    type: 'new_invitation',
+                    title: `New Invitation: ${formatted.title}`,
+                    message: `${formatted.createdBy || 'Staff'} added a new invitation for ${formatted.date}.`,
+                    read: false,
+                    timestamp: new Date().toISOString(),
+                    actionUrl: `/event/${formatted.id}`,
+                    relatedEntityId: formatted.id,
+                  });
+                }
               }
             } else if (payload.eventType === 'UPDATE') {
               const updatedRow = payload.new as any;
@@ -162,13 +194,24 @@ export const realtimeService = {
                   inv.id === updatedRow.id
                     ? {
                         ...inv,
+                        personId: updatedRow.person_id ?? inv.personId,
+                        eventType: updatedRow.event_type ?? inv.eventType,
                         title: updatedRow.title ?? inv.title,
-                        status: updatedRow.status ?? inv.status,
-                        priority: updatedRow.priority ?? inv.priority,
+                        nickname: updatedRow.nickname ?? inv.nickname,
+                        mainPerson: updatedRow.main_person ?? inv.mainPerson,
+                        hostName: updatedRow.host_name ?? inv.hostName,
                         date: updatedRow.date ?? inv.date,
                         time: updatedRow.time ?? inv.time,
                         venue: updatedRow.venue ?? inv.venue,
-                        updatedAt: updatedRow.updated_at ?? inv.updatedAt,
+                        location: updatedRow.location ?? inv.location,
+                        description: updatedRow.description ?? inv.description,
+                        priority: updatedRow.priority ?? inv.priority,
+                        aiSuggestedPriority: updatedRow.ai_suggested_priority ?? inv.aiSuggestedPriority,
+                        aiReason: updatedRow.ai_reason ?? inv.aiReason,
+                        status: updatedRow.status ?? inv.status,
+                        ocrText: updatedRow.ocr_text ?? inv.ocrText,
+                        imageId: updatedRow.image_id ?? inv.imageId,
+                        updatedAt: updatedRow.updated_at ?? new Date().toISOString(),
                       }
                     : inv
                 ),
@@ -176,231 +219,261 @@ export const realtimeService = {
             } else if (payload.eventType === 'DELETE') {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
-                invitations: state.invitations.filter((i) => i.id !== oldRow.id),
+                invitations: state.invitations.filter((inv) => inv.id !== oldRow.id),
               }));
             }
           }
         )
-        // ── 3. Listen to people changes ─────────────────────────────────────
+        // ── 3. Listen to people changes for this VIP ───────────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'people' },
+          { event: '*', schema: 'public', table: 'people', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
-              const p = payload.new as any;
+              const row = payload.new as any;
               const formatted: Person = {
-                id: p.id,
-                name: p.name,
-                nickname: p.nickname || p.name,
-                relationship: p.relationship || 'friend',
-                phone: p.phone,
-                email: p.email,
-                notes: p.notes,
-                createdAt: p.created_at || p.createdAt || new Date().toISOString(),
-                updatedAt: p.updated_at || p.updatedAt || new Date().toISOString(),
+                id: row.id,
+                vipId: targetVipId,
+                name: row.name,
+                nickname: row.nickname || '',
+                relationship: row.relationship,
+                phone: row.phone,
+                email: row.email,
+                notes: row.notes,
+                createdAt: row.created_at || new Date().toISOString(),
+                updatedAt: row.updated_at || new Date().toISOString(),
               };
-              if (!store.people.some((x) => x.id === formatted.id)) {
+              if (!store.people.some((p) => p.id === formatted.id)) {
                 useAppStore.setState((state) => ({
-                  people: [formatted, ...state.people],
+                  people: [...state.people, formatted],
                 }));
               }
             } else if (payload.eventType === 'UPDATE') {
-              const p = payload.new as any;
+              const row = payload.new as any;
               useAppStore.setState((state) => ({
-                people: state.people.map((person) =>
-                  person.id === p.id
+                people: state.people.map((p) =>
+                  p.id === row.id
                     ? {
-                        ...person,
-                        name: p.name ?? person.name,
-                        nickname: p.nickname ?? person.nickname,
-                        relationship: p.relationship ?? person.relationship,
-                        phone: p.phone ?? person.phone,
-                        email: p.email ?? person.email,
-                        notes: p.notes ?? person.notes,
-                        updatedAt: p.updated_at ?? person.updatedAt,
+                        ...p,
+                        name: row.name ?? p.name,
+                        nickname: row.nickname ?? p.nickname,
+                        relationship: row.relationship ?? p.relationship,
+                        phone: row.phone ?? p.phone,
+                        email: row.email ?? p.email,
+                        notes: row.notes ?? p.notes,
+                        updatedAt: row.updated_at ?? new Date().toISOString(),
                       }
-                    : person
+                    : p
                 ),
               }));
             } else if (payload.eventType === 'DELETE') {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
-                people: state.people.filter((x) => x.id !== oldRow.id),
+                people: state.people.filter((p) => p.id !== oldRow.id),
               }));
             }
           }
         )
-        // ── 4. Listen to family_events changes ──────────────────────────────
+        // ── 4. Listen to family_events changes for this VIP ────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'family_events' },
+          { event: '*', schema: 'public', table: 'family_events', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
-              const ev = payload.new as any;
+              const row = payload.new as any;
               const formatted: FamilyEvent = {
-                id: ev.id,
-                name: ev.name,
-                eventType: ev.event_type || ev.eventType || 'other',
-                date: ev.date,
-                familyMember: ev.family_member || ev.familyMember || '',
-                description: ev.description,
-                venue: ev.venue,
-                guests: ev.guests || [],
-                notes: ev.notes,
-                createdAt: ev.created_at || ev.createdAt || new Date().toISOString(),
-                updatedAt: ev.updated_at || ev.updatedAt || new Date().toISOString(),
+                id: row.id,
+                vipId: targetVipId,
+                name: row.name,
+                eventType: row.event_type || 'other',
+                date: row.date,
+                familyMember: row.family_member || '',
+                description: row.description,
+                venue: row.venue,
+                guests: row.guests || [],
+                notes: row.notes,
+                createdAt: row.created_at || new Date().toISOString(),
+                updatedAt: row.updated_at || new Date().toISOString(),
               };
-              if (!store.familyEvents.some((x) => x.id === formatted.id)) {
+              if (!store.familyEvents.some((e) => e.id === formatted.id)) {
                 useAppStore.setState((state) => ({
-                  familyEvents: [formatted, ...state.familyEvents],
+                  familyEvents: [...state.familyEvents, formatted],
                 }));
               }
             } else if (payload.eventType === 'UPDATE') {
-              const ev = payload.new as any;
+              const row = payload.new as any;
               useAppStore.setState((state) => ({
-                familyEvents: state.familyEvents.map((item) =>
-                  item.id === ev.id
+                familyEvents: state.familyEvents.map((e) =>
+                  e.id === row.id
                     ? {
-                        ...item,
-                        name: ev.name ?? item.name,
-                        date: ev.date ?? item.date,
-                        guests: ev.guests ?? item.guests,
-                        notes: ev.notes ?? item.notes,
+                        ...e,
+                        name: row.name ?? e.name,
+                        eventType: row.event_type ?? e.eventType,
+                        date: row.date ?? e.date,
+                        familyMember: row.family_member ?? e.familyMember,
+                        description: row.description ?? e.description,
+                        venue: row.venue ?? e.venue,
+                        guests: row.guests ?? e.guests,
+                        notes: row.notes ?? e.notes,
+                        updatedAt: row.updated_at ?? new Date().toISOString(),
                       }
-                    : item
+                    : e
                 ),
               }));
             } else if (payload.eventType === 'DELETE') {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
-                familyEvents: state.familyEvents.filter((x) => x.id !== oldRow.id),
+                familyEvents: state.familyEvents.filter((e) => e.id !== oldRow.id),
               }));
             }
           }
         )
-        // ── 5. Listen to schedule_items changes ─────────────────────────────
+        // ── 5. Listen to schedule_items changes for this VIP ───────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'schedule_items' },
+          { event: '*', schema: 'public', table: 'schedule_items', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
-              const sc = payload.new as any;
+              const row = payload.new as any;
               const formatted: ScheduleItem = {
-                id: sc.id,
-                title: sc.title,
-                date: sc.date,
-                startTime: sc.start_time || sc.startTime || '09:00',
-                endTime: sc.end_time || sc.endTime,
-                type: sc.type || 'event',
-                location: sc.location,
-                notes: sc.notes,
-                createdAt: sc.created_at || sc.createdAt || new Date().toISOString(),
+                id: row.id,
+                vipId: targetVipId,
+                title: row.title,
+                date: row.date,
+                startTime: row.start_time,
+                endTime: row.end_time,
+                type: row.type || 'event',
+                location: row.location,
+                notes: row.notes,
+                createdAt: row.created_at || new Date().toISOString(),
               };
-              if (!store.schedule.some((x) => x.id === formatted.id)) {
+              if (!store.schedule.some((s) => s.id === formatted.id)) {
                 useAppStore.setState((state) => ({
                   schedule: [...state.schedule, formatted],
                 }));
               }
             } else if (payload.eventType === 'UPDATE') {
-              const sc = payload.new as any;
+              const row = payload.new as any;
               useAppStore.setState((state) => ({
-                schedule: state.schedule.map((item) =>
-                  item.id === sc.id
+                schedule: state.schedule.map((s) =>
+                  s.id === row.id
                     ? {
-                        ...item,
-                        title: sc.title ?? item.title,
-                        date: sc.date ?? item.date,
-                        startTime: sc.start_time ?? item.startTime,
-                        endTime: sc.end_time ?? item.endTime,
-                        location: sc.location ?? item.location,
+                        ...s,
+                        title: row.title ?? s.title,
+                        date: row.date ?? s.date,
+                        startTime: row.start_time ?? s.startTime,
+                        endTime: row.end_time ?? s.endTime,
+                        type: row.type ?? s.type,
+                        location: row.location ?? s.location,
+                        notes: row.notes ?? s.notes,
                       }
-                    : item
+                    : s
                 ),
               }));
             } else if (payload.eventType === 'DELETE') {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
-                schedule: state.schedule.filter((x) => x.id !== oldRow.id),
+                schedule: state.schedule.filter((s) => s.id !== oldRow.id),
               }));
             }
           }
         )
-        // ── 6. Listen to reminders changes ──────────────────────────────────
+        // ── 6. Listen to reminders changes for this VIP ────────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'reminders' },
+          { event: '*', schema: 'public', table: 'reminders', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
-              const rem = payload.new as any;
+              const row = payload.new as any;
               const formatted: Reminder = {
-                id: rem.id,
-                eventId: rem.event_id || rem.eventId,
-                eventTitle: rem.event_title || rem.eventTitle,
-                daysBeforeEvent: rem.days_before_event ?? rem.daysBeforeEvent ?? 1,
-                date: rem.date,
-                message: rem.message,
-                read: rem.read ?? false,
-                priority: rem.priority || 'medium',
+                id: row.id,
+                vipId: targetVipId,
+                eventId: row.event_id,
+                eventTitle: row.event_title,
+                daysBeforeEvent: row.days_before_event ?? 1,
+                date: row.date,
+                message: row.message,
+                read: Boolean(row.read),
+                priority: row.priority || 'medium',
               };
-              if (!store.reminders.some((x) => x.id === formatted.id)) {
+              if (!store.reminders.some((r) => r.id === formatted.id)) {
                 useAppStore.setState((state) => ({
-                  reminders: [formatted, ...state.reminders],
+                  reminders: [...state.reminders, formatted],
                 }));
               }
             } else if (payload.eventType === 'UPDATE') {
-              const rem = payload.new as any;
+              const row = payload.new as any;
               useAppStore.setState((state) => ({
                 reminders: state.reminders.map((r) =>
-                  r.id === rem.id ? { ...r, read: rem.read ?? r.read } : r
+                  r.id === row.id
+                    ? {
+                        ...r,
+                        read: row.read !== undefined ? Boolean(row.read) : r.read,
+                        message: row.message ?? r.message,
+                      }
+                    : r
                 ),
               }));
             } else if (payload.eventType === 'DELETE') {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
-                reminders: state.reminders.filter((x) => x.id !== oldRow.id),
+                reminders: state.reminders.filter((r) => r.id !== oldRow.id),
               }));
             }
           }
         )
-        // ── 7. Listen to notifications changes ──────────────────────────────
+        // ── 7. Listen to notifications changes for this VIP ────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'notifications' },
+          { event: '*', schema: 'public', table: 'notifications', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
-              const notif = payload.new as any;
+              const row = payload.new as any;
               const formatted: Notification = {
-                id: notif.id,
-                type: notif.type || 'system',
-                title: notif.title,
-                message: notif.message,
-                actionUrl: notif.action_url || notif.actionUrl,
-                relatedEntityId: notif.related_entity_id || notif.relatedEntityId,
-                read: notif.read ?? false,
-                timestamp: notif.timestamp || notif.created_at || new Date().toISOString(),
+                id: row.id,
+                vipId: targetVipId,
+                type: row.type || 'system',
+                title: row.title,
+                message: row.message,
+                read: Boolean(row.read),
+                timestamp: row.timestamp || new Date().toISOString(),
+                actionUrl: row.action_url,
+                relatedEntityId: row.related_entity_id,
               };
-              if (!store.notifications.some((x) => x.id === formatted.id)) {
+
+              if (!store.notifications.some((n) => n.id === formatted.id)) {
                 useAppStore.setState((state) => ({
                   notifications: [formatted, ...state.notifications],
                 }));
+
+                // Check sender info
+                const activeUser = (
+                  store.currentUser?.username ||
+                  store.currentPrivilegedUser?.username ||
+                  ''
+                ).toLowerCase();
+                const urlParams = formatted.actionUrl
+                  ? new URLSearchParams(formatted.actionUrl.split('?')[1] || '')
+                  : null;
+                const sender = urlParams?.get('sender')?.toLowerCase();
+
+                if (!sender || !activeUser || sender !== activeUser) {
+                  mobileNotificationService.deliverNotification(formatted);
+                }
               }
-              // Deliver OS / Mobile notification (deduplicated automatically)
-              mobileNotificationService.deliverNotification(formatted).catch(console.warn);
             } else if (payload.eventType === 'UPDATE') {
-              const updatedNotif = payload.new as any;
+              const row = payload.new as any;
               useAppStore.setState((state) => ({
                 notifications: state.notifications.map((n) =>
-                  n.id === updatedNotif.id
+                  n.id === row.id
                     ? {
                         ...n,
-                        read: updatedNotif.read ?? n.read,
-                        title: updatedNotif.title ?? n.title,
-                        message: updatedNotif.message ?? n.message,
+                        read: row.read !== undefined ? Boolean(row.read) : n.read,
                       }
                     : n
                 ),
@@ -413,16 +486,17 @@ export const realtimeService = {
             }
           }
         )
-        // ── 8. Listen to activity_logs changes ─────────────────────────────
+        // ── 8. Listen to activity_logs changes for this VIP ────────────────
         .on(
           'postgres_changes',
-          { event: '*', schema: 'public', table: 'activity_logs' },
+          { event: '*', schema: 'public', table: 'activity_logs', filter: `vip_id=eq.${targetVipId}` },
           (payload) => {
             const store = useAppStore.getState();
             if (payload.eventType === 'INSERT') {
               const row = payload.new as any;
               const formatted: ActivityLog = {
                 id: row.id,
+                vipId: targetVipId,
                 userId: row.user_id || row.userId || 'system',
                 userName: row.user_name || row.userName || 'VIP Principal',
                 action: row.action,
@@ -465,9 +539,14 @@ export const realtimeService = {
           if (status === 'SUBSCRIBED') {
             isSubscribed = true;
             useAppStore.setState({ isRealtimeActive: true });
-          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            console.log(`[Realtime] Subscription active for VIP on channel: ${channelName}`);
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             isSubscribed = false;
             useAppStore.setState({ isRealtimeActive: false });
+            console.warn('[Realtime] Subscription interrupted (' + status + '). Scheduling reconnection...');
+            setTimeout(() => {
+              realtimeService.ensureConnection();
+            }, 3000);
           }
         });
 
@@ -479,14 +558,60 @@ export const realtimeService = {
   },
 
   /**
-   * Unsubscribes from active real-time channels.
+   * Ensures the real-time channel is connected and healthy for the active VIP.
+   */
+  ensureConnection() {
+    const store = useAppStore.getState();
+    const targetVipId = store.activeVipId || store.currentUser?.vipId || store.currentPrivilegedUser?.vipId;
+    if (!targetVipId || !store.isAuthenticated) {
+      this.unsubscribe();
+      return;
+    }
+    if (!isSubscribed || !realtimeChannel || currentSubscribedVipId !== targetVipId) {
+      this.unsubscribe();
+      this.subscribeAll(targetVipId);
+    }
+  },
+
+  /**
+   * Unsubscribes from active real-time channels and clears VIP subscription state.
    */
   unsubscribe() {
     if (realtimeChannel) {
       supabase.removeChannel(realtimeChannel);
       realtimeChannel = null;
-      isSubscribed = false;
-      useAppStore.setState({ isRealtimeActive: false });
     }
+    isSubscribed = false;
+    currentSubscribedVipId = null;
+    useAppStore.setState({ isRealtimeActive: false });
   },
 };
+
+// Lifecycle listeners: re-establish socket and catch up notifications when app resumes or reconnects
+if (typeof window !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      realtimeService.ensureConnection();
+      const store = useAppStore.getState();
+      const activeUser = store.currentUser?.username || store.currentPrivilegedUser?.username;
+      const activeVip = store.activeVipId || store.currentUser?.vipId;
+      if (activeUser && activeVip) {
+        mobileNotificationService.checkRecentUnreadNotifications(activeUser, activeVip).catch(console.warn);
+      }
+    }
+  });
+
+  window.addEventListener('focus', () => {
+    realtimeService.ensureConnection();
+    const store = useAppStore.getState();
+    const activeUser = store.currentUser?.username || store.currentPrivilegedUser?.username;
+    const activeVip = store.activeVipId || store.currentUser?.vipId;
+    if (activeUser && activeVip) {
+      mobileNotificationService.checkRecentUnreadNotifications(activeUser, activeVip).catch(console.warn);
+    }
+  });
+
+  window.addEventListener('online', () => {
+    realtimeService.ensureConnection();
+  });
+}

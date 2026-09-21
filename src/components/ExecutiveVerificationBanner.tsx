@@ -7,7 +7,7 @@ interface ExecutiveVerificationBannerProps {
   phoneVerified: boolean;
   onResend: () => void;
   resendCooldown: number;
-  onEditDetails: () => void;
+  onEditDetails?: () => void;
   disabled?: boolean;
 }
 
@@ -59,14 +59,14 @@ export default function ExecutiveVerificationBanner({
         <div className="flex items-center justify-center gap-1.5 mb-1">
           <span className="supabase-verified-tag">
             <ShieldCheck size={11} className="text-emerald" />
-            <span>Supabase Auth Phone OTP</span>
+            <span>Secure SMS Verification</span>
           </span>
         </div>
         <h3 className="verification-channel-title">
           Verify Phone Number
         </h3>
         <p className="verification-channel-desc">
-          A 6-digit SMS OTP has been sent via Supabase to{' '}
+          A 6-digit SMS verification code has been dispatched to{' '}
           <span className="text-highlight">{maskedTarget}</span>. Check your mobile messages and enter the code below.
         </p>
       </div>
@@ -91,17 +91,20 @@ export default function ExecutiveVerificationBanner({
           )}
         </button>
 
-        <span className="dot-divider">•</span>
-
-        <button
-          type="button"
-          onClick={onEditDetails}
-          className="btn-edit-contact"
-          disabled={disabled}
-        >
-          <Edit3 size={12} strokeWidth={2} />
-          <span>Edit Mobile Number</span>
-        </button>
+        {onEditDetails && (
+          <>
+            <span className="dot-divider">•</span>
+            <button
+              type="button"
+              onClick={onEditDetails}
+              className="btn-edit-contact"
+              disabled={disabled}
+            >
+              <Edit3 size={12} strokeWidth={2} />
+              <span>Edit Mobile Number</span>
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

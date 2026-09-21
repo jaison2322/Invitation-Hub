@@ -10,8 +10,9 @@ import { useTranslation } from '../i18n/useTranslation';
 
 export default function UpcomingInvitationsScreen() {
   const navigate = useNavigate();
-  const { invitations, updateInvitationStatus } = useAppStore();
+  const { invitations, updateInvitationStatus, isVIP, currentPrivilegedUser } = useAppStore();
   const { t } = useTranslation();
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
   const [activeTab, setActiveTab] = useState<'all' | InvitationStatus>('all');
   const [search, setSearch] = useState('');
 
@@ -58,7 +59,7 @@ export default function UpcomingInvitationsScreen() {
           </button>
         </div>
         <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
-          {invitations.length} total invitations in protocol ledger
+          {invitations.length} total invitations in the dashboard
         </p>
 
         {/* ── Apple Search Field ──────────────────────────────────────────────── */}
@@ -132,7 +133,7 @@ export default function UpcomingInvitationsScreen() {
             </div>
 
             {/* Quick action buttons for pending */}
-            {inv.status === 'pending' && (
+            {inv.status === 'pending' && canConfirmIgnore && (
               <div className="flex gap-2 mt-3">
                 <button
                   type="button"

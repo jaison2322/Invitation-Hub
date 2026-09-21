@@ -1148,7 +1148,7 @@ export default function SettingsScreen() {
               <div className="flex flex-wrap gap-1">
                 {currentPrivilegedUser?.permissions &&
                   Object.entries(currentPrivilegedUser.permissions)
-                    .filter(([, v]) => v)
+                    .filter(([key, v]) => key.startsWith('can') && v === true)
                     .map(([key]) => (
                       <span key={key} className="badge badge-info" style={{ fontSize: '9px' }}>
                         {key.replace('can', '').replace(/([A-Z])/g, ' $1').trim()}

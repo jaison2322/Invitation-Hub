@@ -20,44 +20,66 @@ import { generateId } from '../utils/id';
 // Extracts structured fields from raw OCR text using multi-pattern regex and NLP heuristics
 
 export function parseOCRText(ocrText: string): ExtractedFields {
+  console.log('[Extractor] Started');
   const text = ocrText.toLowerCase();
   const confidence: Record<string, number> = {};
 
-  // Detect event type
-  const eventType = detectEventType(text);
+  // Detect event type (Tamil + English)
+  const eventType = detectEventType(ocrText) || detectEventType(text);
   confidence.eventType = eventType ? 0.90 : 0.35;
 
-  // Extract date
-  const dateResult = extractDate(ocrText);
-  confidence.date = dateResult ? 0.90 : 0.25;
+  // Extract date (Tamil parenthesized date, Tamil label, English formats)
+  const rawDate = extractDate(ocrText);
+  const validDate = rawDate && isValidDateString(rawDate) ? rawDate : undefined;
+  confidence.date = validDate ? 0.90 : 0.25;
 
-  // Extract time
-  const timeResult = extractTime(ocrText);
-  confidence.time = timeResult ? 0.88 : 0.30;
+  // Extract time (Tamil morning/evening terms, English AM/PM)
+  const rawTime = extractTime(ocrText);
+  const validTime = rawTime && isValidTimeString(rawTime) ? rawTime : undefined;
+  confidence.time = validTime ? 0.88 : 0.30;
 
-  // Extract venue
+  // Extract venue (Tamil இடம், திருமண மண்டபம், ஆலயம், மஹால், English Venue, Mandapam)
   const venueResult = extractVenue(ocrText);
   confidence.venue = venueResult ? 0.85 : 0.25;
 
-  // Extract location / city
+  // Extract location / city (Tamil districts and towns + English cities)
   const locationResult = extractLocation(ocrText);
+  confidence.location = locationResult ? 0.80 : 0.25;
 
-  // Extract names (bride/groom, protagonist, host)
+  // Extract names (Tamil bride/groom, couple, hosts, English couple & hosts)
   const namesResult = extractNames(ocrText, eventType);
-  confidence.mainPerson = namesResult.mainPerson ? 0.82 : 0.25;
-  confidence.hostName = namesResult.hostName ? 0.75 : 0.20;
+  const validMainPerson = namesResult.mainPerson && isValidPersonName(namesResult.mainPerson)
+    ? namesResult.mainPerson
+    : undefined;
+  const validHostName = namesResult.hostName && isValidPersonName(namesResult.hostName)
+    ? namesResult.hostName
+    : undefined;
+
+  confidence.mainPerson = validMainPerson ? 0.85 : 0.25;
+  confidence.hostName = validHostName ? 0.75 : 0.20;
 
   // Generate title
-  const title = generateTitle(eventType, namesResult.mainPerson || '');
+  const title = generateTitle(eventType, validMainPerson || '');
   confidence.title = title ? 0.85 : 0.35;
+
+  // Count detected fields for debug logging
+  let fieldsCount = 0;
+  if (eventType) fieldsCount++;
+  if (validDate) fieldsCount++;
+  if (validTime) fieldsCount++;
+  if (validMainPerson) fieldsCount++;
+  if (validHostName) fieldsCount++;
+  if (venueResult) fieldsCount++;
+  if (locationResult) fieldsCount++;
+  console.log(`[Extractor] Fields detected: ${fieldsCount}`);
 
   return {
     eventType: eventType || 'other',
     title,
-    mainPerson: namesResult.mainPerson,
-    hostName: namesResult.hostName,
-    date: dateResult || undefined,
-    time: timeResult || undefined,
+    mainPerson: validMainPerson,
+    hostName: validHostName,
+    date: validDate,
+    time: validTime,
     venue: venueResult || undefined,
     location: locationResult,
     description: generateDescription(ocrText),
@@ -66,24 +88,38 @@ export function parseOCRText(ocrText: string): ExtractedFields {
 }
 
 export function detectEventType(text: string): EventType | null {
+  const lower = text.toLowerCase();
   const patterns: [RegExp, EventType][] = [
-    [/house\s*warm|griha\s*pravesh|gruhapravesam|new\s*home|new\s*residence|vastu\s*puja|graha\s*pravesh/i, 'house_warming'],
-    [/birthday|b'day|birth day|bday|turning\s+\d+|celebrat.*birthday|shashti\s*poorthi|sadhabishekam/i, 'birthday'],
-    [/baby\s*shower|seemantham|valaikappu|godh\s*bharai|cradling|namakaranam|naming\s*ceremony/i, 'baby_shower'],
-    [/engagement|betrothal|ring ceremony|nischayam|nischayathartham|roka|sagai/i, 'engagement'],
-    [/anniversary|silver jubilee|golden jubilee/i, 'anniversary'],
-    [/graduation|convocation|commencement/i, 'graduation'],
-    [/retirement|farewell|superannuation/i, 'retirement'],
-    [/funeral|condolence|memorial|prayer\s*meeting|remembrance|shraddh|tribute/i, 'funeral'],
-    [/conference|seminar|launch|inaugur|summit|business|grand\s*opening|ribbon\s*cutting|annual\s*general\s*meeting/i, 'business_event'],
-    [/puja|pooja|havan|homam|temple|religious|upanayanam|thread\s*ceremony|poonal|kumbhabhishekam|bhajan|kirtan|aradhana/i, 'religious'],
-    [/cultural|dance|music|concert|arangetram|drama|carnatic/i, 'cultural'],
-    [/wedding|marriage|vivah|kalyanam|thirumanam|muhurtham|muhurtam|bride|groom|weds|tie the knot|nuptial|nikah|walima|matthalam|mangalyam/i, 'wedding'],
-    [/reception|sangeet|mehendi|haldi|cocktail/i, 'reception'],
+    // Wedding: Tamil & English
+    [/(?:wedding|marriage|vivah|kalyanam|thirumanam|muhurtham|muhurtam|bride|groom|weds|tie the knot|nuptial|nikah|walima|matthalam|mangalyam|திருமண|திருமணம்|அழைப்பிதழ்|சுபமுகூர்த்த|முகூர்த்த|மணமகள்|மணமகன்|மணமக்கள்|நல்விவாக|கல்யாண|மாங்கல்ய|திரு அருள் துணை)/i, 'wedding'],
+    // Reception: Tamil & English
+    [/(?:reception|sangeet|mehendi|haldi|cocktail|வரவேற்பு|வரவேற்பு நிகழ்ச்சி)/i, 'reception'],
+    // Engagement: Tamil & English
+    [/(?:engagement|betrothal|ring ceremony|nischayam|nischayathartham|roka|sagai|நிச்சயதார்த்த|நிச்சயதார்த்தம்|பரிசம்)/i, 'engagement'],
+    // House warming: Tamil & English
+    [/(?:house\s*warm|griha\s*pravesh|gruhapravesam|new\s*home|new\s*residence|vastu\s*puja|graha\s*pravesh|புதுமனை\s*புகுவிழா|புதுமனை|கிரகப்பிரவேச|கிரகப்பிரவேசம்|இல்லப்\s*புகுவிழா|வாஸ்து\s*பூஜை)/i, 'house_warming'],
+    // Baby shower / naming: Tamil & English
+    [/(?:baby\s*shower|seemantham|valaikappu|godh\s*bharai|cradling|namakaranam|naming\s*ceremony|வளைகாப்பு|சீமந்தம்|பெயர்\s*சூட்டு|தொட்டில்\s*விழா|காதுகுத்து)/i, 'baby_shower'],
+    // Birthday / Milestones: Tamil & English
+    [/(?:birthday|b'day|birth day|bday|turning\s+\d+|celebrat.*birthday|shashti\s*poorthi|sadhabishekam|பிறந்தநாள்|பிறந்த\s*நாள்|மணிவிழா|சஷ்டியப்தபூர்த்தி|சதாபிஷேகம்|பீமரதசாந்தி|கனகாபிஷேகம்)/i, 'birthday'],
+    // Anniversary: Tamil & English
+    [/(?:anniversary|silver jubilee|golden jubilee|திருமண\s*நாள்|ஆண்டு\s*விழா)/i, 'anniversary'],
+    // Graduation: Tamil & English
+    [/(?:graduation|convocation|commencement|பட்டமளிப்பு\s*விழா|பட்டம்\s*பெறுதல்)/i, 'graduation'],
+    // Retirement: Tamil & English
+    [/(?:retirement|farewell|superannuation|பணிநிறைவு|பணி\s*ஓய்வு|பாராட்டு\s*விழா)/i, 'retirement'],
+    // Funeral / Memorial: Tamil & English
+    [/(?:funeral|condolence|memorial|prayer\s*meeting|remembrance|shraddh|tribute|நினைவு\s*நாள்|இரங்கல்|நினைவஞ்சலி)/i, 'funeral'],
+    // Business / Inauguration: Tamil & English
+    [/(?:conference|seminar|launch|inaugur|summit|business|grand\s*opening|ribbon\s*cutting|annual\s*general\s*meeting|திறப்பு\s*விழா|துவக்க\s*விழா|ஆரம்ப\s*விழா)/i, 'business_event'],
+    // Religious: Tamil & English
+    [/(?:puja|pooja|havan|homam|temple|religious|upanayanam|thread\s*ceremony|poonal|kumbhabhishekam|bhajan|kirtan|aradhana|church|cathedral|baptism|mass|பூஜை|ஹோமம்|கும்பாபிஷேகம்|ஆலய\s*திருவிழா|பிரார்த்தனை|திருப்பலி|ஞானஸ்நானம்)/i, 'religious'],
+    // Cultural: Tamil & English
+    [/(?:cultural|dance|music|concert|arangetram|drama|carnatic|நாட்டியாஞ்சலி|இன்னிசை|கச்சேரி|அரங்கேற்றம்)/i, 'cultural'],
   ];
 
   for (const [pattern, type] of patterns) {
-    if (pattern.test(text)) return type;
+    if (pattern.test(text) || pattern.test(lower)) return type;
   }
   return null;
 }
@@ -100,29 +136,28 @@ export function extractDate(rawText: string): string | null {
     oct: '10', nov: '11', dec: '12',
   };
 
-  // Pattern 1: ISO YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
-  const isoMatch = text.match(/\b(20\d{2})[\/\-.](0?[1-9]|1[0-2])[\/\-.](0?[1-9]|[12]\d|3[01])\b/);
-  if (isoMatch) {
-    const [, year, month, day] = isoMatch;
+  // Pattern 0: Explicit Tamil label with date: தேதி[:\s]*(\d{1,2})[\/\-.](\d{1,2})[\/\-.](20\d{2})
+  const tamilLabelMatch = text.match(/தேதி\s*[:\-]?\s*\(?(\d{1,2})[\/\-.](0?[1-9]|1[0-2])[\/\-.](20\d{2})\)?/);
+  if (tamilLabelMatch) {
+    const [, day, month, year] = tamilLabelMatch;
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Pattern 2: DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
-  const dmyMatch = text.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-.](0?[1-9]|1[0-2])[\/\-.](20\d{2})\b/);
+  // Pattern 1: Parenthesized or delimited DD.MM.YYYY or DD/MM/YYYY or DD-MM-YYYY (e.g. (23.08.2026))
+  const dmyMatch = text.match(/(?:^|[^\d])(0?[1-9]|[12]\d|3[01])[\/\-.](0?[1-9]|1[0-2])[\/\-.](20\d{2})(?:[^\d]|$)/);
   if (dmyMatch) {
     const [, day, month, year] = dmyMatch;
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Pattern 3: DD/MM/YY or DD-MM-YY (2-digit year)
-  const dmyShortYearMatch = text.match(/\b(0?[1-9]|[12]\d|3[01])[\/\-.](0?[1-9]|1[0-2])[\/\-.](\d{2})\b/);
-  if (dmyShortYearMatch) {
-    const [, day, month, shortYear] = dmyShortYearMatch;
-    const year = `20${shortYear}`;
+  // Pattern 2: ISO YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  const isoMatch = text.match(/(?:^|[^\d])(20\d{2})[\/\-.](0?[1-9]|1[0-2])[\/\-.](0?[1-9]|[12]\d|3[01])(?:[^\d]|$)/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
     return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
-  // Pattern 4: Month DD, YYYY or Month DD YYYY (e.g. August 30, 2026 or Sept 15, 2026)
+  // Pattern 3: Month DD, YYYY or Month DD YYYY (e.g. August 30, 2026 or Sept 15, 2026)
   const monthDayYearMatch = text.match(
     /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\s*,?\s*(20\d{2})\b/i
   );
@@ -134,7 +169,7 @@ export function extractDate(rawText: string): string | null {
     }
   }
 
-  // Pattern 5: DD Month YYYY (e.g. 30th August 2026 or 15 September 2026 or 15th of Oct 2026)
+  // Pattern 4: DD Month YYYY (e.g. 30th August 2026 or 15 September 2026 or 15th of Oct 2026)
   const dayMonthYearMatch = text.match(
     /\b(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?(?:\s+of)?\s+(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s*,?\s*(20\d{2})\b/i
   );
@@ -146,16 +181,12 @@ export function extractDate(rawText: string): string | null {
     }
   }
 
-  // Pattern 6: Month and Day without year (default to 2026)
-  const monthDayNoYearMatch = text.match(
-    /\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\.?\s+(0?[1-9]|[12]\d|3[01])(?:st|nd|rd|th)?\b/i
-  );
-  if (monthDayNoYearMatch) {
-    const monthKey = monthDayNoYearMatch[1].toLowerCase().replace('.', '');
-    const monthNum = months[monthKey];
-    if (monthNum) {
-      return `2026-${monthNum}-${monthDayNoYearMatch[2].padStart(2, '0')}`;
-    }
+  // Pattern 5: DD/MM/YY (2-digit year)
+  const dmyShortYearMatch = text.match(/(?:^|[^\d])(0?[1-9]|[12]\d|3[01])[\/\-.](0?[1-9]|1[0-2])[\/\-.](\d{2})(?:[^\d]|$)/);
+  if (dmyShortYearMatch) {
+    const [, day, month, shortYear] = dmyShortYearMatch;
+    const year = `20${shortYear}`;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
   }
 
   return null;
@@ -164,10 +195,26 @@ export function extractDate(rawText: string): string | null {
 export function extractTime(rawText: string): string | null {
   const text = rawText.replace(/\r\n/g, ' ').replace(/\n/g, ' ');
 
-  // Look for contextual keywords before time (e.g., Muhurtham: 11:15 AM, Reception: 6:00 PM)
-  const contextMatch = text.match(/(?:muhurtham|muhurtam|reception|timing|time|at)\s*[:\-]?\s*(\d{1,2})[:.](\d{2})\s*(am|pm|a\.m|p\.m)?/i);
+  // 1. Tamil Time pattern: முற்பகல் / பிற்பகல் / காலை / மாலை / இரவு with HH.MM or HH:MM
+  // e.g., "முற்பகல் 9.00 மணிக்கு மேல் 10.30 மணிக்குள்"
+  const tamilTimeMatch = text.match(/(முற்பகல்|பிற்பகல்|காலை|மாலை|இரவு|விடியற்காலை|மதியம்)\s*(\d{1,2})[:.](\d{2})\s*(?:மணிக்கு|மணி)?/i);
+  if (tamilTimeMatch) {
+    const period = tamilTimeMatch[1];
+    let hours = parseInt(tamilTimeMatch[2], 10);
+    const minutes = tamilTimeMatch[3];
+    const isPM = ['பிற்பகல்', 'மாலை', 'இரவு', 'மதியம்'].includes(period);
+
+    if (isPM && hours < 12 && period !== 'மதியம்') hours += 12;
+    if (period === 'மதியம்' && hours < 11) hours += 12;
+    if (!isPM && hours === 12) hours = 0;
+
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  }
+
+  // 2. English / Contextual keywords WITH AM/PM
+  const contextMatch = text.match(/(?:muhurtham|muhurtam|reception|timing|time|at)\s*[:\-]?\s*(\d{1,2})[:.](\d{2})\s*(am|pm|a\.m|p\.m)/i);
   if (contextMatch) {
-    let hours = parseInt(contextMatch[1]);
+    let hours = parseInt(contextMatch[1], 10);
     const minutes = contextMatch[2];
     const meridiem = contextMatch[3]?.replace(/\./g, '').toLowerCase();
 
@@ -177,12 +224,11 @@ export function extractTime(rawText: string): string | null {
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
   }
 
-  // Time range pattern: 9:00 AM - 10:30 AM (extract start time)
+  // 3. Time range pattern: 9:00 AM - 10:30 AM
   const rangeMatch = text.match(/(\d{1,2})[:.](\d{2})\s*(am|pm|a\.m|p\.m)?\s*(?:to|-|–)\s*(\d{1,2})[:.](\d{2})\s*(am|pm|a\.m|p\.m)/i);
   if (rangeMatch) {
-    let hours = parseInt(rangeMatch[1]);
+    let hours = parseInt(rangeMatch[1], 10);
     const minutes = rangeMatch[2];
-    // If start doesn't have AM/PM, borrow from end
     const meridiem = (rangeMatch[3] || rangeMatch[6])?.replace(/\./g, '').toLowerCase();
 
     if (meridiem === 'pm' && hours < 12) hours += 12;
@@ -191,10 +237,10 @@ export function extractTime(rawText: string): string | null {
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
   }
 
-  // Standard HH:MM AM/PM
+  // 4. Standard HH:MM AM/PM
   const timeMatch = text.match(/(\d{1,2})[:.](\d{2})\s*(am|pm|a\.m|p\.m)/i);
   if (timeMatch) {
-    let hours = parseInt(timeMatch[1]);
+    let hours = parseInt(timeMatch[1], 10);
     const minutes = timeMatch[2];
     const meridiem = timeMatch[3]?.replace(/\./g, '').toLowerCase();
 
@@ -204,10 +250,19 @@ export function extractTime(rawText: string): string | null {
     return `${hours.toString().padStart(2, '0')}:${minutes}`;
   }
 
-  // Simple "6 PM" or "10 AM" style
+  // 5. Tamil Time without period prefix: "நேரம்: 9.00 மணிக்கு" or "9.00 மணிக்கு மேல்"
+  const tamilTimeSuffixMatch = text.match(/(?:நேரம்|timing|time|at)\s*[:\-]?\s*(\d{1,2})[:.](\d{2})\s*(?:மணிக்கு|மணி)?/i);
+  if (tamilTimeSuffixMatch) {
+    let hours = parseInt(tamilTimeSuffixMatch[1], 10);
+    const minutes = tamilTimeSuffixMatch[2];
+    if (hours < 7) hours += 12;
+    return `${hours.toString().padStart(2, '0')}:${minutes}`;
+  }
+
+  // 6. Simple "6 PM" or "10 AM" style
   const simpleTimeMatch = text.match(/\b(\d{1,2})\s*(am|pm|a\.m|p\.m)\b/i);
   if (simpleTimeMatch) {
-    let hours = parseInt(simpleTimeMatch[1]);
+    let hours = parseInt(simpleTimeMatch[1], 10);
     const meridiem = simpleTimeMatch[2].replace(/\./g, '').toLowerCase();
     if (meridiem === 'pm' && hours < 12) hours += 12;
     if (meridiem === 'am' && hours === 12) hours = 0;
@@ -219,8 +274,36 @@ export function extractTime(rawText: string): string | null {
 
 export function extractVenue(rawText: string): string | null {
   const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const fullText = rawText.replace(/\r\n/g, ' ').replace(/\n/g, ' ');
 
-  // 1. Explicit Venue line: "Venue: Chennai Convention Centre"
+  // 1. Explicit Tamil label: இடம்: ...
+  const tamilVenueLabelMatch = fullText.match(/இடம்\s*[:\-]\s*([^\n,]+)/i);
+  if (tamilVenueLabelMatch) {
+    const cleaned = cleanVenueText(tamilVenueLabelMatch[1]);
+    if (cleaned && cleaned.length > 3) return cleaned;
+  }
+
+  // 2. Tamil venue keywords in line: திருமண மண்டபம், மண்டபம், ஆலயம், கோயில், மஹால்
+  for (const line of lines) {
+    const match = line.match(/([A-Za-z0-9\u0B80-\u0BFF\s.'-]+?(?:திருமண\s*மண்டபம்|மண்டபம்|மஹால்|மகால்|ஆலயம்|கோயில்|கோவில்|இல்லம்|அரங்கம்|ஹால்))/i);
+    if (match) {
+      const cleaned = cleanVenueText(match[1]);
+      if (cleaned && cleaned.length > 3) return cleaned;
+    }
+  }
+
+  // 3. Fallback search across full text for Tamil venue with suffix (மண்டபத்தில், ஆலயத்தில்)
+  const fullVenueMatch = fullText.match(/([A-Za-z0-9\u0B80-\u0BFF\s.'-]+?(?:திருமண\s*மண்டபத்தில்|ஆலயத்தில்))\s*(?:நடைபெற|வைத்து)/i);
+  if (fullVenueMatch) {
+    const v = fullVenueMatch[1]
+      .replace(/திருமண\s*மண்டபத்தில்/g, 'திருமண மண்டபம்')
+      .replace(/ஆலயத்தில்/g, 'ஆலயம்')
+      .replace(/^(?:அருகில்|வைத்து|இங்கு)\s+/i, '');
+    const cleaned = cleanVenueText(v);
+    if (cleaned && cleaned.length > 3) return cleaned;
+  }
+
+  // 4. Explicit English Venue line: "Venue: ..."
   for (const line of lines) {
     const venueMatch = line.match(/(?:venue|place|location|held at)\s*[:\-]\s*(.+)$/i);
     if (venueMatch) {
@@ -229,20 +312,17 @@ export function extractVenue(rawText: string): string | null {
     }
   }
 
-  // 2. Line containing venue keywords
+  // 5. English venue keywords
   const venueKeywords = /(?:kalyana\s*mandapam|mandapam|mahal|convention\s*centre|convention\s*center|palace|hall|hotel|resort|auditorium|bhavan|banquet|gardens|lawn|grounds|cathedral|church|temple)/i;
-
   for (const line of lines) {
     if (venueKeywords.test(line)) {
-      // Remove leading "at" or "at the"
       const cleaned = cleanVenueText(line.replace(/^(?:at\s+(?:the\s+)?)/i, ''));
       if (cleaned && cleaned.length > 4) return cleaned;
     }
   }
 
-  // 3. Fallback inline regex across full text
-  const text = rawText.replace(/\r\n/g, ' ').replace(/\n/g, ' ');
-  const inlineMatch = text.match(/at\s+(?:the\s+)?([A-Za-z0-9\s.,'&-]+?(?:hall|hotel|palace|mandapam|mahal|convention\s*centre|convention\s*center|resort|auditorium|bhavan|banquet|garden))/i);
+  // 6. Fallback inline regex across full text
+  const inlineMatch = fullText.match(/at\s+(?:the\s+)?([A-Za-z0-9\s.,'&-]+?(?:hall|hotel|palace|mandapam|mahal|convention\s*centre|convention\s*center|resort|auditorium|bhavan|banquet|garden))/i);
   if (inlineMatch) {
     const cleaned = cleanVenueText(inlineMatch[1]);
     if (cleaned) return cleaned;
@@ -253,7 +333,8 @@ export function extractVenue(rawText: string): string | null {
 
 function cleanVenueText(text: string): string {
   return text
-    .replace(/(?:dinner|lunch|breakfast|reception|muhurtham|rsvp|phone|contact|with best).*$/i, '')
+    .replace(/(?:dinner|lunch|breakfast|reception|muhurtham|rsvp|phone|contact|with best|நடைபெற|உள்ளது|வைத்து).*$/i, '')
+    .replace(/^(?:at\s+|அருகில்\s+|இங்கு\s+)/i, '')
     .replace(/[,.\-\s]+$/, '')
     .trim();
 }
@@ -261,26 +342,48 @@ function cleanVenueText(text: string): string {
 export function extractLocation(rawText: string): string | undefined {
   const text = rawText.replace(/\r\n/g, ' ').replace(/\n/g, ' ');
 
-  // 1. Explicit location/address label
+  // 1. Explicit Tamil address label: முகவரி: ...
+  const tamilAddressMatch = text.match(/(?:முகவரி|இடம்)\s*[:\-]\s*([^\n,]+)/i);
+  if (tamilAddressMatch && tamilAddressMatch[1].trim().length > 3) {
+    return tamilAddressMatch[1].trim();
+  }
+
+  // 2. Tamil cities, districts, and prominent towns
+  const tamilLocations = [
+    'சுங்கான்கடை', 'கன்னியாகுமரி', 'நாகர்கோவில்', 'சென்னை', 'மதுரை', 'கோயம்புத்தூர்',
+    'திருச்சி', 'திருச்சிராப்பள்ளி', 'சேலம்', 'திருநெல்வேலி', 'ஈரோடு', 'வேலூர்',
+    'தஞ்சாவூர்', 'திண்டுக்கல்', 'காஞ்சிபுரம்', 'திருப்பூர்', 'தூத்துக்குடி', 'புதுச்சேரி',
+    'பாண்டிச்சேரி', 'பெங்களூரு', 'பெங்களூர்', 'மும்பை', 'தில்லி'
+  ];
+
+  for (const loc of tamilLocations) {
+    if (text.includes(loc)) {
+      if (loc === 'சுங்கான்கடை' && text.includes('கன்னியாகுமரி')) {
+        return 'சுங்கான்கடை, கன்னியாகுமரி';
+      }
+      return loc;
+    }
+  }
+
+  // 3. Explicit English location/address label
   const addressMatch = text.match(/(?:address|city|place)\s*[:\-]\s*([A-Za-z0-9\s,.-]+?)(?:(?=phone|rsvp|dinner|lunch|date|time)|$)/i);
   if (addressMatch && addressMatch[1].trim().length > 3) {
     return addressMatch[1].trim();
   }
 
-  // 2. City name search
+  // 4. English city name search
   const cities = [
     'Chennai', 'Bangalore', 'Bengaluru', 'Mumbai', 'Delhi', 'New Delhi',
     'Hyderabad', 'Kolkata', 'Pune', 'Coimbatore', 'Madurai', 'Trichy',
     'Tiruchirappalli', 'Salem', 'Tirunelveli', 'Thanjavur', 'Erode',
     'Vellore', 'Tirupati', 'Kochi', 'Cochin', 'Trivandrum', 'Thiruvananthapuram',
     'Kozhikode', 'Mysore', 'Mangalore', 'Ahmedabad', 'Surat', 'Jaipur',
-    'Lucknow', 'Chandigarh', 'Gurgaon', 'Noida', 'Goa',
+    'Lucknow', 'Chandigarh', 'Gurgaon', 'Noida', 'Goa', 'Kanyakumari', 'Nagercoil',
   ];
 
   const cityPattern = new RegExp(`\\b(${cities.join('|')})\\b`, 'i');
   const cityMatch = text.match(cityPattern);
   if (cityMatch) {
-    // Check if there's a pincode nearby (e.g. Chennai - 600002)
     const pinMatch = text.match(new RegExp(`${cityMatch[1]}[\\s,–-]+(\\d{6})`, 'i'));
     if (pinMatch) {
       return `${cityMatch[1]} - ${pinMatch[1]}`;
@@ -301,49 +404,32 @@ export function extractNames(
   const lines = rawText.split('\n').map((l) => l.trim()).filter(Boolean);
   const fullText = rawText.replace(/\r\n/g, ' ').replace(/\n/g, ' ');
 
-  // ─── 1. Host Name Extraction ──────────────────────────────────────────────
-  // Pattern A: "Sri Ramesh Kumar & Smt. Padma Kumar cordially invite you..."
-  const formalHostMatch = fullText.match(
-    /((?:Sri\.?|Mr\.?|Shri\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s*(?:&|and)\s*(?:Smt\.?|Mrs\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(?:cordially\s+)?invite/i
-  );
-  if (formalHostMatch) {
-    hostName = cleanName(formalHostMatch[1]);
+  // ─── 1. Tamil Bride & Groom pattern ───
+  // மணமகள்: S. நிவேதா B.E. / மணமகன்: A. அந்தோணி விவேக் B.E.
+  const brideMatch = fullText.match(/(?:மணமகள்|மணப்பெண்)\s*[:\-]?\s*([^\n,()]+(?:\s+B\.?E\.?|\s+M\.?B\.?B\.?S|\s+B\.?Tech|\s+M\.?E\.?)?)/i);
+  const groomMatch = fullText.match(/(?:மணமகன்|மாப்பிள்ளை)\s*[:\-]?\s*([^\n,()]+(?:\s+B\.?E\.?|\s+M\.?B\.?B\.?S|\s+B\.?Tech|\s+M\.?E\.?)?)/i);
+
+  if (brideMatch && groomMatch) {
+    const bride = cleanPersonName(brideMatch[1]);
+    const groom = cleanPersonName(groomMatch[1]);
+    if (bride && groom) {
+      mainPerson = `${bride} & ${groom}`;
+    }
+  } else if (brideMatch) {
+    mainPerson = cleanPersonName(brideMatch[1]);
+  } else if (groomMatch) {
+    mainPerson = cleanPersonName(groomMatch[1]);
   }
 
-  // Pattern B: "Sri Arun Prakash & Family request the pleasure..."
-  if (!hostName) {
-    const familyHostMatch = fullText.match(
-      /((?:Sri\.?|Mr\.?|Dr\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s*&\s*Family)\s+(?:request|cordially)/i
-    );
-    if (familyHostMatch) {
-      hostName = cleanName(familyHostMatch[1]);
+  // ─── 2. Tamil Couple pattern: மணமக்கள்: X & Y ───
+  if (!mainPerson) {
+    const coupleTamilMatch = fullText.match(/மணமக்கள்\s*[:\-]?\s*([^\n]+)/i);
+    if (coupleTamilMatch) {
+      mainPerson = cleanPersonName(coupleTamilMatch[1]);
     }
   }
 
-  // Pattern C: "Cordially invited by: X" or "With love, Iyer Family"
-  if (!hostName) {
-    const signoffMatch = fullText.match(/(?:cordially\s+invited\s+by|invited\s+by|with\s+love)\s*[,:\-]\s*([A-Za-z\s.&'-]+?)(?:\.|$)/i);
-    if (signoffMatch && signoffMatch[1].length > 3 && signoffMatch[1].length < 50) {
-      hostName = cleanName(signoffMatch[1]);
-    }
-  }
-
-  // ─── 2. Bride & Groom / Couple Extraction (Wedding / Reception / Engagement) ─
-  // Pattern A: "weds" or "with" or "&" between two names (supports ALL CAPS and Mixed Case)
-  // e.g., "KARTHIK KUMAR with DIVYA SHARMA" or "SNEHA PRAKASH weds RAJESH KUMAR"
-  const coupleMatch = fullText.match(
-    /\b((?:Chi\.?\s+|Selvan\.?\s+|Dr\.?\s+|Mr\.?\s+)?(?:[A-Z][A-Za-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][A-Za-z]+|[A-Z]{2,}))*)\s+(?:weds|with|tying the knot with)\s+((?:Sow\.?\s+|Selvi\.?\s+|Dr\.?\s+|Ms\.?\s+|Miss\s+)?(?:[A-Z][A-Za-z]+|[A-Z]{2,})(?:\s+(?:[A-Z][A-Za-z]+|[A-Z]{2,}))*)\b/
-  );
-
-  if (coupleMatch) {
-    const person1 = cleanName(coupleMatch[1]);
-    const person2 = cleanName(coupleMatch[2]);
-    if (isValidPersonName(person1) && isValidPersonName(person2)) {
-      mainPerson = `${person1} & ${person2}`;
-    }
-  }
-
-  // Pattern B: Multiline "weds" / "with" / "and"
+  // ─── 3. Multiline English / Tamil "weds" / "with" / "and" / "&" ───
   if (!mainPerson) {
     for (let i = 0; i < lines.length - 2; i++) {
       const line1 = lines[i];
@@ -351,9 +437,12 @@ export function extractNames(
       const line2 = lines[i + 2];
 
       if (['weds', 'with', '&', 'and'].includes(connector)) {
-        const p1 = cleanName(line1);
-        const p2 = cleanName(line2);
-        if (isValidPersonName(p1) && isValidPersonName(p2)) {
+        const p1 = cleanPersonName(line1);
+        const p2 = cleanPersonName(line2);
+        if (
+          p1 && p2 && p1.length >= 3 && p2.length >= 3 &&
+          !/^(?:cordially|request|pleasure|marriage|wedding|reception)/i.test(p1)
+        ) {
           mainPerson = `${p1} & ${p2}`;
           break;
         }
@@ -361,80 +450,134 @@ export function extractNames(
     }
   }
 
-  // ─── 3. Single Protagonist Extraction (Birthday, Anniversary, Memorial, etc.) ─
+  // ─── 4. Single-line couple match (supports Tamil Unicode & Latin) ───
   if (!mainPerson) {
-    // "Birthday of Dr. Lakshmi Iyer"
+    const coupleMatch = fullText.match(
+      /\b((?:Chi\.?\s+|Selvan\.?\s+|Dr\.?\s+|Mr\.?\s+)?(?:[A-Z][A-Za-z]+|[A-Z]{2,}|[\u0B80-\u0BFF]+)(?:\s+(?:[A-Z][A-Za-z]+|[A-Z]{2,}|[\u0B80-\u0BFF]+)){0,3})\s+(?:weds|with|tying the knot with)\s+((?:Sow\.?\s+|Selvi\.?\s+|Dr\.?\s+|Ms\.?\s+|Miss\s+)?(?:[A-Z][A-Za-z]+|[A-Z]{2,}|[\u0B80-\u0BFF]+)(?:\s+(?:[A-Z][A-Za-z]+|[A-Z]{2,}|[\u0B80-\u0BFF]+)){0,3})\b/
+    );
+    if (coupleMatch) {
+      const p1 = cleanPersonName(coupleMatch[1]);
+      const p2 = cleanPersonName(coupleMatch[2]);
+      if (p1 && p2 && !/^(?:cordially|request|pleasure|marriage|wedding|reception)/i.test(p1)) {
+        mainPerson = `${p1} & ${p2}`;
+      }
+    }
+  }
+
+  // ─── 5. English Wedding Son/Daughter: "marriage of their son X with Y" ───
+  if (!mainPerson) {
+    const weddingOfMatch = fullText.match(
+      /(?:marriage|wedding|reception)\s+of\s+(?:their\s+)?(?:son|daughter)?\s*([A-Za-z\u0B80-\u0BFF\s.'-]+?)\s+(?:with|weds|and)\s+([A-Za-z\u0B80-\u0BFF\s.'-]+?)(?=\s+on|\s+at|\s*\n|$)/i
+    );
+    if (weddingOfMatch) {
+      const p1 = cleanPersonName(weddingOfMatch[1]);
+      const p2 = cleanPersonName(weddingOfMatch[2]);
+      if (p1 && p2) mainPerson = `${p1} & ${p2}`;
+    }
+  }
+
+  // ─── 6. Protagonist Extraction (Birthday, Memorial, etc.) ───
+  if (!mainPerson) {
     const bdayMatch = fullText.match(
-      /(?:birthday\s+(?:celebration\s+)?of|celebrat(?:e|ing).*birthday\s+(?:celebration\s+)?of|felicitation\s+of|memorial\s+of|tribute\s+to|griha\s*pravesh\s+of)\s+((?:Dr\.?|Mr\.?|Mrs\.?|Smt\.?|Sri\.?|Prof\.?)?\s*[A-Za-z]+(?:\s+[A-Za-z]+){0,3}?)(?=\s+(?:on|at|date|venue|in)\b|$)/i
+      /(?:birthday\s+(?:celebration\s+)?of|celebrat(?:e|ing).*birthday\s+(?:celebration\s+)?of|felicitation\s+of|memorial\s+of|tribute\s+to|griha\s*pravesh\s+of|பிறந்தநாள்\s*காணும்|மணிவிழா\s*காணும்)\s+((?:Dr\.?|Mr\.?|Mrs\.?|Smt\.?|Sri\.?|Prof\.?)?\s*[A-Za-z\u0B80-\u0BFF]+(?:\s+[A-Za-z\u0B80-\u0BFF]+){0,3}?)(?=\s+(?:on|at|date|venue|in)\b|$)/i
     );
     if (bdayMatch) {
-      const candidate = cleanName(bdayMatch[1]);
+      const candidate = cleanPersonName(bdayMatch[1]);
       if (isValidPersonName(candidate)) {
         mainPerson = candidate;
       }
     }
   }
 
-  // ─── 4. Business Inauguration / Grand Opening Entity ───────────────────────
+  // ─── 7. Business Inauguration / Grand Opening Entity ───
   if (!mainPerson) {
     const bizMatch = fullText.match(
-      /(?:inauguration\s+of|grand\s*opening\s+of|launch\s+of|opening\s+of)\s+([A-Za-z0-9]+(?:\s+[A-Za-z0-9]+){0,3}?)(?=\s+(?:on|at|date|venue|in)\b|$)/i
+      /(?:inauguration\s+of|grand\s*opening\s+of|launch\s+of|opening\s+of|திறப்பு\s*விழா)\s+([A-Za-z0-9\u0B80-\u0BFF]+(?:\s+[A-Za-z0-9\u0B80-\u0BFF]+){0,3}?)(?=\s+(?:on|at|date|venue|in)\b|$)/i
     );
     if (bizMatch) {
-      const candidate = cleanName(bizMatch[1]);
+      const candidate = cleanPersonName(bizMatch[1]);
       if (candidate && candidate.length > 3) {
         mainPerson = candidate;
       }
     }
   }
 
-  // ─── 5. Son/Daughter of pattern ───────────────────────────────────────────
-  if (!mainPerson) {
-    const childMatch = fullText.match(
-      /(?:son|daughter|s\/o|d\/o)\s+(?:of\s+)?(?:our\s+)?([A-Za-z\s.&'-]+?)(?:\s+with|\s+weds|\s+on|\s+at|$)/i
+  // ─── 8. Host Extraction ───
+  // Tamil Host Markers: தங்கள் அன்புள்ள, அழைப்பாளர்கள், அன்புடன் அழைக்கும், இங்ஙனம், வரவேற்கும்
+  const tamilHostMatch = fullText.match(
+    /(?:தங்கள்\s+அன்புள்ள|அழைப்பாளர்கள்|அன்புடன்\s+அழைக்கும்|இங்ஙனம்|வரவேற்கும்|அழைப்பின்\s+மகிழ்வில்)\s*[,:\-]?\s*([A-Za-z\u0B80-\u0BFF\s.'-]+?(?:\s*[-–&,]\s*[A-Za-z\u0B80-\u0BFF\s.'-]+)?)(?=\s*மற்றும்|\s*அமைச்சரகம்|\s*அழைக்கின்றோம்|\s*\n\n|$)/i
+  );
+  if (tamilHostMatch) {
+    hostName = cleanPersonName(tamilHostMatch[1]);
+  }
+
+  // English Formal Host Pattern: "Sri Ramesh Kumar & Smt. Padma Kumar cordially invite..."
+  if (!hostName) {
+    const formalHostMatch = fullText.match(
+      /((?:Sri\.?|Mr\.?|Shri\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s*(?:&|and)\s*(?:Smt\.?|Mrs\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(?:cordially\s+)?invite/i
     );
-    if (childMatch) {
-      const candidate = cleanName(childMatch[1]);
-      if (isValidPersonName(candidate)) {
-        mainPerson = candidate;
-      }
+    if (formalHostMatch) {
+      hostName = cleanPersonName(formalHostMatch[1]);
     }
   }
 
-  // ─── 6. Host Fallback for Family Celebrations ─────────────────────────────
+  // English Family Host Pattern: "Sri Arun Prakash & Family request..."
+  if (!hostName) {
+    const familyHostMatch = fullText.match(
+      /((?:Sri\.?|Mr\.?|Dr\.?)\s+[A-Za-z]+(?:\s+[A-Za-z]+)*\s*&\s*Family)\s+(?:request|cordially)/i
+    );
+    if (familyHostMatch) {
+      hostName = cleanPersonName(familyHostMatch[1]);
+    }
+  }
+
+  // English Signoff Host Pattern
+  if (!hostName) {
+    const signoffMatch = fullText.match(/(?:cordially\s+invited\s+by|invited\s+by|with\s+love)\s*[,:\-]\s*([A-Za-z\s.&'-]+?)(?:\.|$)/i);
+    if (signoffMatch && signoffMatch[1].length > 3 && signoffMatch[1].length < 50) {
+      hostName = cleanPersonName(signoffMatch[1]);
+    }
+  }
+
+  // Host Fallback for Family Celebrations
   if (!mainPerson && hostName && ['house_warming', 'anniversary'].includes(eventType || '')) {
     mainPerson = hostName;
-  }
-
-  // ─── 7. Fallback: Search for prominent capitalized name in top lines ───────
-  if (!mainPerson) {
-    for (const line of lines.slice(0, 8)) {
-      if (
-        /^[A-Z][a-zA-Z]*(?:\s+[A-Z][a-zA-Z]*){1,3}$/.test(line) &&
-        !/wedding|invitation|reception|blessing|cordially|pleasure|company|presence|venue|hotel|hall|sunday|monday|tuesday|wednesday|thursday|friday|saturday/i.test(line)
-      ) {
-        mainPerson = line;
-        break;
-      }
-    }
   }
 
   return { mainPerson, hostName };
 }
 
-function cleanName(name: string): string {
+function cleanPersonName(name: string): string {
+  if (!name) return '';
   return name
-    .replace(/(?:\bcordially\b|\binvite\b|\brequest\b|\bpleasure\b|\bpresence\b|\bcompany\b|\breception\b|\bwedding\b|\bwith\b|\bweds\b|\band\b|&|\blunch\b|\bdinner\b).*$/i, '')
-    .replace(/^(?:at|on|for|the|of|our)\s+/i, '')
+    .replace(/(?:(?:Software|Project|Civil|Mechanical)\s+(?:Developer|Engineer)[^,\n]*)/gi, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/(?:\bcordially\b|\binvite\b|\brequest\b|\bpleasure\b|\bpresence\b|\bcompany\b|\breception\b|\bwedding\b|\bwith\b|\bweds\b|\band\b|&|\blunch\b|\bdinner\b|வாழ்த்தி|ஆசீர்வதிக்க|அழைக்கின்றோம்).*$/i, '')
+    .replace(/^(?:at|on|for|the|of|our|மணமகள்|மணமகன்|மணமக்கள்|செல்வி|செல்வன்|திரு|திருமதி|டாக்டர்|Mr\.?|Mrs\.?|Ms\.?|Miss|Dr\.?|Sri\.?|Smt\.?|Chi\.?|Sow\.?)\s*[:.\-]?\s*/gi, '')
     .replace(/[,;:]+$/, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 function isValidPersonName(name: string): boolean {
-  if (!name || name.length < 3 || name.length > 50) return false;
-  // Ignore if it's a common greeting or location word
-  const blacklist = /\b(?:wedding|invitation|reception|blessing|company|presence|venue|sunday|monday|tuesday|wednesday|thursday|friday|saturday|january|february|march|april|may|june|july|august|september|october|november|december|hotel|hall|mandapam|mahal)\b/i;
+  if (!name || name.trim().length < 2 || name.length > 70) return false;
+  const blacklist = /\b(?:wedding|invitation|reception|blessing|company|presence|venue|sunday|monday|tuesday|wednesday|thursday|friday|saturday|january|february|march|april|may|june|july|august|september|october|november|december|hotel|hall|mandapam|mahal|திருமண|அழைப்பிதழ்|வாழ்த்தி|ஆசீர்வதிக்க|வணக்கம்|நிகழ்ச்சி|மண்டபம்)\b/i;
   return !blacklist.test(name);
+}
+
+function isValidDateString(dateStr: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (y < 2020 || y > 2035) return false;
+  if (m < 1 || m > 12) return false;
+  const daysInMonth = new Date(y, m, 0).getDate();
+  return d >= 1 && d <= daysInMonth;
+}
+
+function isValidTimeString(timeStr: string): boolean {
+  if (!/^\d{2}:\d{2}$/.test(timeStr)) return false;
+  const [h, m] = timeStr.split(':').map(Number);
+  return h >= 0 && h <= 23 && m >= 0 && m <= 59;
 }
 
 function generateTitle(eventType: EventType | null, mainPerson: string): string {
@@ -456,6 +599,11 @@ function generateTitle(eventType: EventType | null, mainPerson: string): string 
     religious: 'Religious Event',
     other: 'Event',
   };
+
+  const isTamil = /[\u0B80-\u0BFF]/.test(mainPerson || '');
+  if (isTamil && eventType === 'wedding') {
+    return mainPerson ? `${mainPerson} — திருமண அழைப்பிதழ்` : 'திருமண அழைப்பிதழ்';
+  }
 
   const label = typeLabels[eventType || 'other'] || 'Event';
   if (!mainPerson) return label;
@@ -496,7 +644,10 @@ export function findMatchingPerson(
     searchTerms.push(extractedFields.hostName.toLowerCase());
   }
 
-  const ignoreWords = new Set(['sri', 'smt', 'shri', 'mr', 'mrs', 'dr', 'prof', 'chi', 'sow', 'selvan', 'selvi', 'family', 'the', 'and']);
+  const ignoreWords = new Set([
+    'sri', 'smt', 'shri', 'mr', 'mrs', 'dr', 'prof', 'chi', 'sow', 'selvan', 'selvi', 'family', 'the', 'and',
+    'திரு', 'திருமதி', 'செல்வன்', 'செல்வி', 'டாக்டர்', 'அவர்கள்', 'மகன்', 'மகள்',
+  ]);
 
   let bestMatch: Person | undefined;
   let bestScore = 0;
@@ -759,10 +910,12 @@ export function runAIAnalysis(
   people: Person[],
   familyEvents: FamilyEvent[],
   schedule: ScheduleItem[],
-  existingInvitations: Invitation[]
+  existingInvitations: Invitation[],
+  rawOcr?: { rawText: string; confidence: number },
+  visionFields?: ExtractedFields
 ): AIAnalysis {
-  // Step 1: Parse OCR text
-  const extractedFields = parseOCRText(ocrText);
+  // Step 1: Use Vision API fields if available, otherwise parse OCR text with regex
+  const extractedFields = visionFields || parseOCRText(ocrText);
 
   // Step 2: Find matching person
   const relatedPerson = findMatchingPerson(extractedFields, people);
@@ -804,8 +957,9 @@ export function runAIAnalysis(
     id: generateId('analysis'),
     invitationId: '',
     ocrText,
+    rawOcr,
     extractedFields,
-    confidence: Math.round(avgConfidence * 100) / 100,
+    confidence: rawOcr?.confidence ? Math.round(rawOcr.confidence * 100) / 100 : Math.round(avgConfidence * 100) / 100,
     relatedPerson,
     relationshipHistory,
     giftHistory,

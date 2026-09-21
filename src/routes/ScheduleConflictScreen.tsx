@@ -14,7 +14,8 @@ export default function ScheduleConflictScreen() {
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
 
-  const { invitations, schedule, updateInvitationStatus, updateScheduleItem } = useAppStore();
+  const { invitations, schedule, updateInvitationStatus, updateScheduleItem, isVIP, currentPrivilegedUser } = useAppStore();
+  const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
   // Find conflicting date or default to first date with conflict
   const dateConflicts = new Map<string, { invitations: typeof invitations; schedule: typeof schedule }>();
@@ -181,20 +182,22 @@ export default function ScheduleConflictScreen() {
             </div>
 
             {/* Quick Actions */}
-            <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
-              <button
-                className="btn btn-sm btn-confirm flex-1"
-                onClick={() => handleResolveConfirm(inv.id)}
-              >
-                <CheckCircle2 size={14} /> Prioritize & Confirm
-              </button>
-              <button
-                className="btn btn-sm btn-ignore flex-1"
-                onClick={() => handleResolveIgnore(inv.id)}
-              >
-                <XCircle size={14} /> Decline / Ignore
-              </button>
-            </div>
+            {canConfirmIgnore && (
+              <div className="flex gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--glass-border)' }}>
+                <button
+                  className="btn btn-sm btn-confirm flex-1"
+                  onClick={() => handleResolveConfirm(inv.id)}
+                >
+                  <CheckCircle2 size={14} /> Prioritize & Confirm
+                </button>
+                <button
+                  className="btn btn-sm btn-ignore flex-1"
+                  onClick={() => handleResolveIgnore(inv.id)}
+                >
+                  <XCircle size={14} /> Decline / Ignore
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
