@@ -21,6 +21,7 @@ import {
   Phone,
   Globe,
   History,
+  UserCheck,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
 import { exportToExcel } from '../services/exportService';
@@ -45,7 +46,23 @@ export default function SettingsScreen() {
     people,
     schedule,
     familyEvents,
+    activeVipId,
+    syncWithSupabase,
   } = useAppStore();
+
+  // Auto-sync with Supabase on mount so pending requests and staff counts are always live
+  useEffect(() => {
+    if (activeVipId) {
+      syncWithSupabase(activeVipId).catch(console.warn);
+    }
+  }, [activeVipId, syncWithSupabase]);
+
+  const pendingRequestsCount = privilegedUsers.filter(
+    (u) => u.approvalStatus === 'PENDING_APPROVAL'
+  ).length;
+  const activeStaffCount = privilegedUsers.filter(
+    (u) => !u.approvalStatus || u.approvalStatus === 'APPROVED'
+  ).length;
 
   const activeUser = isVIP ? currentUser : currentPrivilegedUser;
   const activeUserName = activeUser?.name || (isVIP ? 'VIP Principal' : 'Privileged User');
@@ -300,9 +317,21 @@ export default function SettingsScreen() {
         ...(isVIP
           ? [
               {
+                icon: <UserCheck size={18} style={{ color: pendingRequestsCount > 0 ? '#fbbf24' : undefined }} />,
+                label: 'Staff Access Requests',
+                desc:
+                  pendingRequestsCount > 0
+                    ? `${pendingRequestsCount} pending authorization request${pendingRequestsCount > 1 ? 's' : ''}`
+                    : 'Review and authorize staff requests',
+                onClick: () => navigate('/staff-requests'),
+                badge: pendingRequestsCount > 0,
+                badgeText: pendingRequestsCount > 0 ? `${pendingRequestsCount} Pending` : undefined,
+                badgeVariant: 'warning',
+              },
+              {
                 icon: <Shield size={18} />,
                 label: 'Privileged Users',
-                desc: `${privilegedUsers.length}/5 staff members`,
+                desc: `${activeStaffCount}/5 staff members active`,
                 onClick: () => navigate('/privileged-users'),
                 badge: true,
                 isInfoOnly: false,
@@ -540,6 +569,22 @@ export default function SettingsScreen() {
                       {item.desc}
                     </div>
                   </div>
+                  {item.badgeText && (
+                    <span
+                      className={`badge ${item.badgeVariant === 'warning' ? 'badge-warning' : 'badge-gold'}`}
+                      style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        marginRight: '6px',
+                        fontWeight: 600,
+                        backgroundColor: item.badgeVariant === 'warning' ? 'rgba(245, 158, 11, 0.2)' : undefined,
+                        color: item.badgeVariant === 'warning' ? '#fbbf24' : undefined,
+                        border: item.badgeVariant === 'warning' ? '0.5px solid rgba(245, 158, 11, 0.4)' : undefined,
+                      }}
+                    >
+                      {item.badgeText}
+                    </span>
+                  )}
                   {item.isInfoOnly ? (
                     <span className="badge badge-info" style={{ fontSize: '10px' }}>Active</span>
                   ) : (

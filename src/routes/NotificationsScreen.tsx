@@ -42,10 +42,12 @@ export default function NotificationsScreen() {
 
   const handleNotificationClick = (notif: (typeof notifications)[0]) => {
     markNotificationRead(notif.id);
-    if (notif.actionUrl) {
+    if (notif.type === 'staff_request') {
+      navigate('/staff-requests');
+    } else if (notif.actionUrl) {
       const targetUrl =
-        notif.actionUrl === '/settings/privileged-users'
-          ? '/privileged-users'
+        notif.actionUrl === '/settings/privileged-users' || notif.actionUrl === '/privileged-users'
+          ? '/staff-requests'
           : notif.actionUrl;
       navigate(targetUrl);
     } else if (notif.relatedEntityId) {

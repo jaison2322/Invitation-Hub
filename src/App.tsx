@@ -31,6 +31,7 @@ import PermissionManagementScreen from './routes/PermissionManagementScreen';
 import NotificationsScreen from './routes/NotificationsScreen';
 import ActivityHistoryScreen from './routes/ActivityHistoryScreen';
 import SettingsScreen from './routes/SettingsScreen';
+import StaffRequestsScreen from './routes/StaffRequestsScreen';
 import PeopleListScreen from './routes/PeopleListScreen';
 import WaitingApprovalScreen from './routes/WaitingApprovalScreen';
 import ApprovalRejectedScreen from './routes/ApprovalRejectedScreen';
@@ -97,6 +98,7 @@ function BottomNavigation() {
     location.pathname === '/notifications' ||
     location.pathname === '/activity' ||
     location.pathname === '/privileged-users' ||
+    location.pathname === '/staff-requests' ||
     location.pathname === '/reminders' ||
     location.pathname === '/conflicts' ||
     location.pathname === '/add-event' ||
@@ -320,6 +322,9 @@ export default function App() {
             <Route path="/reminders" element={<ProtectedRoute><ReminderCenterScreen /></ProtectedRoute>} />
             <Route path="/privileged-users" element={<ProtectedRoute><PrivilegedUsersScreen /></ProtectedRoute>} />
             <Route path="/settings/privileged-users" element={<Navigate to="/privileged-users" replace />} />
+            <Route path="/staff-requests" element={<ProtectedRoute><StaffRequestsScreen /></ProtectedRoute>} />
+            <Route path="/settings/staff-requests" element={<Navigate to="/staff-requests" replace />} />
+            <Route path="/privileged-requests" element={<Navigate to="/staff-requests" replace />} />
             <Route path="/permissions/:id" element={<ProtectedRoute><PermissionManagementScreen /></ProtectedRoute>} />
             <Route path="/notifications" element={<ProtectedRoute><NotificationsScreen /></ProtectedRoute>} />
             <Route path="/activity" element={<ProtectedRoute><ActivityHistoryScreen /></ProtectedRoute>} />

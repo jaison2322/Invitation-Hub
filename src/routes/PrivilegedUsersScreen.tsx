@@ -1,19 +1,25 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, UserPlus, Shield, Trash2, Clock, AtSign, Lock, CheckCircle2, Copy, Check, Phone, PhoneCall } from 'lucide-react';
+import { ArrowLeft, UserPlus, Shield, Trash2, Clock, AtSign, Lock, CheckCircle2, Copy, Check, Phone, PhoneCall, UserCheck, ChevronRight } from 'lucide-react';
 import { getInitials, formatTimeAgo } from '../utils/formatters';
 import type { PermissionKey, PrivilegedUser } from '../types';
 
 export default function PrivilegedUsersScreen() {
   const navigate = useNavigate();
-  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser, activeVipId, currentUser, respondToStaffRequest } = useAppStore();
+  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser, activeVipId, currentUser, respondToStaffRequest, syncWithSupabase } = useAppStore();
 
   useEffect(() => {
     if (!isVIP) {
       navigate('/settings', { replace: true });
     }
   }, [isVIP, navigate]);
+
+  useEffect(() => {
+    if (activeVipId) {
+      syncWithSupabase(activeVipId).catch(console.warn);
+    }
+  }, [activeVipId, syncWithSupabase]);
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
@@ -149,6 +155,54 @@ export default function PrivilegedUsersScreen() {
           Privileged users can sign in directly from the start page. Maximum 5 users allowed.
         </p>
       </div>
+
+      {/* Pending Requests Alert Banner */}
+      {privilegedUsers.some((u) => u.approvalStatus === 'PENDING_APPROVAL') && (
+        <div
+          className="glass-card animate-slide-up mb-3"
+          style={{
+            border: '1px solid rgba(245, 158, 11, 0.4)',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(26, 26, 26, 0.9) 100%)',
+            cursor: 'pointer',
+            padding: '12px 14px',
+          }}
+          onClick={() => navigate('/staff-requests')}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'rgba(245, 158, 11, 0.15)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fbbf24',
+                }}
+              >
+                <UserCheck size={16} />
+              </div>
+              <div>
+                <div className="font-semibold text-white text-sm flex items-center gap-2">
+                  <span>Staff Requests Pending</span>
+                  <span
+                    className="badge badge-warning"
+                    style={{ fontSize: '9px', padding: '1px 5px', color: '#fbbf24' }}
+                  >
+                    {privilegedUsers.filter((u) => u.approvalStatus === 'PENDING_APPROVAL').length} New
+                  </span>
+                </div>
+                <div className="text-xs text-secondary" style={{ marginTop: '1px' }}>
+                  Tap to review and authorize access requests
+                </div>
+              </div>
+            </div>
+            <ChevronRight size={16} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+          </div>
+        </div>
+      )}
 
       {/* Created User Credentials Confirmation */}
       {createdUser && (
