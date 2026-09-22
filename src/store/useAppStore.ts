@@ -87,7 +87,8 @@ interface AppState {
     phoneVerified: boolean;
   }>;
   reassignStaffVip: (newVipUsername: string) => Promise<{ success: boolean; error?: string }>;
-  verifyStaffPhoneOtp: (otp: string) => Promise<{ success: boolean; error?: string }>;
+  verifyStaffPhoneOtp: (otp: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
+  refreshStaffAccounts: (explicitVipId?: string) => Promise<PrivilegedUser[]>;
   respondToStaffRequest: (staffUsername: string, accept: boolean) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 
@@ -618,8 +619,8 @@ export const useAppStore = create<AppState>()(
               createdAt: dbAccount.createdAt,
             };
 
-            // Update auth token in DB and set Supabase session headers for RLS
-            supabaseDbService.updateUserAuthToken(dbAccount.username, authToken).catch(console.warn);
+            // Commit auth token in DB first via secure RPC, then set session headers
+            await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
             setSupabaseAuthSession(targetVipId, authToken);
 
             // Wipe local arrays to ensure NO cross-account contamination from prior sessions
@@ -727,7 +728,7 @@ export const useAppStore = create<AppState>()(
             }
 
             // Gate 3: Approved and phone verified -> establish authenticated session
-            supabaseDbService.updateUserAuthToken(dbAccount.username, authToken).catch(console.warn);
+            await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
             setSupabaseAuthSession(targetVipId, authToken);
 
             set({
@@ -981,13 +982,14 @@ export const useAppStore = create<AppState>()(
         return { success: true };
       },
 
-      verifyStaffPhoneOtp: async (otp) => {
+      verifyStaffPhoneOtp: async (otp, phone) => {
         const { currentPrivilegedUser } = get();
         if (!currentPrivilegedUser?.username) {
           return { success: false, error: 'No active staff session.' };
         }
 
-        const res = await supabaseDbService.verifyStaffPhone(currentPrivilegedUser.username, otp);
+        const cleanPhone = phone?.trim() || currentPrivilegedUser.phone;
+        const res = await supabaseDbService.verifyStaffPhone(currentPrivilegedUser.username, otp, cleanPhone);
         if (!res.success) {
           return { success: false, error: res.error || 'Verification failed.' };
         }
@@ -995,11 +997,13 @@ export const useAppStore = create<AppState>()(
         const targetVipId = currentPrivilegedUser.vipId || 'vip_jaison';
         const authToken = res.authToken || `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-        supabaseDbService.updateUserAuthToken(currentPrivilegedUser.username, authToken).catch(console.warn);
+        await supabaseDbService.updateUserAuthToken(currentPrivilegedUser.username, authToken, targetVipId);
         setSupabaseAuthSession(targetVipId, authToken);
 
+        const verifiedPhone = res.phone || cleanPhone || currentPrivilegedUser.phone;
         const updatedUser: PrivilegedUser = {
           ...currentPrivilegedUser,
+          phone: verifiedPhone,
           phoneVerified: true,
           phoneVerifiedAt: new Date().toISOString(),
           approvalStatus: 'APPROVED',
@@ -1031,6 +1035,50 @@ export const useAppStore = create<AppState>()(
         return { success: true };
       },
 
+      refreshStaffAccounts: async (explicitVipId?: string) => {
+        const state = get();
+        const targetVipId =
+          explicitVipId ||
+          state.activeVipId ||
+          state.currentUser?.vipId ||
+          (state.currentUser ? `vip_${state.currentUser.username}` : null) ||
+          state.currentPrivilegedUser?.vipId;
+
+        if (!targetVipId) return [];
+
+        try {
+          const staffAccounts = await supabaseDbService.getStaffAccounts(targetVipId);
+          const privUsers: PrivilegedUser[] = staffAccounts.map((acct) => ({
+            id: acct.id || generateId('priv'),
+            vipId: targetVipId,
+            targetVipUsername: acct.targetVipUsername,
+            approvalStatus: acct.approvalStatus || 'APPROVED',
+            username: acct.username,
+            passwordHash: acct.passwordHash,
+            name: acct.name,
+            role: acct.staffTitle || 'Personal Assistant',
+            staffTitle: acct.staffTitle,
+            pin: acct.pin || '1111',
+            phone: acct.phone,
+            email: acct.email,
+            phoneVerified: acct.phoneVerified,
+            emailVerified: acct.emailVerified,
+            phoneVerifiedAt: acct.phoneVerifiedAt,
+            emailVerifiedAt: acct.emailVerifiedAt,
+            permissions: sanitizePermissions(acct.permissions),
+            addedBy: acct.vipId || targetVipId,
+            addedAt: acct.createdAt,
+            lastActive: acct.lastLogin,
+          }));
+
+          set({ privilegedUsers: privUsers });
+          return privUsers;
+        } catch (err) {
+          console.warn('refreshStaffAccounts warning:', err);
+          return get().privilegedUsers;
+        }
+      },
+
       respondToStaffRequest: async (staffUsername, accept) => {
         const { activeVipId } = get();
         const res = await supabaseDbService.respondToStaffRequest(staffUsername, accept, activeVipId || undefined);
@@ -1038,22 +1086,24 @@ export const useAppStore = create<AppState>()(
           return { success: false, error: res.error || 'Failed to respond to request' };
         }
 
-        // Update local notifications & privileged users
+        // Optimistically update local notifications & privileged users immediately
         set((state) => ({
           notifications: state.notifications.map((n) =>
-            n.relatedEntityId === staffUsername && n.type === 'staff_request'
+            ((n.relatedEntityId && n.relatedEntityId.toLowerCase() === staffUsername.toLowerCase()) ||
+              n.message.toLowerCase().includes(staffUsername.toLowerCase())) &&
+            n.type === 'staff_request'
               ? { ...n, read: true }
               : n
           ),
           privilegedUsers: state.privilegedUsers.map((u) =>
-            u.username === staffUsername
+            u.username && u.username.toLowerCase() === staffUsername.toLowerCase()
               ? { ...u, approvalStatus: accept ? 'APPROVED' : 'REJECTED' }
               : u
           ),
         }));
 
         if (activeVipId) {
-          get().syncWithSupabase(activeVipId);
+          get().refreshStaffAccounts(activeVipId).catch(console.warn);
         }
 
         return { success: true };
@@ -1415,8 +1465,13 @@ export const useAppStore = create<AppState>()(
           ...userData,
           id: generateId('priv'),
           vipId: targetVipId,
+          targetVipUsername: currentUser?.username || undefined,
           username,
           passwordHash: pwHash,
+          phone: undefined,
+          phoneVerified: false,
+          phoneVerifiedAt: undefined,
+          approvalStatus: 'APPROVED',
           addedBy: targetVipId,
           addedAt: new Date().toISOString(),
         };
@@ -1431,15 +1486,18 @@ export const useAppStore = create<AppState>()(
         // Sync to Supabase user_accounts
         supabaseDbService.registerUserAccount({
           vipId: targetVipId,
+          targetVipUsername: currentUser?.username || undefined,
           username,
           passwordHash: pwHash,
           name: user.name,
           role: 'staff',
           staffTitle: user.role,
-          phone: user.phone,
+          phone: undefined,
           email: user.email,
           pin: user.pin,
           permissions: user.permissions,
+          approvalStatus: 'APPROVED',
+          phoneVerified: false,
           createdAt: user.addedAt,
         }).catch((err) => console.warn('Supabase register privileged user error:', err));
 

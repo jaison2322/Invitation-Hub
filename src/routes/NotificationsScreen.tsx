@@ -193,8 +193,9 @@ export default function NotificationsScreen() {
                         style={{ fontSize: '11px', padding: '4px 10px' }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (notif.relatedEntityId) {
-                            respondToStaffRequest(notif.relatedEntityId, true);
+                          const targetUser = notif.relatedEntityId || notif.message.match(/Username:\s*([a-zA-Z0-9_-]+)/i)?.[1];
+                          if (targetUser) {
+                            respondToStaffRequest(targetUser, true);
                           }
                         }}
                       >
@@ -206,8 +207,9 @@ export default function NotificationsScreen() {
                         style={{ fontSize: '11px', padding: '4px 10px', color: 'var(--color-danger)' }}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (notif.relatedEntityId) {
-                            respondToStaffRequest(notif.relatedEntityId, false);
+                          const targetUser = notif.relatedEntityId || notif.message.match(/Username:\s*([a-zA-Z0-9_-]+)/i)?.[1];
+                          if (targetUser) {
+                            respondToStaffRequest(targetUser, false);
                           }
                         }}
                       >

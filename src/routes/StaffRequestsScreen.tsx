@@ -24,10 +24,12 @@ export default function StaffRequestsScreen() {
     isVIP,
     activeVipId,
     syncWithSupabase,
+    refreshStaffAccounts,
     respondToStaffRequest,
   } = useAppStore();
 
   const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [processingUsername, setProcessingUsername] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<{
@@ -43,19 +45,34 @@ export default function StaffRequestsScreen() {
     }
   }, [isVIP, navigate]);
 
-  // Sync latest data on mount
+  // Sync latest data on mount via dedicated secure RPC
   useEffect(() => {
-    if (activeVipId) {
-      syncWithSupabase(activeVipId).catch(console.warn);
-    }
-  }, [activeVipId, syncWithSupabase]);
+    let isMounted = true;
+    const loadStaff = async () => {
+      if (!activeVipId) {
+        setIsLoading(false);
+        return;
+      }
+      try {
+        await refreshStaffAccounts(activeVipId);
+      } catch (err) {
+        console.warn('Initial staff refresh warning:', err);
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+    loadStaff();
+    return () => {
+      isMounted = false;
+    };
+  }, [activeVipId, refreshStaffAccounts]);
 
   const handleRefresh = async () => {
     if (!activeVipId) return;
     setIsRefreshing(true);
     setActionFeedback(null);
     try {
-      await syncWithSupabase(activeVipId);
+      await refreshStaffAccounts(activeVipId);
     } catch (err: any) {
       console.warn('Refresh error in StaffRequestsScreen:', err);
     } finally {
@@ -264,8 +281,59 @@ export default function StaffRequestsScreen() {
           </button>
         </div>
 
+        {/* Loading State Skeleton */}
+        {isLoading && displayedRequests.length === 0 && (
+          <div className="flex flex-col gap-3 animate-fade-in" style={{ marginTop: '6px' }}>
+            {[1, 2].map((idx) => (
+              <div
+                key={idx}
+                className="glass-card"
+                style={{
+                  padding: '16px',
+                  border: '1px solid rgba(255, 215, 0, 0.15)',
+                  background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(26, 26, 26, 0.6) 100%)',
+                }}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    style={{
+                      width: '42px',
+                      height: '42px',
+                      borderRadius: '50%',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      animation: 'pulse 1.5s infinite ease-in-out',
+                    }}
+                  />
+                  <div className="flex-1">
+                    <div
+                      style={{
+                        width: '45%',
+                        height: '14px',
+                        borderRadius: '4px',
+                        background: 'rgba(255, 255, 255, 0.12)',
+                        marginBottom: '8px',
+                      }}
+                    />
+                    <div
+                      style={{
+                        width: '30%',
+                        height: '11px',
+                        borderRadius: '4px',
+                        background: 'rgba(255, 255, 255, 0.06)',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="text-center text-xs text-muted mt-2">
+              Synchronizing staff access requests from secure ledger...
+            </div>
+          </div>
+        )}
+
         {/* Empty State */}
-        {displayedRequests.length === 0 && (
+        {!isLoading && displayedRequests.length === 0 && (
           <div
             className="glass-card text-center animate-fade-in"
             style={{ padding: '36px 20px', marginTop: '10px' }}

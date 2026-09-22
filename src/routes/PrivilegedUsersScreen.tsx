@@ -7,7 +7,7 @@ import type { PermissionKey, PrivilegedUser } from '../types';
 
 export default function PrivilegedUsersScreen() {
   const navigate = useNavigate();
-  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser, activeVipId, currentUser, respondToStaffRequest, syncWithSupabase } = useAppStore();
+  const { privilegedUsers, isVIP, removePrivilegedUser, addPrivilegedUser, activeVipId, currentUser, respondToStaffRequest, syncWithSupabase, refreshStaffAccounts } = useAppStore();
 
   useEffect(() => {
     if (!isVIP) {
@@ -17,15 +17,14 @@ export default function PrivilegedUsersScreen() {
 
   useEffect(() => {
     if (activeVipId) {
-      syncWithSupabase(activeVipId).catch(console.warn);
+      refreshStaffAccounts(activeVipId).catch(console.warn);
     }
-  }, [activeVipId, syncWithSupabase]);
+  }, [activeVipId, refreshStaffAccounts]);
 
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState('');
-  const [newPhone, setNewPhone] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [createdUser, setCreatedUser] = useState<PrivilegedUser | null>(null);
@@ -101,7 +100,6 @@ export default function PrivilegedUsersScreen() {
       name: newName.trim(),
       username: effectiveUsername,
       role: newRole.trim(),
-      phone: newPhone.trim() || undefined,
       permissions: defaultPerms,
       addedBy: actorVipId,
       password: passToUse,
@@ -116,7 +114,6 @@ export default function PrivilegedUsersScreen() {
       setNewName('');
       setNewUsername('');
       setNewRole('');
-      setNewPhone('');
       setNewPassword('');
     }
   };
@@ -214,7 +211,7 @@ export default function PrivilegedUsersScreen() {
             </span>
           </div>
           <p className="text-xs text-muted mb-3">
-            Share these credentials with <strong>{createdUser.name}</strong> so they can sign in:
+            Share these credentials with <strong>{createdUser.name}</strong> to sign in. Upon first sign-in, they will verify their mobile phone number to access the VIP suite.
           </p>
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between" style={{
@@ -442,10 +439,6 @@ export default function PrivilegedUsersScreen() {
                     placeholder="Enter password for staff sign-in"
                     required
                   />
-                </div>
-                <div>
-                  <label className="label">Phone Number</label>
-                  <input className="input" type="tel" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="e.g., +91 98765 43210" />
                 </div>
                 <div className="flex gap-2">
                   <button className="btn btn-ghost flex-1" onClick={() => setShowAdd(false)}>Cancel</button>

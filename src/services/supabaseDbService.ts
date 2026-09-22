@@ -675,18 +675,32 @@ export const supabaseDbService = {
     }
   },
 
-  // Get all staff user accounts for a specific VIP
+  // Get all staff user accounts for a specific VIP via secure RPC
   async getStaffAccounts(vipId?: string): Promise<UserAccount[]> {
     try {
       const targetVipId = vipId || getActiveSessionVipId();
       if (!targetVipId) return [];
 
+      // 1. Primary: Use dedicated secure RPC (bypasses RLS token desync block & strips passwords)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_vip_staff_accounts', {
+        p_vip_id: targetVipId,
+      });
+
+      if (!rpcError && Array.isArray(rpcData)) {
+        return rpcData.map((row: any) => this._mapRowToUserAccount(row));
+      }
+
+      if (rpcError) {
+        console.warn('RPC get_vip_staff_accounts fallback to table query:', rpcError.message);
+      }
+
+      // 2. Fallback: direct table query
       const { data, error } = await supabase
         .from('user_accounts')
         .select('*')
         .eq('role', 'staff')
         .eq('vip_id', targetVipId)
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.warn('Error fetching staff accounts:', error);
@@ -759,10 +773,28 @@ export const supabaseDbService = {
     }
   },
 
-  // Update auth token on user_accounts to establish valid session for RLS
-  async updateUserAuthToken(username: string, authToken: string): Promise<boolean> {
+  // Update auth token on user_accounts via secure RPC to eliminate RLS chicken-and-egg lockouts
+  async updateUserAuthToken(username: string, authToken: string, vipId?: string): Promise<boolean> {
     try {
       const cleanUsername = username.trim().toLowerCase();
+      const targetVipId = vipId || getActiveSessionVipId();
+
+      // 1. Primary: Atomic RPC (SECURITY DEFINER)
+      const { data: rpcData, error: rpcError } = await supabase.rpc('update_user_auth_token', {
+        p_username: cleanUsername,
+        p_auth_token: authToken,
+        p_vip_id: targetVipId || null,
+      });
+
+      if (!rpcError && rpcData?.success) {
+        return true;
+      }
+
+      if (rpcError) {
+        console.warn('update_user_auth_token RPC fallback to table update:', rpcError.message);
+      }
+
+      // 2. Fallback: Direct table update
       const { error } = await supabase
         .from('user_accounts')
         .update({ auth_token: authToken, updated_at: new Date().toISOString() })
@@ -1025,7 +1057,7 @@ export const supabaseDbService = {
             message: `${params.name.trim()} (${params.staffTitle}) requested access. Username: ${params.username.trim()}${params.phone ? ` | Phone: ${params.phone.trim()}` : ''}`,
             read: false,
             timestamp: new Date().toISOString(),
-            action_url: '/privileged-users',
+            action_url: '/staff-requests',
             related_entity_id: params.username.trim().toLowerCase(),
           }
         }
@@ -1080,12 +1112,13 @@ export const supabaseDbService = {
     }
   },
 
-  // Verify staff phone OTP code
-  async verifyStaffPhone(staffUsername: string, otp: string): Promise<{ success: boolean; error?: string; authToken?: string }> {
+  // Verify staff phone OTP code (with optional phone update)
+  async verifyStaffPhone(staffUsername: string, otp: string, phone?: string): Promise<{ success: boolean; error?: string; authToken?: string; phone?: string }> {
     try {
       const { data, error } = await supabase.rpc('verify_staff_phone', {
         p_staff_username: staffUsername.trim().toLowerCase(),
         p_otp: otp.trim(),
+        p_phone: phone ? phone.trim() : null,
       });
 
       if (error) {
@@ -1094,7 +1127,7 @@ export const supabaseDbService = {
       if (!data?.success) {
         return { success: false, error: data?.error || 'Verification failed' };
       }
-      return { success: true, authToken: data?.auth_token };
+      return { success: true, authToken: data?.auth_token, phone: data?.phone };
     } catch (err: any) {
       return { success: false, error: err.message || 'Failed to verify phone' };
     }
