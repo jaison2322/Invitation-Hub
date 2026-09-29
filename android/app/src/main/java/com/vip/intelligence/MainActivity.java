@@ -27,15 +27,27 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void handleNotificationIntent(Intent intent) {
-        if (intent != null && intent.hasExtra("actionUrl")) {
-            String actionUrl = intent.getStringExtra("actionUrl");
-            intent.removeExtra("actionUrl"); // Consume intent extra
-            if (actionUrl != null && !actionUrl.isEmpty() && getBridge() != null && getBridge().getWebView() != null) {
-                String js = String.format(
-                    "if (window.location.pathname !== '%s') { window.location.href = '%s'; }",
-                    actionUrl, actionUrl
-                );
-                getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js, null));
+        if (intent == null) return;
+        String actionUrl = intent.getStringExtra("actionUrl");
+        if (actionUrl == null || actionUrl.isEmpty()) {
+            android.os.Bundle extras = intent.getExtras();
+            if (extras != null) {
+                actionUrl = extras.getString("actionUrl");
+            }
+        }
+        if (actionUrl != null && !actionUrl.isEmpty()) {
+            final String finalUrl = actionUrl;
+            intent.removeExtra("actionUrl");
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().postDelayed(() -> {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        String js = String.format(
+                            "try { if (window.location.pathname + window.location.search !== '%s') { window.location.href = '%s'; } } catch(e){}",
+                            finalUrl, finalUrl
+                        );
+                        getBridge().getWebView().evaluateJavascript(js, null);
+                    }
+                }, 600);
             }
         }
     }

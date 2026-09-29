@@ -60,7 +60,7 @@ export default function PersonProfileScreen() {
     return (
       <div className="screen-no-nav flex items-center justify-center p-6 text-center">
         <div>
-          <p className="text-muted mb-4">VIP Contact not found</p>
+          <p className="text-muted mb-4">Contact not found</p>
           <button className="btn btn-gold" onClick={() => navigate('/people')}>
             Go to People
           </button>
@@ -453,7 +453,7 @@ export default function PersonProfileScreen() {
           <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle" />
             <div className="flex items-center justify-between mb-2">
-              <h3 style={{ margin: 0 }}>Edit VIP Contact</h3>
+              <h3 style={{ margin: 0 }}>Edit Contact</h3>
               <button
                 type="button"
                 className="btn btn-sm btn-ghost text-danger"
@@ -571,7 +571,7 @@ export default function PersonProfileScreen() {
             </div>
             <h3 style={{ marginBottom: 'var(--space-2)' }}>Delete Contact?</h3>
             <p className="text-xs text-secondary mb-5">
-              Are you sure you want to delete <strong>{person.name}</strong> from your VIP directory? This action cannot be undone.
+              Are you sure you want to delete <strong>{person.name}</strong> from your contact directory? This action cannot be undone.
             </p>
             <div className="flex gap-3">
               <button

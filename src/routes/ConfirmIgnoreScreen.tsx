@@ -1,8 +1,10 @@
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
   Calendar, Clock, MapPin, Sparkles, AlertTriangle,
-  History, Gift, CheckCircle2, ArrowLeft,
+  History, Gift, CheckCircle2, ArrowLeft, FileText, Loader2,
+  Maximize2, X,
 } from 'lucide-react';
 import {
   formatDate, formatTime, formatFullDate,
@@ -10,11 +12,29 @@ import {
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
-import type { ExtractedFields, InvitationStatus } from '../types';
+import type { ExtractedFields, InvitationStatus, CanonicalManualInvitationData } from '../types';
+import { storageService } from '../services/storageService';
+import { generateId } from '../utils/id';
+import { getCachedScanImage } from '../utils/imagePreprocess';
+import { mapScanToManualForm } from '../services/scanMappingService';
 
 export default function ConfirmIgnoreScreen() {
   const navigate = useNavigate();
-  const { currentScanResult, addInvitation, setScanResult, addActivityLog, addNotification, isVIP, currentUser, currentPrivilegedUser } = useAppStore();
+  const {
+    currentScanResult,
+    addInvitation,
+    setScanResult,
+    addActivityLog,
+    addNotification,
+    isVIP,
+    currentUser,
+    currentPrivilegedUser,
+    activeVipId,
+    people,
+  } = useAppStore();
+
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   if (!currentScanResult) {
     navigate('/scan', { replace: true });
@@ -22,36 +42,98 @@ export default function ConfirmIgnoreScreen() {
   }
 
   const { analysis } = currentScanResult;
-  const editedFieldsStr = sessionStorage.getItem('edited-fields');
-  const fields: ExtractedFields = editedFieldsStr
-    ? JSON.parse(editedFieldsStr)
-    : analysis.extractedFields;
-  const nickname = sessionStorage.getItem('invitation-nickname') || '';
-
   const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
-  const handleDecision = (status: 'confirmed' | 'ignored' | 'pending') => {
-    const effectiveStatus: InvitationStatus = canConfirmIgnore ? status : 'pending';
+  const canonicalCached = sessionStorage.getItem('canonical-manual-form');
+  const formData: CanonicalManualInvitationData = canonicalCached
+    ? JSON.parse(canonicalCached)
+    : (currentScanResult.canonicalManualForm ||
+        mapScanToManualForm(currentScanResult.extractedFields, analysis, people, canConfirmIgnore));
 
-    const created = addInvitation({
-      personId: analysis.relatedPerson?.id,
-      eventType: fields.eventType || 'other',
-      title: fields.title || 'New Event',
-      nickname: nickname || undefined,
-      mainPerson: fields.mainPerson,
-      hostName: fields.hostName,
-      date: fields.date || new Date().toISOString().split('T')[0],
-      time: fields.time,
-      venue: fields.venue,
-      location: fields.location,
-      description: fields.description,
-      priority: analysis.suggestedPriority,
-      aiSuggestedPriority: analysis.suggestedPriority,
-      aiReason: analysis.priorityReason,
-      status: effectiveStatus,
-      ocrText: analysis.ocrText,
-      createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
-    });
+  const rawImage = currentScanResult?.imageDataUrl || sessionStorage.getItem('scan-image') || getCachedScanImage() || '';
+
+  const [showImageModal, setShowImageModal] = useState(false);
+
+  const openImageModal = () => {
+    setShowImageModal(true);
+    window.history.pushState({ modal: 'imagePreview' }, '');
+  };
+
+  const closeImageModal = () => {
+    setShowImageModal(false);
+    if (window.history.state?.modal === 'imagePreview') {
+      window.history.back();
+    }
+  };
+
+  useEffect(() => {
+    const handlePop = () => {
+      setShowImageModal(false);
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+    };
+  }, []);
+
+  const handleDecision = async (status: 'confirmed' | 'ignored' | 'pending') => {
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSaving(true);
+
+    try {
+      const effectiveStatus: InvitationStatus = canConfirmIgnore ? status : 'pending';
+      const invId = generateId('inv');
+      const targetVipId =
+        activeVipId ||
+        (isVIP
+          ? currentUser?.vipId || (currentUser?.username ? `vip_${currentUser.username}` : undefined)
+          : currentPrivilegedUser?.vipId) ||
+        'vip_default';
+
+      let imageId: string | undefined;
+      let imageUrl: string | undefined;
+
+      // Upload original invitation photo to secure Supabase storage
+      if (rawImage) {
+        try {
+          const uploadRes = await storageService.uploadInvitationImage(rawImage, targetVipId, invId);
+          if (uploadRes) {
+            imageId = uploadRes.path;
+            imageUrl = uploadRes.signedUrl;
+          } else {
+            // Local fallback if offline
+            imageUrl = rawImage;
+          }
+        } catch (uploadErr) {
+          console.warn('[ConfirmIgnoreScreen] Image upload failed, falling back to local image:', uploadErr);
+          imageUrl = rawImage;
+        }
+      }
+
+      const resolvedTitle = formData.title.trim() || formData.hostName.trim() || 'New Invitation';
+
+      const created = addInvitation({
+        id: invId,
+        personId: formData.personId || analysis.relatedPerson?.id || undefined,
+        eventType: formData.eventType || 'other',
+        title: resolvedTitle,
+        mainPerson: formData.mainPerson?.trim() || undefined,
+        hostName: formData.hostName?.trim() || undefined,
+        date: formData.date || new Date().toISOString().split('T')[0],
+        time: formData.time || undefined,
+        venue: formData.venue?.trim() || undefined,
+        location: formData.location?.trim() || undefined,
+        description: formData.description?.trim() || undefined,
+        priority: formData.priority || analysis.suggestedPriority || 'medium',
+        aiSuggestedPriority: analysis.suggestedPriority,
+        aiReason: analysis.priorityReason,
+        status: effectiveStatus,
+        ocrText: analysis.ocrText,
+        imageId,
+        imageUrl,
+        createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
+      });
 
     const userName = isVIP
       ? (currentUser?.name || 'VIP Principal')
@@ -98,10 +180,18 @@ export default function ConfirmIgnoreScreen() {
     // Clean up
     setScanResult(null);
     sessionStorage.removeItem('scan-image');
+    sessionStorage.removeItem('canonical-manual-form');
     sessionStorage.removeItem('invitation-nickname');
     sessionStorage.removeItem('edited-fields');
 
     navigate('/dashboard', { replace: true });
+    } catch (err) {
+      console.error('[ConfirmIgnoreScreen] Error saving event:', err);
+      alert('An error occurred while saving the event. Please try again.');
+    } finally {
+      isSavingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -109,7 +199,17 @@ export default function ConfirmIgnoreScreen() {
       {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
       <div className="screen-stationary-header">
         <div className="top-bar">
-          <button className="top-bar-back" onClick={() => navigate(-1)} aria-label="Go Back">
+          <button
+            className="top-bar-back"
+            onClick={() => {
+              if (showImageModal) {
+                closeImageModal();
+              } else {
+                navigate(-1);
+              }
+            }}
+            aria-label="Go Back"
+          >
             <ArrowLeft size={16} strokeWidth={2} />
           </button>
           <span className="top-bar-title">Protocol Decision</span>
@@ -119,22 +219,78 @@ export default function ConfirmIgnoreScreen() {
 
       {/* ── Scrollable Decision Content ─────────────────────────────────────── */}
       <div className="screen-scroll-body" style={{ paddingBottom: '90px' }}>
+        {/* ── Scanned Original Invitation Card ─────────────────────────────── */}
+        {rawImage && (
+          <div className="ios-card mb-3 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <FileText size={13} style={{ color: 'var(--color-accent)' }} />
+                Original Invitation Card
+              </span>
+              <span className="badge badge-info" style={{ fontSize: '10px' }}>Attached</span>
+            </div>
+            <div
+              style={{
+                position: 'relative',
+                maxHeight: '180px',
+                overflow: 'hidden',
+                borderRadius: '10px',
+                background: 'rgba(0, 0, 0, 0.35)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                cursor: 'pointer',
+              }}
+              onClick={openImageModal}
+              title="Tap to inspect full original invitation card"
+            >
+              <img
+                src={rawImage}
+                alt="Invitation Card"
+                style={{ width: '100%', maxHeight: '180px', objectFit: 'contain', borderRadius: '10px' }}
+              />
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '8px',
+                  left: '8px',
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  backdropFilter: 'blur(4px)',
+                  borderRadius: '12px',
+                  padding: '3px 9px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontSize: '11px',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <Maximize2 size={12} style={{ color: '#64d2ff' }} />
+                <span>Tap to inspect</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Executive Briefing Event Pass ─────────────────────────────────── */}
         <div className="hero-event-card mb-3">
         <div className="flex items-start justify-between mb-3">
-          <EventBadgeIcon type={fields.eventType || 'other'} size="hero" showGlow />
-          <PriorityBadge priority={analysis.suggestedPriority} />
+          <EventBadgeIcon type={formData.eventType || 'other'} size="hero" showGlow />
+          <PriorityBadge priority={formData.priority || analysis.suggestedPriority} />
         </div>
 
         <h1
           className="font-heading font-semibold text-white tracking-tight"
           style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '2px' }}
         >
-          {nickname || fields.title || 'New Event'}
+          {formData.title || formData.hostName || 'New Event'}
         </h1>
-        {nickname && fields.title && nickname !== fields.title && (
+        {formData.hostName && formData.hostName !== formData.title && (
           <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
-            {fields.title}
+            Host: {formData.hostName}
           </p>
         )}
 
@@ -143,18 +299,20 @@ export default function ConfirmIgnoreScreen() {
         <div className="flex flex-col gap-2" style={{ fontSize: '13px' }}>
           <div className="flex items-center gap-2 text-slate-200">
             <Calendar size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-            <span>{fields.date ? formatFullDate(fields.date) : 'Date not specified'}</span>
+            <span>{formData.date ? formatFullDate(formData.date) : 'Date not specified'}</span>
           </div>
-          {fields.time && (
+          {formData.time && (
             <div className="flex items-center gap-2 text-slate-200">
               <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span>{formatTime(fields.time)}</span>
+              <span>{formatTime(formData.time)}</span>
             </div>
           )}
-          {fields.venue && (
+          {(formData.venue || formData.location) && (
             <div className="flex items-center gap-2 text-slate-200">
               <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span className="truncate">{fields.venue}</span>
+              <span className="truncate">
+                {formData.venue && formData.location ? `${formData.venue}, ${formData.location}` : (formData.venue || formData.location)}
+              </span>
             </div>
           )}
         </div>
@@ -261,14 +419,17 @@ export default function ConfirmIgnoreScreen() {
           <div className="flex gap-2 w-full">
             <button
               type="button"
-              className="btn btn-confirm flex-1 font-heading"
+              className="btn btn-confirm flex-1 font-heading flex items-center justify-center gap-1.5"
+              disabled={isSaving}
               onClick={() => handleDecision('confirmed')}
             >
+              {isSaving ? <Loader2 size={15} className="animate-spin" /> : null}
               Confirm Attendance
             </button>
             <button
               type="button"
               className="btn btn-ignore flex-1 font-heading"
+              disabled={isSaving}
               onClick={() => handleDecision('ignored')}
             >
               Decline
@@ -277,6 +438,7 @@ export default function ConfirmIgnoreScreen() {
           <button
             type="button"
             className="btn btn-ghost w-full font-heading text-xs"
+            disabled={isSaving}
             style={{ padding: '8px', color: 'var(--color-text-secondary)', border: '1px solid var(--glass-border)' }}
             onClick={() => handleDecision('pending')}
           >
@@ -297,12 +459,59 @@ export default function ConfirmIgnoreScreen() {
           </div>
           <button
             type="button"
-            className="btn btn-gold w-full font-heading"
+            className="btn btn-gold w-full font-heading flex items-center justify-center gap-2"
+            disabled={isSaving}
             style={{ padding: '13px', fontSize: '15px' }}
             onClick={() => handleDecision('pending')}
           >
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : null}
             Submit for VIP Review (Pending)
           </button>
+        </div>
+      )}
+
+      {/* ── Fullscreen Invitation Lightbox Modal ────────────────────────────── */}
+      {showImageModal && rawImage && (
+        <div
+          className="modal-overlay modal-centered"
+          style={{ zIndex: 9999, background: 'rgba(0, 0, 0, 0.9)', backdropFilter: 'blur(8px)' }}
+          onClick={closeImageModal}
+        >
+          <div
+            className="relative max-w-lg w-full max-h-[92vh] flex flex-col items-center justify-center p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeImageModal}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full text-white bg-black/60 hover:bg-black/80 transition-colors"
+              aria-label="Close image preview"
+              style={{
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={rawImage}
+              alt="Original Invitation Card"
+              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              style={{ border: '1px solid rgba(255, 255, 255, 0.15)' }}
+            />
+            <div className="mt-3 text-center">
+              <p className="text-xs text-slate-200 font-medium">
+                {formData.title || formData.hostName || 'Invitation Card Preview'}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Original Scanned Invitation Card
+              </p>
+            </div>
+          </div>
         </div>
       )}
     </div>

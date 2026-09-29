@@ -1,4 +1,4 @@
-# 👑 VIP Event Intelligence & Relationship Memory System
+# 👑 Invitation Hub
 
 A mobile-first, AI-powered invitation intelligence, relationship memory, and VIP event scheduling application built with React, TypeScript, Vite, and Tesseract OCR.
 
@@ -8,7 +8,7 @@ A mobile-first, AI-powered invitation intelligence, relationship memory, and VIP
 
 Extremely busy VIPs, executives, business leaders, and celebrities receive hundreds of invitations from relatives, partners, clients, and social contacts. They often struggle with overlapping schedules and forgetting critical reciprocal relationship contexts (e.g. *"Did Ramesh attend my daughter's wedding? What gift did he give?"*).
 
-**VIP Event Intelligence** transforms the chaotic invitation process into a 10-second decision:
+**Invitation Hub** transforms the chaotic invitation process into a 10-second decision:
 > **Scan Invitation → AI extracts details & matches historical relationship records → VIP chooses CONFIRM or IGNORE.**
 
 ---

@@ -61,7 +61,7 @@ export default function AppHeader() {
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/dashboard')}>
           <Shield className="text-apple-blue" size={24} strokeWidth={2} />
           <div>
-            <div className="font-bold text-[15px] tracking-tight" style={{ color: 'var(--color-text-primary)' }}>VIP INTELLIGENCE</div>
+            <div className="font-bold text-[15px] tracking-tight" style={{ color: 'var(--color-text-primary)' }}>INVITATION HUB</div>
             <div className="text-[12px] font-medium tracking-tight" style={{ color: 'var(--color-text-secondary)' }}>{t('dashboard.protocolLedger')}</div>
           </div>
         </div>

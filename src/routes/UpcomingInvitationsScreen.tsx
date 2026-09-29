@@ -24,7 +24,8 @@ export default function UpcomingInvitationsScreen() {
       return (
         inv.title.toLowerCase().includes(q) ||
         (inv.nickname || '').toLowerCase().includes(q) ||
-        (inv.venue || '').toLowerCase().includes(q)
+        (inv.venue || '').toLowerCase().includes(q) ||
+        (inv.location || '').toLowerCase().includes(q)
       );
     })
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -124,10 +125,12 @@ export default function UpcomingInvitationsScreen() {
                   <span>{formatTime(inv.time)}</span>
                 </span>
               )}
-              {inv.venue && (
+              {(inv.venue || inv.location) && (
                 <span className="event-card-meta-item truncate">
                   <MapPin size={12} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-                  <span className="truncate">{inv.venue}</span>
+                  <span className="truncate">
+                    {inv.venue && inv.location ? `${inv.venue}, ${inv.location}` : (inv.venue || inv.location)}
+                  </span>
                 </span>
               )}
             </div>

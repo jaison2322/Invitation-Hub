@@ -40,19 +40,28 @@ DROP POLICY IF EXISTS "Allow delete on device_tokens" ON public.device_tokens;
 CREATE POLICY "Allow delete on device_tokens" ON public.device_tokens FOR DELETE TO anon, authenticated USING (true);
 
 -- 6. Database trigger function: auto-send push notifications via pg_net
--- This calls the Edge Function whenever a new notification is inserted
+-- Ensure pg_net extension is enabled
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
 CREATE OR REPLACE FUNCTION public.handle_new_notification()
 RETURNS TRIGGER AS $$
 DECLARE
-    edge_function_url TEXT;
     payload JSONB;
+    supabase_url TEXT := 'https://lliowikzustvebudgsoy.supabase.co';
+    anon_key TEXT := 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH';
 BEGIN
-    -- Build payload from the new notification row
+    -- Only trigger for unread notifications
+    IF NEW.read IS TRUE THEN
+        RETURN NEW;
+    END IF;
+
+    -- Build payload from the new notification row (including vip_id for isolation)
     payload := jsonb_build_object(
         'type', 'INSERT',
         'table', 'notifications',
         'record', jsonb_build_object(
             'id', NEW.id,
+            'vip_id', NEW.vip_id,
             'type', NEW.type,
             'title', NEW.title,
             'message', NEW.message,
@@ -63,21 +72,20 @@ BEGIN
         )
     );
 
-    -- Call Edge Function via pg_net (Supabase's HTTP extension)
-    -- The URL will be: https://<project-ref>.supabase.co/functions/v1/send-push-notification
+    -- Call Edge Function via pg_net asynchronously
     PERFORM net.http_post(
-        url := current_setting('app.settings.supabase_url', true) || '/functions/v1/send-push-notification',
+        url := supabase_url || '/functions/v1/send-push-notification',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || current_setting('app.settings.service_role_key', true)
+            'apikey', anon_key,
+            'Authorization', 'Bearer ' || anon_key
         ),
-        body := payload::text
+        body := payload
     );
 
     RETURN NEW;
 EXCEPTION
     WHEN OTHERS THEN
-        -- Don't block notification insert if push delivery fails
         RAISE WARNING 'push notification trigger error: %', SQLERRM;
         RETURN NEW;
 END;

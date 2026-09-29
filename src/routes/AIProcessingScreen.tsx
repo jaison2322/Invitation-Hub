@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { runAIAnalysis, DEMO_OCR_TEXTS } from '../services/aiService';
 import { getCachedScanImage } from '../utils/imagePreprocess';
 import { extractInvitationFromImage, type VisionOcrResult } from '../services/visionOcrService';
+import { mapScanToManualForm } from '../services/scanMappingService';
 import {
   ScanText, Users, CalendarSearch, Sparkles, Loader2, Check,
   AlertTriangle, Camera, PenLine, RotateCcw,
@@ -17,7 +18,7 @@ interface Step {
 
 export default function AIProcessingScreen() {
   const navigate = useNavigate();
-  const { people, familyEvents, schedule, invitations, setScanResult } = useAppStore();
+  const { people, familyEvents, schedule, invitations, setScanResult, isVIP, currentPrivilegedUser } = useAppStore();
   const [steps, setSteps] = useState<Step[]>([
     { label: 'Reading invitation text...', icon: <ScanText size={15} strokeWidth={1.8} />, status: 'pending' },
     { label: 'Extracting key protocol details...', icon: <Loader2 size={15} className="animate-spin" />, status: 'pending' },
@@ -143,13 +144,27 @@ export default function AIProcessingScreen() {
 
     updateStep(4, 'completed');
 
-    console.log('[Form] Auto-fill started');
+    const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
+    const canonicalManualForm = mapScanToManualForm(
+      analysis.extractedFields,
+      analysis,
+      people,
+      canConfirmIgnore
+    );
+
+    console.log('[Form] Auto-fill started — Mapped to Canonical Manual Form:', canonicalManualForm.title);
     setScanResult({
       imageDataUrl: isDemo ? '' : imageDataUrl,
       ocrText,
       extractedFields: analysis.extractedFields,
       analysis,
+      canonicalManualForm,
     });
+
+    try {
+      sessionStorage.setItem('canonical-manual-form', JSON.stringify(canonicalManualForm));
+    } catch {}
+
     console.log('[Form] Auto-fill completed');
 
     await delay(300);
@@ -277,10 +292,10 @@ export default function AIProcessingScreen() {
         </div>
 
         <h2 className="font-heading font-semibold text-white text-center" style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px' }}>
-          Apple Intelligence
+          Analysing
         </h2>
         <p className="text-center" style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '28px' }}>
-          Analyzing document layout & VIP protocol...
+          Analysing document layout & event details...
         </p>
 
         {/* Inset Grouped Steps List */}

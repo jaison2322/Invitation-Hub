@@ -156,9 +156,10 @@ export default function CalendarScreen() {
                           <Clock size={11} /> {formatTime(inv.time)}
                         </span>
                       )}
-                      {inv.venue && (
+                      {(inv.venue || inv.location) && (
                         <span className="flex items-center gap-1 truncate font-sans">
-                          <MapPin size={11} /> {inv.venue}
+                          <MapPin size={11} />
+                          {inv.venue && inv.location ? `${inv.venue}, ${inv.location}` : (inv.venue || inv.location)}
                         </span>
                       )}
                     </div>

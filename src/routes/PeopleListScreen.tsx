@@ -121,7 +121,7 @@ export default function PeopleListScreen() {
       addActivityLog({
         userId: isVIP ? 'vip' : currentPrivilegedUser?.id || 'staff',
         userName: isVIP ? 'VIP Principal' : currentPrivilegedUser?.name || 'Staff User',
-        action: `added new VIP contact "${trimmedName}"`,
+        action: `added new contact "${trimmedName}"`,
         entityType: 'person',
         entityId: created.id,
         entityName: trimmedName,
@@ -166,7 +166,7 @@ export default function PeopleListScreen() {
               className="btn-icon"
               onClick={handleOpenAdd}
               aria-label="Add Contact"
-              title="Add VIP Contact"
+              title="Add Contact"
             >
               <Plus size={18} strokeWidth={2} />
             </button>
@@ -279,7 +279,7 @@ export default function PeopleListScreen() {
             <div className="modal-handle" />
             <div className="flex items-center justify-between mb-1">
               <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em', margin: 0 }}>
-                {modalMode === 'edit' ? 'Edit Contact' : 'New VIP Contact'}
+                {modalMode === 'edit' ? 'Edit Contact' : 'New Contact'}
               </h2>
               {modalMode === 'edit' && (
                 <button
@@ -301,7 +301,7 @@ export default function PeopleListScreen() {
             <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
               {modalMode === 'edit'
                 ? 'Update contact details and relationship tier'
-                : 'Add a new member to your VIP directory'}
+                : 'Add a new member to your contact directory'}
             </p>
 
             <form onSubmit={handleSaveForm} className="flex flex-col gap-3">

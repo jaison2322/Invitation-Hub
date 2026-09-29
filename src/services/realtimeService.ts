@@ -173,6 +173,7 @@ export const realtimeService = {
                 status: newRow.status || 'pending',
                 ocrText: newRow.ocr_text || newRow.ocrText,
                 imageId: newRow.image_id || newRow.imageId,
+                imageUrl: newRow.image_url || newRow.imageUrl,
                 createdBy: newRow.created_by || newRow.createdBy || 'staff',
                 createdAt: newRow.created_at || newRow.createdAt || new Date().toISOString(),
                 updatedAt: newRow.updated_at || newRow.updatedAt || new Date().toISOString(),
@@ -224,6 +225,7 @@ export const realtimeService = {
                         status: updatedRow.status ?? inv.status,
                         ocrText: updatedRow.ocr_text ?? inv.ocrText,
                         imageId: updatedRow.image_id ?? inv.imageId,
+                        imageUrl: updatedRow.image_url ?? inv.imageUrl,
                         updatedAt: updatedRow.updated_at ?? new Date().toISOString(),
                       }
                     : inv

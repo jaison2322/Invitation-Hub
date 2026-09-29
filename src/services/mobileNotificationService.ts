@@ -28,6 +28,7 @@ export interface NativeAppPermissionsInterface {
     token: string;
     supabaseUrl?: string;
     supabaseKey?: string;
+    vipId?: string;
   }): Promise<{ configured: boolean }>;
 }
 
@@ -231,6 +232,7 @@ export const mobileNotificationService = {
           token,
           supabaseUrl: 'https://lliowikzustvebudgsoy.supabase.co',
           supabaseKey: 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH',
+          vipId: targetVipId || '',
         }).catch((e) => console.warn('[VIP Notification] configureBackgroundSync error:', e));
       }
 
@@ -307,7 +309,7 @@ export const mobileNotificationService = {
       return false;
     }
 
-    const title = notification.title || 'VIP Intelligence Alert';
+    const title = notification.title || 'Invitation Hub Alert';
     const body = notification.message || '';
     const actionUrl = notification.actionUrl || (notification.relatedEntityId ? `/event/${notification.relatedEntityId}` : '/notifications');
     const numericId = hashStringToInt(notification.id);
@@ -432,7 +434,7 @@ export const mobileNotificationService = {
     const testNotif: Notification = {
       id: 'test-' + Date.now(),
       type: 'system',
-      title: 'VIP Intelligence Verified',
+      title: 'Invitation Hub Verified',
       message: 'Mobile notifications are active and delivering with high priority.',
       timestamp: new Date().toISOString(),
       read: false,

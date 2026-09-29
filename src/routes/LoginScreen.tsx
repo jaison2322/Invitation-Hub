@@ -346,7 +346,7 @@ export default function LoginScreen() {
                 <IconBadge icon={Shield} variant="gold" size="hero" glow />
               </div>
               <h1 className="auth-title">
-                VIP Intelligence
+                Invitation Hub
               </h1>
               <p className="auth-subtitle">
                 Executive Schedule & Protocol Management

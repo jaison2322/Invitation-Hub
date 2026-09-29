@@ -261,10 +261,14 @@ export default function DashboardScreen() {
                       </>
                     )}
                   </div>
-                  {nextPending.venue && (
+                  {(nextPending.venue || nextPending.location) && (
                     <div className="flex items-center gap-2 text-slate-300">
                       <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-                      <span className="truncate">{nextPending.venue}</span>
+                      <span className="truncate">
+                        {nextPending.venue && nextPending.location
+                          ? `${nextPending.venue}, ${nextPending.location}`
+                          : (nextPending.venue || nextPending.location)}
+                      </span>
                     </div>
                   )}
                 </div>

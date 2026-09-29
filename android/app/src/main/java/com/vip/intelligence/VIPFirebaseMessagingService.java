@@ -12,6 +12,7 @@ import com.google.firebase.messaging.RemoteMessage;
 
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.Map;
 
@@ -66,13 +67,14 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
             return;
         }
 
-        if (title == null) title = "VIP Intelligence Alert";
+        if (title == null) title = "Invitation Hub Alert";
         if (body == null) body = "";
 
         // 3. Check sender echo suppression
         SharedPreferences prefs = getSharedPreferences(BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
         String myUsername = prefs.getString(BackgroundNotificationSync.KEY_USERNAME, "").trim().toLowerCase();
         String myDeviceToken = prefs.getString(BackgroundNotificationSync.KEY_DEVICE_TOKEN, "").trim();
+        String myFcmToken = prefs.getString("fcm_token", "").trim();
 
         if (actionUrl != null && actionUrl.contains("?")) {
             try {
@@ -90,8 +92,11 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
                     }
                 }
 
-                // Suppress if sender device matches this device
-                if (senderDevice != null && !myDeviceToken.isEmpty() && senderDevice.equalsIgnoreCase(myDeviceToken)) {
+                // Suppress if sender device matches this device (FCM token or local device token)
+                if (senderDevice != null && (
+                    (!myDeviceToken.isEmpty() && senderDevice.equalsIgnoreCase(myDeviceToken)) ||
+                    (!myFcmToken.isEmpty() && senderDevice.equalsIgnoreCase(myFcmToken))
+                )) {
                     Log.i(TAG, "Suppressing FCM echo for sender device: " + senderDevice);
                     return;
                 }
@@ -106,18 +111,13 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
             }
         }
 
-        // 4. Deduplicate — check if already delivered by background sync
+        // 4. Deduplicate — check if already delivered by local/realtime/background sync
+        if (notificationId != null && BackgroundNotificationSync.isIdDelivered(this, notificationId)) {
+            Log.i(TAG, "Notification already delivered recently, skipping duplicate: " + notificationId);
+            return;
+        }
         if (notificationId != null) {
-            java.util.Set<String> deliveredIds = prefs.getStringSet(BackgroundNotificationSync.KEY_DELIVERED_IDS, new java.util.HashSet<>());
-            if (deliveredIds != null && deliveredIds.contains(notificationId)) {
-                Log.i(TAG, "Notification already delivered by background sync, skipping: " + notificationId);
-                return;
-            }
-            // Mark as delivered
-            java.util.Set<String> updatedIds = new java.util.HashSet<>(deliveredIds != null ? deliveredIds : new java.util.HashSet<>());
-            updatedIds.add(notificationId);
-            if (updatedIds.size() > 100) updatedIds.clear();
-            prefs.edit().putStringSet(BackgroundNotificationSync.KEY_DELIVERED_IDS, updatedIds).apply();
+            BackgroundNotificationSync.recordDeliveredId(this, notificationId);
         }
 
         // 5. Show the notification using existing display logic
@@ -157,20 +157,33 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
                 SharedPreferences prefs = getSharedPreferences(BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
                 String baseUrl = prefs.getString(BackgroundNotificationSync.KEY_SUPABASE_URL, BackgroundNotificationSync.DEFAULT_URL);
                 String apiKey = prefs.getString(BackgroundNotificationSync.KEY_SUPABASE_KEY, BackgroundNotificationSync.DEFAULT_KEY);
+                String vipId = prefs.getString(BackgroundNotificationSync.KEY_VIP_ID, "");
 
                 String androidId = android.provider.Settings.Secure.getString(
                     getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
 
-                // Upsert FCM token into device_tokens table
-                String payload = String.format(
-                    "{\"username\":\"%s\",\"fcm_token\":\"%s\",\"platform\":\"android\",\"device_id\":\"%s\",\"is_active\":true,\"updated_at\":\"%s\"}",
-                    username.toLowerCase(),
-                    fcmToken,
-                    androidId != null ? "android-" + androidId : "",
-                    new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date())
-                );
+                // Upsert FCM token into device_tokens table with vip_id
+                String payload;
+                if (!vipId.isEmpty()) {
+                    payload = String.format(
+                        "{\"username\":\"%s\",\"fcm_token\":\"%s\",\"platform\":\"android\",\"device_id\":\"%s\",\"vip_id\":\"%s\",\"is_active\":true,\"updated_at\":\"%s\"}",
+                        username.toLowerCase(),
+                        fcmToken,
+                        androidId != null ? "android-" + androidId : "",
+                        vipId,
+                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date())
+                    );
+                } else {
+                    payload = String.format(
+                        "{\"username\":\"%s\",\"fcm_token\":\"%s\",\"platform\":\"android\",\"device_id\":\"%s\",\"is_active\":true,\"updated_at\":\"%s\"}",
+                        username.toLowerCase(),
+                        fcmToken,
+                        androidId != null ? "android-" + androidId : "",
+                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date())
+                    );
+                }
 
-                URL url = new URL(baseUrl + "/rest/v1/device_tokens");
+                URL url = URI.create(baseUrl + "/rest/v1/device_tokens").toURL();
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("apikey", apiKey);

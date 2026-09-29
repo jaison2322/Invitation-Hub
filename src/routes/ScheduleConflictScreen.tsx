@@ -174,9 +174,10 @@ export default function ScheduleConflictScreen() {
               <span className="flex items-center gap-1">
                 <Clock size={12} /> {inv.time ? formatTime(inv.time) : 'Time TBD'}
               </span>
-              {inv.venue && (
+              {(inv.venue || inv.location) && (
                 <span className="flex items-center gap-1">
-                  <MapPin size={12} /> {inv.venue}
+                  <MapPin size={12} />
+                  {inv.venue && inv.location ? `${inv.venue}, ${inv.location}` : (inv.venue || inv.location)}
                 </span>
               )}
             </div>

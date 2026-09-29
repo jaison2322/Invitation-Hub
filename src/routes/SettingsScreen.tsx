@@ -1105,7 +1105,7 @@ export default function SettingsScreen() {
               >
                 <Shield size={28} />
               </div>
-              <h3 style={{ marginBottom: '2px' }}>VIP Intelligence</h3>
+              <h3 style={{ marginBottom: '2px' }}>Invitation Hub</h3>
               <p className="text-xs text-gold">Executive Private Assistant v2.0</p>
             </div>
 

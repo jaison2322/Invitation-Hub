@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Sparkles, AlertTriangle,
   History, Gift, User, CheckCircle2, Trash2, ChevronRight,
-  Edit3, X, Building2, Tag,
+  Edit3, X, Building2, Tag, FileText, Maximize2, Upload, Loader2, Camera,
 } from 'lucide-react';
 import {
   formatFullDate, formatTime, formatDate,
@@ -14,6 +14,8 @@ import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
 import type { EventType, Priority, InvitationStatus } from '../types';
 import { getRelationshipHistory, getGiftHistory, detectScheduleConflicts } from '../services/aiService';
+import { storageService } from '../services/storageService';
+import { permissionService } from '../services/permissionService';
 
 export default function EventDetailScreen() {
   const { id } = useParams<{ id: string }>();
@@ -28,11 +30,24 @@ export default function EventDetailScreen() {
     removeInvitation,
     isVIP,
     currentPrivilegedUser,
+    activeVipId,
     addActivityLog,
   } = useAppStore();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Photo display & lightbox state
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+
+  // Edit photo state
+  const [editPhotoFile, setEditPhotoFile] = useState<File | null>(null);
+  const [editPhotoPreview, setEditPhotoPreview] = useState<string | null>(null);
+  const [isUpdatingPhoto, setIsUpdatingPhoto] = useState(false);
+  const [showPhotoSourceModal, setShowPhotoSourceModal] = useState(false);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Edit state
   const [editTitle, setEditTitle] = useState('');
@@ -69,6 +84,25 @@ export default function EventDetailScreen() {
   const giftHist = person ? getGiftHistory(person.id, familyEvents) : [];
   const conflicts = detectScheduleConflicts(invitation.date, invitation.time, schedule, invitations.filter((i) => i.id !== invitation.id));
 
+  // Resolve photo URL from storage or direct URL
+  useEffect(() => {
+    let isMounted = true;
+    if (invitation?.imageUrl) {
+      setPhotoUrl(invitation.imageUrl);
+    } else if (invitation?.imageId) {
+      storageService.getInvitationImageUrl(invitation.imageId).then((url) => {
+        if (isMounted && url) {
+          setPhotoUrl(url);
+        }
+      });
+    } else {
+      setPhotoUrl(null);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [invitation?.imageId, invitation?.imageUrl]);
+
   const handleOpenEditModal = () => {
     if (!invitation) return;
     setEditTitle(invitation.title || '');
@@ -84,12 +118,133 @@ export default function EventDetailScreen() {
     setEditMainPerson(invitation.mainPerson || '');
     setEditPersonId(invitation.personId || '');
     setEditDescription(invitation.description || '');
+    setEditPhotoPreview(photoUrl);
+    setEditPhotoFile(null);
+    setShowPhotoSourceModal(false);
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
+  const processSelectedImage = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rawDataUrl = ev.target?.result as string;
+      if (!rawDataUrl) return;
+
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const optimizedFile = new File(
+                  [blob],
+                  file.name.replace(/\.[^/.]+$/, '') + '.jpg',
+                  { type: 'image/jpeg', lastModified: Date.now() }
+                );
+                setEditPhotoFile(optimizedFile);
+                setEditPhotoPreview(canvas.toDataURL('image/jpeg', 0.90));
+              } else {
+                setEditPhotoFile(file);
+                setEditPhotoPreview(rawDataUrl);
+              }
+            },
+            'image/jpeg',
+            0.90
+          );
+        } else {
+          setEditPhotoFile(file);
+          setEditPhotoPreview(rawDataUrl);
+        }
+      };
+      img.onerror = () => {
+        setEditPhotoFile(file);
+        setEditPhotoPreview(rawDataUrl);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleOpenCamera = async () => {
+    setShowPhotoSourceModal(false);
+    try {
+      const check = await permissionService.checkCamera();
+      if (check.granted) {
+        cameraInputRef.current?.click();
+        return;
+      }
+
+      const res = await permissionService.requestCamera();
+      if (res.granted) {
+        cameraInputRef.current?.click();
+      } else {
+        if (!res.canAskAgain) {
+          const open = window.confirm(
+            'Camera permission is required to capture invitation cards. Would you like to open App Settings to grant Camera permission?'
+          );
+          if (open) {
+            permissionService.openSettings();
+          }
+        } else {
+          alert('Camera permission was not granted. You can still choose an existing photo from your gallery.');
+        }
+      }
+    } catch (err) {
+      console.warn('Camera permission check fallback:', err);
+      cameraInputRef.current?.click();
+    }
+  };
+
+  const handleOpenGallery = () => {
+    setShowPhotoSourceModal(false);
+    galleryInputRef.current?.click();
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editTitle.trim() || !editDate) return;
+
+    let finalImageId = invitation.imageId;
+    let finalImageUrl = invitation.imageUrl;
+
+    // Handle replacement photo upload if user selected a new file
+    if (editPhotoFile) {
+      setIsUpdatingPhoto(true);
+      try {
+        const targetVipId = activeVipId || invitation.vipId || 'vip_default';
+        const uploadRes = await storageService.uploadInvitationImage(editPhotoFile, targetVipId, invitation.id);
+        if (uploadRes) {
+          // If replacing previous file in storage, clean up old file safely
+          if (invitation.imageId && invitation.imageId !== uploadRes.path) {
+            storageService.deleteInvitationImage(invitation.imageId, targetVipId).catch(console.warn);
+          }
+          finalImageId = uploadRes.path;
+          finalImageUrl = uploadRes.signedUrl;
+          setPhotoUrl(uploadRes.signedUrl || null);
+        }
+      } catch (err) {
+        console.warn('[EventDetailScreen] Failed to upload replacement photo:', err);
+      } finally {
+        setIsUpdatingPhoto(false);
+      }
+    }
 
     updateInvitation(invitation.id, {
       title: editTitle.trim(),
@@ -105,6 +260,8 @@ export default function EventDetailScreen() {
       mainPerson: editMainPerson.trim() || undefined,
       personId: editPersonId || undefined,
       description: editDescription.trim() || undefined,
+      imageId: finalImageId,
+      imageUrl: finalImageUrl,
     });
 
     addActivityLog({
@@ -226,10 +383,14 @@ export default function EventDetailScreen() {
               <span>{formatTime(invitation.time)}</span>
             </div>
           )}
-          {invitation.venue && (
+          {(invitation.venue || invitation.location) && (
             <div className="flex items-center gap-2.5 text-slate-200">
-              <MapPin size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span className="truncate">{invitation.venue}</span>
+              <MapPin size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+              <span className="break-words">
+                {invitation.venue && invitation.location
+                  ? `${invitation.venue}, ${invitation.location}`
+                  : (invitation.venue || invitation.location)}
+              </span>
             </div>
           )}
           {invitation.mainPerson && (
@@ -240,6 +401,46 @@ export default function EventDetailScreen() {
           )}
         </div>
       </div>
+
+      {/* ── Original Invitation Photo Card ─────────────────────────────────── */}
+      {photoUrl && (
+        <div className="ios-card mb-4 overflow-hidden">
+          <div className="flex items-center justify-between mb-2.5">
+            <div className="flex items-center gap-2">
+              <FileText size={15} style={{ color: 'var(--color-accent)' }} />
+              <span className="text-xs font-semibold text-white tracking-wide uppercase">
+                Original Invitation Photo
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowImageModal(true)}
+              className="text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
+              style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
+              aria-label="View Full Invitation"
+            >
+              <Maximize2 size={13} /> View Full
+            </button>
+          </div>
+          <div
+            className="relative rounded-lg overflow-hidden cursor-pointer group"
+            style={{ maxHeight: '240px', background: 'rgba(0, 0, 0, 0.4)', border: '1px solid var(--glass-border)' }}
+            onClick={() => setShowImageModal(true)}
+          >
+            <img
+              src={photoUrl}
+              alt={invitation.title}
+              className="w-full h-auto object-cover max-h-60 rounded-lg transition-transform duration-300 group-hover:scale-105"
+              loading="lazy"
+            />
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              <span className="badge badge-gold flex items-center gap-1.5 shadow-lg">
+                <Maximize2 size={12} /> Tap to view full size
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Apple Intelligence Analysis ────────────────────────────────────── */}
       {invitation.aiReason && (
@@ -568,13 +769,13 @@ export default function EventDetailScreen() {
               </div>
 
               <div>
-                <label className="label">Location / Address</label>
+                <label className="label">City / Area</label>
                 <input
                   type="text"
                   className="input"
                   value={editLocation}
                   onChange={(e) => setEditLocation(e.target.value)}
-                  placeholder="e.g. 12 Anna Salai, Chennai"
+                  placeholder="e.g. Guindy, Chennai"
                 />
               </div>
 
@@ -602,15 +803,15 @@ export default function EventDetailScreen() {
                 </div>
               </div>
 
-              {/* Link to VIP Contact */}
+              {/* Link to Contact */}
               <div>
-                <label className="label">Link VIP Contact</label>
+                <label className="label">Link Contact</label>
                 <select
                   className="select"
                   value={editPersonId}
                   onChange={(e) => setEditPersonId(e.target.value)}
                 >
-                  <option value="">No VIP Contact Linked</option>
+                  <option value="">No Contact Linked</option>
                   {people.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.nickname} ({p.name})
@@ -632,20 +833,98 @@ export default function EventDetailScreen() {
                 />
               </div>
 
+              {/* Original Invitation Photo Section in Edit Modal */}
+              <div>
+                <label className="label">Original Invitation Photo</label>
+                {/* Hidden gallery and camera inputs */}
+                <input
+                  ref={galleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) processSelectedImage(file);
+                    e.target.value = '';
+                  }}
+                />
+                <input
+                  ref={cameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) processSelectedImage(file);
+                    e.target.value = '';
+                  }}
+                />
+
+                {editPhotoPreview ? (
+                  <div
+                    className="flex items-center gap-3 p-2.5 rounded-lg"
+                    style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
+                  >
+                    <img
+                      src={editPhotoPreview}
+                      alt="Invitation preview"
+                      className="w-14 h-14 object-cover rounded-md flex-shrink-0 cursor-pointer"
+                      style={{ border: '1px solid var(--glass-border)' }}
+                      onClick={() => setShowImageModal(true)}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white truncate font-medium">
+                        {editPhotoFile ? editPhotoFile.name : 'Attached Invitation'}
+                      </p>
+                      <p className="text-[11px] text-slate-400">
+                        {editPhotoFile
+                          ? `${(editPhotoFile.size / 1024).toFixed(0)} KB (Will be uploaded on save)`
+                          : 'Original photo on file'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowPhotoSourceModal(true)}
+                      className="btn btn-outline text-xs px-2.5 py-1.5"
+                    >
+                      Replace
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowPhotoSourceModal(true)}
+                    className="btn btn-outline w-full flex items-center justify-center gap-2 py-2 text-xs"
+                  >
+                    <Upload size={14} /> Attach Invitation Photo
+                  </button>
+                )}
+              </div>
+
               {/* Modal Actions */}
               <div className="flex gap-2 mt-3 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
                 <button
                   type="button"
                   className="btn btn-ghost flex-1"
                   onClick={() => setShowEditModal(false)}
+                  disabled={isUpdatingPhoto}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn btn-gold flex-1 font-heading"
+                  className="btn btn-gold flex-1 font-heading flex items-center justify-center gap-2"
+                  disabled={isUpdatingPhoto}
                 >
-                  Save Changes
+                  {isUpdatingPhoto ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Saving Photo...</span>
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
                 </button>
               </div>
             </form>
@@ -692,6 +971,142 @@ export default function EventDetailScreen() {
                 onClick={handleDelete}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Fullscreen Invitation Lightbox Modal ────────────────────────────── */}
+      {showImageModal && photoUrl && (
+        <div
+          className="modal-overlay modal-centered"
+          style={{ zIndex: 9999, background: 'rgba(0, 0, 0, 0.88)', backdropFilter: 'blur(8px)' }}
+          onClick={() => setShowImageModal(false)}
+        >
+          <div
+            className="relative max-w-lg w-full max-h-[92vh] flex flex-col items-center justify-center p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setShowImageModal(false)}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full text-white bg-black/60 hover:bg-black/80 transition-colors"
+              aria-label="Close image preview"
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={photoUrl}
+              alt={invitation.title}
+              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              style={{ border: '1px solid rgba(255, 255, 255, 0.15)' }}
+            />
+            <div className="mt-3 text-center">
+              <p className="text-xs text-slate-200 font-medium">
+                {invitation.nickname || invitation.title}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Original Invitation Attachment
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Photo Source Selection Modal (Upload Photo vs Take Photo) ────────── */}
+      {showPhotoSourceModal && (
+        <div
+          className="modal-overlay modal-centered"
+          style={{ zIndex: 10000, background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowPhotoSourceModal(false)}
+        >
+          <div
+            className="modal-dialog"
+            style={{ maxWidth: '340px', width: '90%' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-heading font-semibold text-white" style={{ fontSize: '16px' }}>
+                Select Invitation Photo
+              </h3>
+              <button
+                type="button"
+                className="btn-icon"
+                onClick={() => setShowPhotoSourceModal(false)}
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
+              Choose how you would like to add the invitation photo for this event:
+            </p>
+
+            <div className="flex flex-col gap-2.5">
+              <button
+                type="button"
+                onClick={handleOpenGallery}
+                className="btn btn-outline w-full flex items-center justify-start gap-3 py-3 px-4 text-left cursor-pointer"
+                style={{ borderColor: 'var(--glass-border)' }}
+              >
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'rgba(212, 168, 83, 0.15)',
+                    color: 'var(--color-accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Upload size={18} strokeWidth={2} />
+                </div>
+                <div>
+                  <div className="text-white text-xs font-semibold">Upload Photo</div>
+                  <div className="text-[11px] text-slate-400">Choose from device gallery or files</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenCamera}
+                className="btn btn-outline w-full flex items-center justify-start gap-3 py-3 px-4 text-left cursor-pointer"
+                style={{ borderColor: 'var(--glass-border)' }}
+              >
+                <div
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '8px',
+                    background: 'rgba(52, 199, 89, 0.15)',
+                    color: '#34c759',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
+                  <Camera size={18} strokeWidth={2} />
+                </div>
+                <div>
+                  <div className="text-white text-xs font-semibold">Take Photo</div>
+                  <div className="text-[11px] text-slate-400">Capture card with device camera</div>
+                </div>
+              </button>
+            </div>
+
+            <div className="mt-4 pt-2" style={{ borderTop: '1px solid var(--glass-border)' }}>
+              <button
+                type="button"
+                className="btn btn-ghost w-full text-xs"
+                onClick={() => setShowPhotoSourceModal(false)}
+              >
+                Cancel
               </button>
             </div>
           </div>

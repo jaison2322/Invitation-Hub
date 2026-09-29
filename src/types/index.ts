@@ -182,6 +182,7 @@ export interface Invitation {
   aiReason?: string;
   status: InvitationStatus;
   imageId?: string;
+  imageUrl?: string;
   ocrText?: string;
   createdAt: string;
   createdBy: string;
@@ -345,11 +346,28 @@ export type Screen =
   | 'activity-history'
   | 'settings';
 
+export interface CanonicalManualInvitationData {
+  hostName: string;
+  title: string;
+  eventType: EventType;
+  priority: Priority;
+  date: string;
+  time: string;
+  personId: string;
+  venue: string;
+  location: string;
+  status: InvitationStatus;
+  description: string;
+  mainPerson?: string;
+  confidence: Record<string, number>;
+}
+
 export interface ScanResult {
   imageDataUrl: string;
   ocrText: string;
   extractedFields: ExtractedFields;
   analysis: AIAnalysis;
+  canonicalManualForm?: CanonicalManualInvitationData;
 }
 
 // ─── Multilingual Localization Types ──────────────────────────────────────────

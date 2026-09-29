@@ -56,7 +56,7 @@ export default function SplashScreen() {
         className="font-heading font-extrabold text-white text-center"
         style={{ fontSize: '24px', letterSpacing: '0.04em', textTransform: 'uppercase' }}
       >
-        VIP Intelligence
+        Invitation Hub
       </div>
       <div
         className="text-center"

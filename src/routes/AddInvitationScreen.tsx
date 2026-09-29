@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -16,9 +16,16 @@ import {
   FileText,
   UserPlus,
   X,
+  Camera,
+  Upload,
+  Loader2,
+  Maximize2,
 } from 'lucide-react';
 import type { EventType, Priority, InvitationStatus } from '../types';
 import { getEventTypeLabel } from '../utils/formatters';
+import { permissionService } from '../services/permissionService';
+import { storageService } from '../services/storageService';
+import { generateId } from '../utils/id';
 
 export default function AddInvitationScreen() {
   const navigate = useNavigate();
@@ -26,6 +33,7 @@ export default function AddInvitationScreen() {
     isVIP,
     currentPrivilegedUser,
     currentUser,
+    activeVipId,
     addInvitation,
     addActivityLog,
     addNotification,
@@ -54,10 +62,18 @@ export default function AddInvitationScreen() {
   const [status, setStatus] = useState<InvitationStatus>(canConfirmIgnore ? 'confirmed' : 'pending');
   const [description, setDescription] = useState('');
 
+  // Photo State
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+
   // Quick Add Person inline modal state
   const [showAddPersonModal, setShowAddPersonModal] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
   const [newPersonNickname, setNewPersonNickname] = useState('');
+  const [newPersonPhone, setNewPersonPhone] = useState('');
   const [newPersonRel, setNewPersonRel] = useState<'business_partner' | 'client' | 'friend' | 'relative' | 'colleague' | 'family'>('friend');
 
   const eventTypes: EventType[] = [
@@ -79,6 +95,21 @@ export default function AddInvitationScreen() {
   // Conflict Check
   const hasDateConflict = date ? invitations.some((i) => i.date === date && i.status !== 'ignored') || schedule.some((s) => s.date === date) : false;
 
+  // Fullscreen photo inspection modal state
+  const [showImageModal, setShowImageModal] = useState(false);
+
+  const openImageModal = () => {
+    setShowImageModal(true);
+    window.history.pushState({ modal: 'imagePreview' }, '');
+  };
+
+  const closeImageModal = () => {
+    setShowImageModal(false);
+    if (window.history.state?.modal === 'imagePreview') {
+      window.history.back();
+    }
+  };
+
   const openAddPersonModal = () => {
     setShowAddPersonModal(true);
     window.history.pushState({ modal: 'quickAddContact' }, '');
@@ -86,6 +117,9 @@ export default function AddInvitationScreen() {
 
   const closeAddPersonModal = () => {
     setShowAddPersonModal(false);
+    setNewPersonName('');
+    setNewPersonNickname('');
+    setNewPersonPhone('');
     if (window.history.state?.modal === 'quickAddContact') {
       window.history.back();
     }
@@ -94,6 +128,7 @@ export default function AddInvitationScreen() {
   useEffect(() => {
     const handlePop = () => {
       setShowAddPersonModal(false);
+      setShowImageModal(false);
     };
     window.addEventListener('popstate', handlePop);
     return () => {
@@ -107,60 +142,195 @@ export default function AddInvitationScreen() {
       name: newPersonName.trim(),
       nickname: newPersonNickname.trim() || newPersonName.trim(),
       relationship: newPersonRel,
+      phone: newPersonPhone.trim() || undefined,
       notes: 'Added from manual invitation entry',
     });
     setPersonId(created.id);
     if (!hostName) setHostName(created.name);
     setNewPersonName('');
     setNewPersonNickname('');
+    setNewPersonPhone('');
     closeAddPersonModal();
   };
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!title.trim() || !date) return;
-    if (!canAdd) return;
+  const handleFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const rawDataUrl = ev.target?.result as string;
+      if (!rawDataUrl) return;
 
-    const creatorLabel = isVIP ? 'VIP Principal' : (currentPrivilegedUser?.name || 'Staff');
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1600;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          const optimized = canvas.toDataURL('image/jpeg', 0.90);
+          setPhotoPreview(optimized);
+        } else {
+          setPhotoPreview(rawDataUrl);
+        }
+      };
+      img.onerror = () => {
+        setPhotoPreview(rawDataUrl);
+      };
+      img.src = rawDataUrl;
+    };
+    reader.readAsDataURL(file);
+  };
 
-    const createdInv = addInvitation({
-      title: title.trim(),
-      eventType,
-      date,
-      time: time || undefined,
-      venue: venue.trim() || undefined,
-      location: location.trim() || undefined,
-      hostName: hostName.trim() || undefined,
-      mainPerson: mainPerson.trim() || undefined,
-      personId: personId || undefined,
-      priority,
-      status: canConfirmIgnore ? status : 'pending',
-      description: description.trim() || undefined,
-      createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
-    });
+  const handleFileInput = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  };
 
-    // Add Activity Log
-    addActivityLog({
-      userId: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
-      userName: creatorLabel,
-      action: 'Added new invitation manually',
-      entityType: 'invitation',
-      entityId: createdInv.id,
-      entityName: createdInv.title,
-    });
+  const handleOpenCamera = async () => {
+    try {
+      const check = await permissionService.checkCamera();
+      if (check.granted) {
+        cameraInputRef.current?.click();
+        return;
+      }
 
-    // If added by Privileged User, add a notification for the VIP Principal
-    if (!isVIP) {
-      addNotification({
-        type: 'new_invitation',
-        title: 'New Invitation Submitted',
-        message: `${createdInv.title} was added manually by ${creatorLabel}. Awaiting review.`,
-        read: false,
-        relatedEntityId: createdInv.id,
-      });
+      const res = await permissionService.requestCamera();
+      if (res.granted) {
+        cameraInputRef.current?.click();
+      } else {
+        if (!res.canAskAgain) {
+          const open = window.confirm(
+            'Camera permission is required to capture invitation cards. Would you like to open App Settings to grant Camera permission?'
+          );
+          if (open) {
+            permissionService.openSettings();
+          }
+        } else {
+          alert('Camera permission was not granted. You can still choose an existing photo from your gallery.');
+        }
+      }
+    } catch (err) {
+      console.warn('Camera permission check fallback:', err);
+      cameraInputRef.current?.click();
     }
+  };
 
-    navigate(`/event/${createdInv.id}`, { replace: true });
+  const handleOpenGallery = () => {
+    galleryInputRef.current?.click();
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const resolvedTitle = title.trim() || hostName.trim();
+    if (!resolvedTitle || !date) return;
+    if (!canAdd || isSavingRef.current) return;
+
+    isSavingRef.current = true;
+    setIsSaving(true);
+
+    try {
+      const invId = generateId('inv');
+      const targetVipId =
+        activeVipId ||
+        (isVIP
+          ? currentUser?.vipId || (currentUser?.username ? `vip_${currentUser.username}` : undefined)
+          : currentPrivilegedUser?.vipId) ||
+        'vip_default';
+
+      let imageId: string | undefined;
+      let imageUrl: string | undefined;
+
+      // Upload original invitation card photo to Supabase storage if provided
+      if (photoPreview) {
+        try {
+          const uploadRes = await storageService.uploadInvitationImage(photoPreview, targetVipId, invId);
+          if (uploadRes?.path) {
+            imageId = uploadRes.path;
+            imageUrl = uploadRes.signedUrl || uploadRes.path;
+          } else {
+            throw new Error('Storage service returned no upload path');
+          }
+        } catch (uploadErr) {
+          console.error('[AddInvitationScreen] Photo upload failed:', uploadErr);
+          alert('Failed to upload invitation card photo. Please check your connection and try again.');
+          setIsSaving(false);
+          isSavingRef.current = false;
+          return;
+        }
+      }
+
+      const creatorLabel = isVIP ? 'VIP Principal' : (currentPrivilegedUser?.name || 'Staff');
+      const creatorId = isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff');
+
+      const createdInv = addInvitation({
+        id: invId,
+        title: resolvedTitle,
+        eventType,
+        date,
+        time: time || undefined,
+        venue: venue.trim() || undefined,
+        location: location.trim() || undefined,
+        hostName: hostName.trim() || undefined,
+        mainPerson: mainPerson.trim() || undefined,
+        personId: personId || undefined,
+        priority,
+        status: canConfirmIgnore ? status : 'pending',
+        description: description.trim() || undefined,
+        imageId,
+        imageUrl,
+        createdBy: creatorId,
+      });
+
+      // Add Activity Log
+      addActivityLog({
+        vipId: targetVipId,
+        userId: creatorId,
+        userName: creatorLabel,
+        action: `Added new invitation manually${photoPreview ? ' with invitation card photo' : ''}`,
+        entityType: 'invitation',
+        entityId: createdInv.id,
+        entityName: createdInv.title,
+      });
+
+      // Notify other users under this VIP account
+      if (!isVIP) {
+        addNotification({
+          type: 'new_invitation',
+          title: 'New Invitation Submitted',
+          message: `${createdInv.title} was added manually by ${creatorLabel}. Awaiting review.`,
+          read: false,
+          relatedEntityId: createdInv.id,
+        });
+      } else {
+        addNotification({
+          type: 'new_invitation',
+          title: 'New Invitation Added',
+          message: `${createdInv.title} was added by VIP Principal.`,
+          read: false,
+          relatedEntityId: createdInv.id,
+        });
+      }
+
+      navigate(`/event/${createdInv.id}`, { replace: true });
+    } catch (err) {
+      console.error('[AddInvitationScreen] Save failed:', err);
+      alert('An error occurred while saving the invitation. Please try again.');
+    } finally {
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
   };
 
   if (!canAdd) {
@@ -190,7 +360,9 @@ export default function AddInvitationScreen() {
           <button
             className="top-bar-back"
             onClick={() => {
-              if (showAddPersonModal) {
+              if (showImageModal) {
+                closeImageModal();
+              } else if (showAddPersonModal) {
                 closeAddPersonModal();
               } else {
                 navigate(-1);
@@ -251,11 +423,222 @@ export default function AddInvitationScreen() {
           </div>
         )}
 
+        {/* Invitation Card Photo (Optional) */}
+        <div
+          style={{
+            padding: '12px 14px',
+            borderRadius: 'var(--radius-lg)',
+            background: 'rgba(15, 23, 42, 0.55)',
+            border: '1px dashed var(--glass-border)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Camera size={13} style={{ color: 'var(--color-gold)' }} />
+              <span>Invitation Card Photo</span>
+              <span className="text-secondary" style={{ fontSize: '0.7rem', fontWeight: 400 }}>(Optional)</span>
+            </label>
+            {photoPreview && (
+              <span className="badge badge-gold" style={{ fontSize: '0.65rem' }}>
+                Card Attached
+              </span>
+            )}
+          </div>
+
+          {!photoPreview ? (
+            <div className="flex flex-col gap-2">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleOpenCamera}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '10px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Camera size={15} style={{ color: 'var(--color-gold)' }} />
+                  <span>Take Photo</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleOpenGallery}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '10px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Upload size={15} style={{ color: '#64d2ff' }} />
+                  <span>Upload Photo</span>
+                </button>
+              </div>
+              <p className="text-secondary" style={{ fontSize: '0.7rem', margin: 0, textAlign: 'center' }}>
+                Capture with camera or choose invitation card from gallery
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div
+                style={{
+                  position: 'relative',
+                  borderRadius: '10px',
+                  overflow: 'hidden',
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  maxHeight: '180px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                }}
+                onClick={openImageModal}
+                title="Tap to inspect full invitation photo"
+              >
+                <img
+                  src={photoPreview}
+                  alt="Invitation Card Preview"
+                  style={{ width: '100%', maxHeight: '180px', objectFit: 'contain' }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '8px',
+                    left: '8px',
+                    background: 'rgba(0, 0, 0, 0.75)',
+                    backdropFilter: 'blur(4px)',
+                    borderRadius: '12px',
+                    padding: '3px 9px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    fontSize: '11px',
+                    color: '#fff',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  <Maximize2 size={12} style={{ color: '#64d2ff' }} />
+                  <span>Tap to inspect</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPhotoPreview(null);
+                  }}
+                  title="Remove photo"
+                  style={{
+                    position: 'absolute',
+                    top: '8px',
+                    right: '8px',
+                    background: 'rgba(0, 0, 0, 0.75)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '28px',
+                    height: '28px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                  }}
+                  aria-label="Remove photo"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleOpenCamera}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Camera size={13} />
+                  <span>Retake</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={handleOpenGallery}
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    padding: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  <Upload size={13} />
+                  <span>Replace Photo</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Hidden inputs */}
+          <input
+            ref={galleryInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileInput}
+            style={{ display: 'none' }}
+          />
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileInput}
+            style={{ display: 'none' }}
+          />
+        </div>
+
+        {/* Host Name - First to Type */}
+        <div>
+          <label className="label">
+            <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+            Host Name *
+          </label>
+          <input
+            className="input"
+            type="text"
+            placeholder="e.g. Ramesh Kumar"
+            value={hostName}
+            onChange={(e) => {
+              const val = e.target.value;
+              setHostName(val);
+              if (!title || title === hostName) {
+                setTitle(val);
+              }
+            }}
+            autoFocus
+          />
+        </div>
+
         {/* Event Title */}
         <div>
           <label className="label">
             <FileText size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-            Invitation by *
+            Invitation Title
           </label>
           <input
             className="input"
@@ -263,8 +646,6 @@ export default function AddInvitationScreen() {
             placeholder="e.g. Ramesh's Son Wedding Reception"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            required
-            autoFocus
           />
         </div>
 
@@ -291,7 +672,7 @@ export default function AddInvitationScreen() {
           <div>
             <label className="label">
               <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-              Protocol Priority
+              Priority
             </label>
             <select
               className="select"
@@ -341,27 +722,12 @@ export default function AddInvitationScreen() {
           </div>
         </div>
 
-        {/* Host Name */}
-        <div>
-          <label className="label">
-            <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-            Host Name
-          </label>
-          <input
-            className="input"
-            type="text"
-            placeholder="e.g. Ramesh Kumar"
-            value={hostName}
-            onChange={(e) => setHostName(e.target.value)}
-          />
-        </div>
-
         {/* Link to Known VIP Person */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="label" style={{ margin: 0 }}>
               <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-              Link to VIP Contact (Optional)
+              Link to Contact (Optional)
             </label>
             <button
               type="button"
@@ -477,11 +843,20 @@ export default function AddInvitationScreen() {
           <button
             type="submit"
             className="btn btn-gold w-full"
-            disabled={!title.trim() || !date}
+            disabled={!(title.trim() || hostName.trim()) || !date || isSaving}
             style={{ padding: '14px', fontSize: 'var(--text-base)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
           >
-            <Check size={18} />
-            <span>{canConfirmIgnore ? 'Save & Confirm Invitation' : 'Submit for VIP Approval (Pending)'}</span>
+            {isSaving ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Saving Invitation & Photo...</span>
+              </>
+            ) : (
+              <>
+                <Check size={18} />
+                <span>{canConfirmIgnore ? 'Save & Confirm Invitation' : 'Submit for VIP Approval (Pending)'}</span>
+              </>
+            )}
           </button>
         </div>
       </form>
@@ -507,7 +882,7 @@ export default function AddInvitationScreen() {
           >
             <div className="flex items-center justify-between mb-3">
               <h3 style={{ fontSize: '17px', fontWeight: 600, color: '#fff', margin: 0 }}>
-                Quick Add VIP Contact
+                Quick Add Contact
               </h3>
               <button
                 type="button"
@@ -558,6 +933,17 @@ export default function AddInvitationScreen() {
                 </select>
               </div>
 
+              <div>
+                <label className="label">Phone Number (Optional)</label>
+                <input
+                  className="input"
+                  type="tel"
+                  placeholder="e.g. +91 98765 43210"
+                  value={newPersonPhone}
+                  onChange={(e) => setNewPersonPhone(e.target.value)}
+                />
+              </div>
+
               <div className="flex gap-2 mt-2">
                 <button
                   type="button"
@@ -575,6 +961,51 @@ export default function AddInvitationScreen() {
                   Add Contact
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Fullscreen Invitation Lightbox Modal ────────────────────────────── */}
+      {showImageModal && photoPreview && (
+        <div
+          className="modal-overlay modal-centered"
+          style={{ zIndex: 9999, background: 'rgba(0, 0, 0, 0.9)', backdropFilter: 'blur(8px)' }}
+          onClick={closeImageModal}
+        >
+          <div
+            className="relative max-w-lg w-full max-h-[92vh] flex flex-col items-center justify-center p-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={closeImageModal}
+              className="absolute top-4 right-4 z-10 p-2 rounded-full text-white bg-black/60 hover:bg-black/80 transition-colors"
+              aria-label="Close image preview"
+              style={{
+                width: '36px',
+                height: '36px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={20} />
+            </button>
+            <img
+              src={photoPreview}
+              alt="Original Invitation Card"
+              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
+              style={{ border: '1px solid rgba(255, 255, 255, 0.15)' }}
+            />
+            <div className="mt-3 text-center">
+              <p className="text-xs text-slate-200 font-medium">
+                {title || hostName || 'Invitation Card Preview'}
+              </p>
+              <p className="text-[11px] text-slate-400">
+                Original Invitation Photo (Pre-Save Verification)
+              </p>
             </div>
           </div>
         </div>

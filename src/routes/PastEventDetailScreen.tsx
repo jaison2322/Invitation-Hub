@@ -709,7 +709,7 @@ export default function PastEventDetailScreen() {
                         letterSpacing: '0.04em',
                       }}
                     >
-                      Matching VIP Directory Contacts
+                      Matching Contacts
                     </div>
                     {matchingContacts.map((person) => (
                       <div
@@ -741,12 +741,12 @@ export default function PastEventDetailScreen() {
                 {guestPersonId ? (
                   <div className="badge badge-confirmed mt-1.5 inline-flex items-center gap-1.5" style={{ fontSize: '11px' }}>
                     <Link2 size={11} />
-                    <span>Linked to VIP Directory Contact</span>
+                    <span>Linked to Contact</span>
                   </div>
                 ) : guestName.trim() ? (
                   <div className="badge badge-info mt-1.5 inline-flex items-center gap-1.5" style={{ fontSize: '11px' }}>
                     <Sparkles size={11} />
-                    <span>Will be registered as new VIP Contact</span>
+                    <span>Will be registered as new Contact</span>
                   </div>
                 ) : null}
               </div>

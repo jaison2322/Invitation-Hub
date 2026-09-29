@@ -15,6 +15,7 @@ import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.util.HashSet;
@@ -31,6 +32,7 @@ public class BackgroundNotificationSync {
     public static final String KEY_DEVICE_TOKEN = "device_token";
     public static final String KEY_DELIVERED_IDS = "delivered_ids";
     public static final String KEY_LAST_CHECK_TIME = "last_check_time";
+    public static final String KEY_VIP_ID = "active_vip_id";
 
     public static final String DEFAULT_URL = "https://lliowikzustvebudgsoy.supabase.co";
     public static final String DEFAULT_KEY = "sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH";
@@ -46,6 +48,10 @@ public class BackgroundNotificationSync {
     }
 
     public static void saveConfig(Context context, String username, String token, String url, String key) {
+        saveConfig(context, username, token, url, key, null);
+    }
+
+    public static void saveConfig(Context context, String username, String token, String url, String key, String vipId) {
         if (context == null) return;
         SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         SharedPreferences.Editor editor = prefs.edit();
@@ -53,8 +59,36 @@ public class BackgroundNotificationSync {
         if (token != null && !token.isEmpty()) editor.putString(KEY_DEVICE_TOKEN, token.trim());
         if (url != null && !url.isEmpty()) editor.putString(KEY_SUPABASE_URL, url.trim());
         if (key != null && !key.isEmpty()) editor.putString(KEY_SUPABASE_KEY, key.trim());
+        if (vipId != null && !vipId.isEmpty()) editor.putString(KEY_VIP_ID, vipId.trim());
         editor.apply();
-        Log.i(TAG, "Config saved: user=" + username + ", token=" + token);
+        Log.i(TAG, "Config saved: user=" + username + ", token=" + (token != null && token.length() > 10 ? token.substring(0, 10) + "..." : token) + ", vip=" + vipId);
+    }
+
+    public static synchronized boolean isIdDelivered(Context context, String id) {
+        if (context == null || id == null || id.isEmpty()) return false;
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            Set<String> deliveredIds = prefs.getStringSet(KEY_DELIVERED_IDS, null);
+            return deliveredIds != null && deliveredIds.contains(id);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static synchronized void recordDeliveredId(Context context, String id) {
+        if (context == null || id == null || id.isEmpty()) return;
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            Set<String> deliveredIds = prefs.getStringSet(KEY_DELIVERED_IDS, null);
+            Set<String> updated = new HashSet<>(deliveredIds != null ? deliveredIds : new HashSet<>());
+            updated.add(id);
+            if (updated.size() > 200) {
+                // Keep set bounded to avoid SharedPreferences bloat
+                updated.clear();
+                updated.add(id);
+            }
+            prefs.edit().putStringSet(KEY_DELIVERED_IDS, updated).apply();
+        } catch (Exception ignored) {}
     }
 
     public static void startSync(Context context) {
@@ -150,7 +184,7 @@ public class BackgroundNotificationSync {
 
                 Set<String> deliveredIds = new HashSet<>(prefs.getStringSet(KEY_DELIVERED_IDS, new HashSet<>()));
 
-                URL url = new URL(baseUrl + "/rest/v1/notifications?order=timestamp.desc&limit=15");
+                URL url = URI.create(baseUrl + "/rest/v1/notifications?order=timestamp.desc&limit=15").toURL();
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("apikey", apiKey);
@@ -215,7 +249,7 @@ public class BackgroundNotificationSync {
                         }
 
                         // Valid recipient! Deliver native notification
-                        String title = notif.optString("title", "VIP Intelligence Alert");
+                        String title = notif.optString("title", "Invitation Hub Alert");
                         String body = notif.optString("message", "You have an event protocol update.");
                         int numericId = hashStringToInt(id);
 

@@ -69,7 +69,7 @@ export default function ApprovalRejectedScreen() {
           }}
         >
           <p className="text-xs text-secondary leading-relaxed mb-3">
-            You cannot access the VIP intelligence suite with your current assignment. You may request access to a different VIP Principal below using your existing credentials, or sign out.
+            You cannot access Invitation Hub with your current assignment. You may request access to a different VIP Principal below using your existing credentials, or sign out.
           </p>
 
           <form onSubmit={handleReassign} className="space-y-3">

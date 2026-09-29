@@ -39,7 +39,7 @@ import java.util.UUID;
 public class AppPermissionsPlugin extends Plugin {
 
     public static final String NOTIFICATION_CHANNEL_ID = "vip_notifications_channel";
-    public static final String NOTIFICATION_CHANNEL_NAME = "VIP Intelligence Alerts";
+    public static final String NOTIFICATION_CHANNEL_NAME = "Invitation Hub Alerts";
     public static final String NOTIFICATION_CHANNEL_DESC = "Urgent VIP event, schedule conflict, and invitation notifications";
 
     private static final String CAMERA_ALIAS = "camera";
@@ -251,14 +251,21 @@ public class AppPermissionsPlugin extends Plugin {
             }
             PendingIntent pendingIntent = PendingIntent.getActivity(context, id, intent, flags);
 
-            int smallIcon = context.getApplicationInfo().icon;
+            int smallIcon = 0;
+            try {
+                smallIcon = context.getResources().getIdentifier("ic_stat_notification", "drawable", context.getPackageName());
+            } catch (Exception ignored) {}
             if (smallIcon == 0) {
-                smallIcon = android.R.drawable.ic_dialog_info;
+                smallIcon = context.getApplicationInfo().icon;
+                if (smallIcon == 0) {
+                    smallIcon = android.R.drawable.ic_dialog_info;
+                }
             }
 
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
                 .setSmallIcon(smallIcon)
-                .setContentTitle(title != null ? title : "VIP Intelligence Alert")
+                .setColor(0xFFD4AF37)
+                .setContentTitle(title != null ? title : "Invitation Hub Alert")
                 .setContentText(body != null ? body : "")
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body != null ? body : ""))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -268,6 +275,7 @@ public class AppPermissionsPlugin extends Plugin {
                 .setContentIntent(pendingIntent);
 
             NotificationManagerCompat.from(context).notify(id, builder.build());
+            BackgroundNotificationSync.recordDeliveredId(context, String.valueOf(id));
             return true;
         } catch (Exception e) {
             android.util.Log.e("AppPermissionsPlugin", "showNotificationDirectly error: " + e.getMessage(), e);
@@ -277,7 +285,7 @@ public class AppPermissionsPlugin extends Plugin {
 
     @PluginMethod
     public void showLocalNotification(PluginCall call) {
-        String title = call.getString("title", "VIP Intelligence Alert");
+        String title = call.getString("title", "Invitation Hub Alert");
         String body = call.getString("body", call.getString("message", "New VIP update available"));
         int id = call.getInt("id", (int) (System.currentTimeMillis() % 1000000));
         String actionUrl = call.getString("actionUrl", "/notifications");
@@ -298,8 +306,9 @@ public class AppPermissionsPlugin extends Plugin {
         String token = call.getString("token", "");
         String url = call.getString("supabaseUrl", BackgroundNotificationSync.DEFAULT_URL);
         String key = call.getString("supabaseKey", BackgroundNotificationSync.DEFAULT_KEY);
+        String vipId = call.getString("vipId", "");
 
-        BackgroundNotificationSync.saveConfig(getContext(), username, token, url, key);
+        BackgroundNotificationSync.saveConfig(getContext(), username, token, url, key, vipId);
         BackgroundNotificationSync.startSync(getContext());
 
         JSObject ret = new JSObject();

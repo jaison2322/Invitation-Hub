@@ -78,7 +78,7 @@ export async function exportToExcel({
     );
 
     const summaryRows = [
-      { Metric: 'Report Title', Value: 'VIP Event Intelligence - Master Registry & Ledger' },
+      { Metric: 'Report Title', Value: 'Invitation Hub - Master Registry & Ledger' },
       { Metric: 'Generated On', Value: timestampStr },
       { Metric: 'Export Principal / User', Value: activeUser?.name || (isVIP ? 'VIP Principal' : 'Staff') },
       { Metric: 'Account Clearance', Value: isVIP ? 'VIP Master Account' : 'Privileged Staff' },
@@ -95,7 +95,7 @@ export async function exportToExcel({
         Metric: 'Pending Protocols',
         Value: invitations.filter((i) => i.status === 'pending').length,
       },
-      { Metric: 'Total VIP Contacts in Registry', Value: people.length },
+      { Metric: 'Total Contacts in Registry', Value: people.length },
       { Metric: 'Upcoming Schedule Engagements', Value: schedule.length },
       { Metric: 'Total Recorded Family Events', Value: familyEvents.length },
       { Metric: 'Total Recorded Gifts in Ledger', Value: totalGifts },
@@ -132,7 +132,7 @@ export async function exportToExcel({
       XLSX.utils.book_append_sheet(wb, wsInvitations, 'Invitations');
     }
 
-    // ── 3. VIP Contacts & Registry Sheet ────────────────────────────────────
+    // ── 3. Contacts & Registry Sheet ────────────────────────────────────────
     if (people.length > 0) {
       const contactRows = people.map((person) => ({
         'Full Name': person.name,
@@ -145,7 +145,7 @@ export async function exportToExcel({
 
       const wsContacts = XLSX.utils.json_to_sheet(contactRows);
       wsContacts['!cols'] = calculateColumnWidths(contactRows);
-      XLSX.utils.book_append_sheet(wb, wsContacts, 'VIP Contacts');
+      XLSX.utils.book_append_sheet(wb, wsContacts, 'Contacts');
     }
 
     // ── 4. Schedule & Engagements Sheet ─────────────────────────────────────
@@ -223,7 +223,7 @@ export async function exportToExcel({
     }
 
     // ── 7. Generate and Deliver File ────────────────────────────────────────
-    const filename = `VIP-Event-Intelligence-${todayStr}.xlsx`;
+    const filename = `Invitation-Hub-${todayStr}.xlsx`;
     const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     const blob = new Blob([wbout], { type: mimeType });
@@ -234,8 +234,8 @@ export async function exportToExcel({
         const file = new File([blob], filename, { type: mimeType });
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({
-            title: 'VIP Event Intelligence Master Report',
-            text: `VIP Intelligence Excel export generated on ${todayStr}`,
+            title: 'Invitation Hub Master Report',
+            text: `Invitation Hub Excel export generated on ${todayStr}`,
             files: [file],
           });
           return {

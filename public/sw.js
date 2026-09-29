@@ -1,4 +1,4 @@
-// Service Worker for VIP Event Intelligence PWA & Mobile Notifications
+// Service Worker for Invitation Hub PWA & Mobile Notifications
 const SW_VERSION = '1.0.1';
 
 self.addEventListener('install', (event) => {
@@ -13,7 +13,7 @@ self.addEventListener('activate', (event) => {
 // Handle incoming Web Push notifications (when app is in background or closed)
 self.addEventListener('push', (event) => {
   let data = {
-    title: 'VIP Intelligence Alert',
+    title: 'Invitation Hub Alert',
     body: 'You have a new VIP event update.',
     actionUrl: '/notifications',
     tag: 'vip-notification-' + Date.now(),
@@ -100,7 +100,7 @@ self.addEventListener('message', (event) => {
     };
 
     event.waitUntil(
-      self.registration.showNotification(title || 'VIP Intelligence Alert', options)
+      self.registration.showNotification(title || 'Invitation Hub Alert', options)
     );
   }
 });

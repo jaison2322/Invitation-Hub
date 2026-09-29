@@ -25,6 +25,7 @@ import { realtimeService } from '../services/realtimeService';
 import { seedPrivilegedUsers } from '../data/seedData';
 import { daysUntil } from '../utils/formatters';
 import { mobileNotificationService } from '../services/mobileNotificationService';
+import { storageService } from '../services/storageService';
 
 // ─── Store Interface ─────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ interface AppState {
   searchPeople: (query: string) => Person[];
 
   // Invitation actions
-  addInvitation: (invitation: Omit<Invitation, 'id' | 'createdAt' | 'updatedAt'>) => Invitation;
+  addInvitation: (invitation: Omit<Invitation, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }) => Invitation;
   updateInvitation: (id: string, updates: Partial<Invitation>) => void;
   updateInvitationStatus: (id: string, status: InvitationStatus) => void;
   removeInvitation: (id: string) => void | Promise<void>;
@@ -1106,6 +1107,18 @@ export const useAppStore = create<AppState>()(
           get().refreshStaffAccounts(activeVipId).catch(console.warn);
         }
 
+        get().addNotification({
+          vipId: activeVipId || undefined,
+          type: 'staff_request',
+          title: accept ? 'Staff Access Approved' : 'Staff Access Declined',
+          message: accept
+            ? `Staff access for @${staffUsername} was approved.`
+            : `Staff request for @${staffUsername} was declined.`,
+          read: false,
+          relatedEntityId: staffUsername,
+          actionUrl: '/settings',
+        });
+
         return { success: true };
       },
 
@@ -1182,7 +1195,7 @@ export const useAppStore = create<AppState>()(
         const { activeVipId } = get();
         const invitation: Invitation = {
           ...invData,
-          id: generateId('inv'),
+          id: (invData as any).id || generateId('inv'),
           vipId: activeVipId || undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -1272,6 +1285,15 @@ export const useAppStore = create<AppState>()(
 
         // Delete from Supabase
         supabaseDbService.deleteInvitation(id, activeVipId || undefined).catch(console.error);
+
+        // Delete associated image from Supabase Storage if present and unique to this event
+        if (existing?.imageId) {
+          const imageId = existing.imageId;
+          const isReferencedElsewhere = get().invitations.some((inv) => inv.id !== id && inv.imageId === imageId);
+          if (!isReferencedElsewhere) {
+            storageService.deleteInvitationImage(imageId, activeVipId || existing.vipId).catch(console.warn);
+          }
+        }
 
         // Recipient identified within active VIP account
         let otherUsernames: string[] = [];
