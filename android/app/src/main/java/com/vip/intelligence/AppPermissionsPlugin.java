@@ -44,6 +44,7 @@ public class AppPermissionsPlugin extends Plugin {
 
     private static final String CAMERA_ALIAS = "camera";
     private static final String NOTIFICATIONS_ALIAS = "notifications";
+    private static final String PREF_NOTIF_REQUESTED = "notif_permission_requested";
 
     @Override
     public void load() {
@@ -137,6 +138,12 @@ public class AppPermissionsPlugin extends Plugin {
     public void checkNotificationPermission(PluginCall call) {
         boolean granted;
         boolean canAskAgain = true;
+        String status;
+
+        Context context = getContext();
+        android.content.SharedPreferences prefs = context != null ?
+            context.getSharedPreferences(BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE) : null;
+        boolean askedBefore = prefs != null && prefs.getBoolean(PREF_NOTIF_REQUESTED, false);
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             granted = ContextCompat.checkSelfPermission(
@@ -144,27 +151,45 @@ public class AppPermissionsPlugin extends Plugin {
                 Manifest.permission.POST_NOTIFICATIONS
             ) == PackageManager.PERMISSION_GRANTED;
 
-            if (!granted && getActivity() != null) {
-                boolean rationale = ActivityCompat.shouldShowRequestPermissionRationale(
-                    getActivity(),
-                    Manifest.permission.POST_NOTIFICATIONS
-                );
-                canAskAgain = rationale || !hasPermission(Manifest.permission.POST_NOTIFICATIONS);
+            if (granted) {
+                status = "granted";
+                canAskAgain = true;
+            } else if (!askedBefore) {
+                status = "prompt";
+                canAskAgain = true;
+            } else {
+                boolean rationale = false;
+                if (getActivity() != null) {
+                    rationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                        getActivity(),
+                        Manifest.permission.POST_NOTIFICATIONS
+                    );
+                }
+                status = "denied";
+                canAskAgain = rationale;
             }
         } else {
             granted = NotificationManagerCompat.from(getContext()).areNotificationsEnabled();
+            status = granted ? "granted" : "denied";
             canAskAgain = granted;
         }
 
         JSObject ret = new JSObject();
         ret.put("granted", granted);
-        ret.put("status", granted ? "granted" : "prompt");
+        ret.put("status", status);
         ret.put("canAskAgain", canAskAgain);
         call.resolve(ret);
     }
 
     @PluginMethod
     public void requestNotificationPermission(PluginCall call) {
+        Context context = getContext();
+        if (context != null) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putBoolean(PREF_NOTIF_REQUESTED, true).apply();
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             boolean granted = ContextCompat.checkSelfPermission(
                 getContext(),
@@ -193,6 +218,13 @@ public class AppPermissionsPlugin extends Plugin {
 
     @PermissionCallback
     public void notificationCallback(PluginCall call) {
+        Context context = getContext();
+        if (context != null) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putBoolean(PREF_NOTIF_REQUESTED, true).apply();
+        }
+
         boolean granted;
         boolean canAskAgain = true;
 

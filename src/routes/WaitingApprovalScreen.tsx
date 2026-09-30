@@ -34,11 +34,7 @@ export default function WaitingApprovalScreen() {
     try {
       const result = await checkStaffStatus(staffUsername);
       if (result.status === 'APPROVED') {
-        if (!result.phoneVerified) {
-          navigate('/verify-phone', { replace: true });
-        } else {
-          navigate('/dashboard', { replace: true });
-        }
+        navigate('/dashboard', { replace: true });
         return;
       } else if (result.status === 'REJECTED') {
         navigate('/approval-rejected', { replace: true });

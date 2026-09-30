@@ -38,8 +38,7 @@ export default function AppHeader() {
     location.pathname === '/' ||
     location.pathname === '/login' ||
     location.pathname === '/waiting-approval' ||
-    location.pathname === '/approval-rejected' ||
-    location.pathname === '/verify-phone';
+    location.pathname === '/approval-rejected';
   if (isAuthPage) return null;
 
   const navItems = [

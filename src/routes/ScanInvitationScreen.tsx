@@ -231,27 +231,6 @@ export default function ScanInvitationScreen() {
 
               <button
                 type="button"
-                className="btn flex items-center justify-center gap-2 w-full"
-                style={{
-                  fontSize: '13px',
-                  color: 'var(--color-text-primary)',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '12px',
-                  padding: '10px',
-                }}
-                onClick={() => {
-                  try { sessionStorage.setItem('scan-image', 'demo'); } catch {}
-                  setCachedScanImage('demo');
-                  navigate('/ai-processing');
-                }}
-              >
-                <Sparkles size={14} strokeWidth={1.8} style={{ color: '#64d2ff' }} />
-                <span>Test with Sample Invitation</span>
-              </button>
-
-              <button
-                type="button"
                 className="btn-ghost flex items-center justify-center gap-2 mt-1"
                 style={{ fontSize: '13px', color: 'var(--color-accent)' }}
                 onClick={() => navigate('/add-invitation')}

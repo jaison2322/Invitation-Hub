@@ -50,6 +50,10 @@ export const permissionService = {
     return await mobileNotificationService.requestPermission();
   },
 
+  async requestFirstLaunchNotifications(): Promise<PermissionResult | null> {
+    return await mobileNotificationService.requestFirstLaunchPermission();
+  },
+
   async openSettings(): Promise<boolean> {
     return await mobileNotificationService.openSettings();
   },

@@ -35,7 +35,6 @@ import StaffRequestsScreen from './routes/StaffRequestsScreen';
 import PeopleListScreen from './routes/PeopleListScreen';
 import WaitingApprovalScreen from './routes/WaitingApprovalScreen';
 import ApprovalRejectedScreen from './routes/ApprovalRejectedScreen';
-import PhoneVerificationGateScreen from './routes/PhoneVerificationGateScreen';
 
 import { realtimeService } from './services/realtimeService';
 import { mobileNotificationService } from './services/mobileNotificationService';
@@ -54,23 +53,17 @@ function ProtectedRoute({ children }: { children: ReactNode }) {
       if (currentPrivilegedUser.approvalStatus === 'REJECTED') {
         return <Navigate to="/approval-rejected" replace />;
       }
-      if (!currentPrivilegedUser.phoneVerified) {
-        return <Navigate to="/verify-phone" replace />;
-      }
     }
     return <Navigate to="/login" replace />;
   }
 
-  // If authenticated but is a staff user with unverified phone or pending approval
+  // If authenticated but is a staff user with pending or rejected status
   if (!isVIP && currentPrivilegedUser) {
     if (currentPrivilegedUser.approvalStatus === 'PENDING_APPROVAL') {
       return <Navigate to="/waiting-approval" replace />;
     }
     if (currentPrivilegedUser.approvalStatus === 'REJECTED') {
       return <Navigate to="/approval-rejected" replace />;
-    }
-    if (!currentPrivilegedUser.phoneVerified) {
-      return <Navigate to="/verify-phone" replace />;
     }
   }
 
@@ -86,7 +79,7 @@ function BottomNavigation() {
 
   // Pages that should NOT show bottom nav
   const hideNavPages = [
-    '/', '/login', '/waiting-approval', '/approval-rejected', '/verify-phone',
+    '/', '/login', '/waiting-approval', '/approval-rejected',
     '/ai-processing', '/extracted-details', '/confirm-ignore', '/add-invitation',
   ];
 
@@ -188,7 +181,7 @@ function AndroidBackButtonHandler() {
 
     CapApp.addListener('backButton', ({ canGoBack }) => {
       const currentPath = locationRef.current.pathname;
-      const rootPaths = ['/dashboard', '/login', '/', '/waiting-approval', '/approval-rejected', '/verify-phone'];
+      const rootPaths = ['/dashboard', '/login', '/', '/waiting-approval', '/approval-rejected'];
       const isRootScreen = rootPaths.includes(currentPath);
 
       if (isRootScreen) {
@@ -225,6 +218,11 @@ export default function App() {
   useEffect(() => {
     // Initialize PWA / mobile notification service worker and channel
     mobileNotificationService.init();
+
+    // Automatically request notification permission on first app launch (guarded against repeat triggers)
+    mobileNotificationService.requestFirstLaunchPermission().catch((err) => {
+      console.warn('[VIP App] First-launch permission request non-blocking error:', err);
+    });
 
     const store = useAppStore.getState();
     const activeUser = store.currentUser?.username || store.currentPrivilegedUser?.username;
@@ -293,7 +291,7 @@ export default function App() {
             <Route path="/login" element={<LoginScreen />} />
             <Route path="/waiting-approval" element={<WaitingApprovalScreen />} />
             <Route path="/approval-rejected" element={<ApprovalRejectedScreen />} />
-            <Route path="/verify-phone" element={<PhoneVerificationGateScreen />} />
+            <Route path="/verify-phone" element={<Navigate to="/dashboard" replace />} />
 
             {/* Protected — Core Flow */}
             <Route path="/dashboard" element={<ProtectedRoute><DashboardScreen /></ProtectedRoute>} />

@@ -71,7 +71,7 @@ interface AppState {
   loginWithCredentials: (username: string, password: string) => Promise<{
     success: boolean;
     error?: string;
-    status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'UNVERIFIED_PHONE';
+    status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
     staffUser?: PrivilegedUser;
   }>;
   submitStaffRegistration: (params: {
@@ -592,7 +592,7 @@ export const useAppStore = create<AppState>()(
         const authenticateDbAccount = async (dbAccount: UserAccount): Promise<{
           success: boolean;
           error?: string;
-          status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED' | 'UNVERIFIED_PHONE';
+          status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
           staffUser?: PrivilegedUser;
         }> => {
           const passwordMatches =
@@ -652,7 +652,6 @@ export const useAppStore = create<AppState>()(
             return { success: true, status: 'APPROVED' };
           } else {
             const approvalStatus = dbAccount.approvalStatus || 'APPROVED';
-            const isPhoneVerified = !!dbAccount.phoneVerified;
 
             const staffUser: PrivilegedUser = {
               id: dbAccount.id || generateId('priv'),
@@ -665,7 +664,7 @@ export const useAppStore = create<AppState>()(
               role: dbAccount.staffTitle || 'Personal Assistant',
               phone: dbAccount.phone,
               email: dbAccount.email,
-              phoneVerified: isPhoneVerified,
+              phoneVerified: true,
               permissions: sanitizePermissions(dbAccount.permissions),
               addedBy: targetVipId,
               addedAt: dbAccount.createdAt,
@@ -709,26 +708,7 @@ export const useAppStore = create<AppState>()(
               };
             }
 
-            // Gate 2: Check phone verification
-            if (!isPhoneVerified) {
-              clearSupabaseAuthSession();
-              set({
-                isAuthenticated: false,
-                isVIP: false,
-                currentUser: null,
-                currentPrivilegedUser: staffUser,
-                activeVipId: null,
-                authToken: null,
-              });
-              return {
-                success: false,
-                status: 'UNVERIFIED_PHONE',
-                error: 'Phone verification required before accessing the VIP workspace.',
-                staffUser,
-              };
-            }
-
-            // Gate 3: Approved and phone verified -> establish authenticated session
+            // Gate 2: Approved -> establish authenticated session directly without OTP verification
             await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
             setSupabaseAuthSession(targetVipId, authToken);
 
@@ -812,10 +792,6 @@ export const useAppStore = create<AppState>()(
               set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
               return { success: false, status: 'REJECTED', error: 'Request rejected', staffUser: privUser };
             }
-            if (!privUser.phoneVerified) {
-              set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
-              return { success: false, status: 'UNVERIFIED_PHONE', error: 'Phone verification required', staffUser: privUser };
-            }
 
             const vipId = privUser.vipId || 'vip_jaison';
             setSupabaseAuthSession(vipId, 'offline');
@@ -879,7 +855,7 @@ export const useAppStore = create<AppState>()(
           role: params.staffTitle.trim() || 'Personal Assistant',
           phone: params.phone?.trim() || undefined,
           email: params.email?.trim() || undefined,
-          phoneVerified: false,
+          phoneVerified: true,
           permissions: {
             canAddInvitations: true,
             canConfirmIgnoreInvitations: false,
@@ -912,26 +888,60 @@ export const useAppStore = create<AppState>()(
         const { currentPrivilegedUser } = get();
         const username = usernameParam || currentPrivilegedUser?.username;
         if (!username) {
-          return { status: 'PENDING_APPROVAL', phoneVerified: false };
+          return { status: 'PENDING_APPROVAL', phoneVerified: true };
         }
 
         try {
           const dbAccount = await supabaseDbService.getUserAccountByIdentifier(username);
           if (dbAccount) {
             const status = dbAccount.approvalStatus || 'APPROVED';
-            const phoneVerified = !!dbAccount.phoneVerified;
             if (currentPrivilegedUser) {
-              set({
-                currentPrivilegedUser: {
-                  ...currentPrivilegedUser,
-                  approvalStatus: status,
-                  phoneVerified,
-                  vipId: dbAccount.vipId || currentPrivilegedUser.vipId,
-                  targetVipUsername: dbAccount.targetVipUsername || currentPrivilegedUser.targetVipUsername,
-                },
-              });
+              const updatedStaffUser: PrivilegedUser = {
+                ...currentPrivilegedUser,
+                approvalStatus: status,
+                phone: dbAccount.phone || currentPrivilegedUser.phone,
+                phoneVerified: true,
+                vipId: dbAccount.vipId || currentPrivilegedUser.vipId,
+                targetVipUsername: dbAccount.targetVipUsername || currentPrivilegedUser.targetVipUsername,
+              };
+
+              // If approved, establish authenticated session automatically without OTP
+              if (status === 'APPROVED' && !get().isAuthenticated) {
+                const targetVipId = dbAccount.vipId || currentPrivilegedUser.vipId || 'vip_default';
+                const authToken = dbAccount.authToken || `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+                await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
+                setSupabaseAuthSession(targetVipId, authToken);
+
+                set({
+                  isAuthenticated: true,
+                  isVIP: false,
+                  currentUser: null,
+                  currentPrivilegedUser: updatedStaffUser,
+                  activeVipId: targetVipId,
+                  authToken,
+                  people: [],
+                  invitations: [],
+                  familyEvents: [],
+                  schedule: [],
+                  reminders: [],
+                  privilegedUsers: [],
+                  activityLogs: [],
+                  notifications: [],
+                  currentScanResult: null,
+                });
+
+                supabaseDbService.updateUserLastLogin(dbAccount.username);
+                mobileNotificationService.registerDevice(dbAccount.username, targetVipId).catch(console.warn);
+                realtimeService.subscribeAll(targetVipId);
+                get().syncWithSupabase(targetVipId);
+              } else {
+                set({
+                  currentPrivilegedUser: updatedStaffUser,
+                });
+              }
             }
-            return { status, phoneVerified };
+            return { status, phoneVerified: true };
           }
         } catch (err) {
           console.warn('Error checking staff status:', err);
@@ -939,7 +949,7 @@ export const useAppStore = create<AppState>()(
 
         return {
           status: currentPrivilegedUser?.approvalStatus || 'PENDING_APPROVAL',
-          phoneVerified: !!currentPrivilegedUser?.phoneVerified,
+          phoneVerified: true,
         };
       },
 
@@ -969,7 +979,7 @@ export const useAppStore = create<AppState>()(
           vipId: res.data?.vip_id || vipCheck.vipId || `vip_${cleanVip}`,
           targetVipUsername: cleanVip,
           approvalStatus: 'PENDING_APPROVAL',
-          phoneVerified: false,
+          phoneVerified: true,
         };
 
         clearSupabaseAuthSession();
@@ -983,56 +993,7 @@ export const useAppStore = create<AppState>()(
         return { success: true };
       },
 
-      verifyStaffPhoneOtp: async (otp, phone) => {
-        const { currentPrivilegedUser } = get();
-        if (!currentPrivilegedUser?.username) {
-          return { success: false, error: 'No active staff session.' };
-        }
-
-        const cleanPhone = phone?.trim() || currentPrivilegedUser.phone;
-        const res = await supabaseDbService.verifyStaffPhone(currentPrivilegedUser.username, otp, cleanPhone);
-        if (!res.success) {
-          return { success: false, error: res.error || 'Verification failed.' };
-        }
-
-        const targetVipId = currentPrivilegedUser.vipId || 'vip_jaison';
-        const authToken = res.authToken || `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-        await supabaseDbService.updateUserAuthToken(currentPrivilegedUser.username, authToken, targetVipId);
-        setSupabaseAuthSession(targetVipId, authToken);
-
-        const verifiedPhone = res.phone || cleanPhone || currentPrivilegedUser.phone;
-        const updatedUser: PrivilegedUser = {
-          ...currentPrivilegedUser,
-          phone: verifiedPhone,
-          phoneVerified: true,
-          phoneVerifiedAt: new Date().toISOString(),
-          approvalStatus: 'APPROVED',
-        };
-
-        set({
-          isAuthenticated: true,
-          isVIP: false,
-          currentUser: null,
-          currentPrivilegedUser: updatedUser,
-          activeVipId: targetVipId,
-          authToken,
-          people: [],
-          invitations: [],
-          familyEvents: [],
-          schedule: [],
-          reminders: [],
-          privilegedUsers: [],
-          activityLogs: [],
-          notifications: [],
-          currentScanResult: null,
-        });
-
-        supabaseDbService.updateUserLastLogin(currentPrivilegedUser.username);
-        mobileNotificationService.registerDevice(currentPrivilegedUser.username, targetVipId).catch(console.warn);
-        realtimeService.subscribeAll(targetVipId);
-        get().syncWithSupabase(targetVipId);
-
+      verifyStaffPhoneOtp: async () => {
         return { success: true };
       },
 
@@ -1482,6 +1443,7 @@ export const useAppStore = create<AppState>()(
         // Hash password: use provided password, else default
         const pw = (userData as any).password || 'staff123';
         const pwHash = userData.passwordHash || await hashPassword(pw);
+        const cleanPhone = userData.phone?.trim() || undefined;
 
         const user: PrivilegedUser = {
           ...userData,
@@ -1490,9 +1452,9 @@ export const useAppStore = create<AppState>()(
           targetVipUsername: currentUser?.username || undefined,
           username,
           passwordHash: pwHash,
-          phone: undefined,
-          phoneVerified: false,
-          phoneVerifiedAt: undefined,
+          phone: cleanPhone,
+          phoneVerified: true,
+          phoneVerifiedAt: new Date().toISOString(),
           approvalStatus: 'APPROVED',
           addedBy: targetVipId,
           addedAt: new Date().toISOString(),
@@ -1514,12 +1476,12 @@ export const useAppStore = create<AppState>()(
           name: user.name,
           role: 'staff',
           staffTitle: user.role,
-          phone: undefined,
+          phone: cleanPhone,
           email: user.email,
           pin: user.pin,
           permissions: user.permissions,
           approvalStatus: 'APPROVED',
-          phoneVerified: false,
+          phoneVerified: true,
           createdAt: user.addedAt,
         }).catch((err) => console.warn('Supabase register privileged user error:', err));
 

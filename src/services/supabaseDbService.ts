@@ -982,7 +982,7 @@ export const supabaseDbService = {
       approvalStatus: data.approval_status || 'APPROVED',
       phone: data.phone,
       email: data.email,
-      phoneVerified: data.phone_verified ?? (data.permissions?.phoneVerified ?? (data.role === 'vip')),
+      phoneVerified: true,
       emailVerified: data.email_verified ?? (data.permissions?.emailVerified ?? false),
       phoneVerifiedAt: data.phone_verified_at ?? data.permissions?.phoneVerifiedAt,
       emailVerifiedAt: data.email_verified_at ?? data.permissions?.emailVerifiedAt,
@@ -1156,9 +1156,9 @@ export const supabaseDbService = {
       const now = new Date().toISOString();
       const enrichedPermissions = {
         ...(account.permissions || {}),
-        phoneVerified: account.phoneVerified ?? (account.role === 'vip'),
+        phoneVerified: true,
         emailVerified: account.emailVerified ?? true,
-        phoneVerifiedAt: account.phoneVerifiedAt || (account.role === 'vip' ? now : undefined),
+        phoneVerifiedAt: account.phoneVerifiedAt || now,
         emailVerifiedAt: account.emailVerifiedAt || now,
       };
 
@@ -1179,8 +1179,8 @@ export const supabaseDbService = {
         pin: account.pin || null,
         avatar: account.avatar || null,
         permissions: enrichedPermissions,
-        phone_verified: account.phoneVerified ?? (account.role === 'vip'),
-        phone_verified_at: account.phoneVerifiedAt || (account.role === 'vip' ? now : null),
+        phone_verified: true,
+        phone_verified_at: account.phoneVerifiedAt || now,
         created_at: account.createdAt || now,
         updated_at: now,
       };

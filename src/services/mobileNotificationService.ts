@@ -69,6 +69,9 @@ function hashStringToInt(str: string): number {
 const STORAGE_KEY_REGISTRATION = 'vip_device_push_registration';
 const STORAGE_KEY_ASKED = 'vip_notif_perm_asked';
 
+// In-memory guard to prevent repeated requests during recompositions, StrictMode double-invocations, or navigation
+let hasRequestedFirstLaunch = false;
+
 export const mobileNotificationService = {
   isNative(): boolean {
     return Capacitor.isNativePlatform();
@@ -144,7 +147,9 @@ export const mobileNotificationService = {
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY_ASKED, 'true');
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_ASKED, 'true');
+      }
 
       if (this.isNative()) {
         return await NativeAppPermissions.requestNotificationPermission();
@@ -165,6 +170,77 @@ export const mobileNotificationService = {
     }
 
     return { granted: false, status: 'denied', canAskAgain: false };
+  },
+
+  /**
+   * Automatically requests notification permission on the first app launch after
+   * the main activity is ready.
+   * Guarantees:
+   * - Triggered automatically on fresh install / first launch
+   * - Never triggered repeatedly during recompositions, activity recreation, or navigation
+   * - Checks current permission status first; skips if already granted
+   * - Skips if previously prompted or permanently denied
+   * - Handles granted, denied, and dismissed outcomes without blocking login or app usage
+   * - Does not request runtime permission on Android 12 and below
+   */
+  async requestFirstLaunchPermission(): Promise<PermissionResult | null> {
+    if (hasRequestedFirstLaunch) {
+      return null;
+    }
+    hasRequestedFirstLaunch = true;
+
+    try {
+      // Check persistent flag: if asked on a past session, do not prompt again
+      const alreadyAsked = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ASKED) : null;
+      if (alreadyAsked === 'true') {
+        return null;
+      }
+
+      // Check current permission status before requesting
+      const current = await this.checkPermission();
+      if (current.granted) {
+        // Permission is already granted (e.g. Android 12 or below, or already allowed)
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY_ASKED, 'true');
+        }
+        return current;
+      }
+
+      // If permanently denied, respect user decision and do not repeatedly force dialog
+      if (current.status === 'denied' && !current.canAskAgain) {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY_ASKED, 'true');
+        }
+        return current;
+      }
+
+      // On native platform, give the Activity window a brief moment to finish its initial frame draw
+      if (this.isNative()) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      // Mark asked in localStorage immediately so activity recreation does not loop
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY_ASKED, 'true');
+      }
+
+      // Request runtime permission
+      const result = await this.requestPermission(false);
+
+      // If granted, sync device registration if active user exists
+      if (result.granted) {
+        const reg = this.getDeviceRegistration();
+        if (reg?.username) {
+          this.registerDevice(reg.username).catch(console.warn);
+        }
+      }
+
+      return result;
+    } catch (err) {
+      console.warn('[VIP Notification] Error requesting first-launch permission:', err);
+      // Guarantee non-blocking behavior
+      return null;
+    }
   },
 
   /**

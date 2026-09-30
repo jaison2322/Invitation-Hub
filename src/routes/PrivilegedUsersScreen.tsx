@@ -26,6 +26,7 @@ export default function PrivilegedUsersScreen() {
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [createdUser, setCreatedUser] = useState<PrivilegedUser | null>(null);
   const [createdPassword, setCreatedPassword] = useState('');
@@ -100,6 +101,7 @@ export default function PrivilegedUsersScreen() {
       name: newName.trim(),
       username: effectiveUsername,
       role: newRole.trim(),
+      phone: newPhone.trim() || undefined,
       permissions: defaultPerms,
       addedBy: actorVipId,
       password: passToUse,
@@ -115,6 +117,7 @@ export default function PrivilegedUsersScreen() {
       setNewUsername('');
       setNewRole('');
       setNewPassword('');
+      setNewPhone('');
     }
   };
 
@@ -211,7 +214,7 @@ export default function PrivilegedUsersScreen() {
             </span>
           </div>
           <p className="text-xs text-muted mb-3">
-            Share these credentials with <strong>{createdUser.name}</strong> to sign in. Upon first sign-in, they will verify their mobile phone number to access the VIP suite.
+            Share these credentials with <strong>{createdUser.name}</strong> to sign in directly to the VIP workspace.
           </p>
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between" style={{
@@ -247,6 +250,25 @@ export default function PrivilegedUsersScreen() {
                   style={{ padding: '4px 8px' }}
                 >
                   {copiedField === 'password' ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                </button>
+              </div>
+            )}
+            {createdUser.phone && (
+              <div className="flex items-center justify-between" style={{
+                background: 'rgba(0,0,0,0.2)',
+                borderRadius: 'var(--radius-md)',
+                padding: '8px 12px',
+              }}>
+                <div>
+                  <div className="text-xs text-muted">Phone Number</div>
+                  <div className="text-sm font-semibold">{createdUser.phone}</div>
+                </div>
+                <button
+                  className="btn btn-sm btn-ghost"
+                  onClick={() => handleCopy(createdUser.phone || '', 'phone')}
+                  style={{ padding: '4px 8px' }}
+                >
+                  {copiedField === 'phone' ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                 </button>
               </div>
             )}
@@ -425,6 +447,19 @@ export default function PrivilegedUsersScreen() {
                 <div>
                   <label className="label">Role</label>
                   <input className="input" value={newRole} onChange={(e) => setNewRole(e.target.value)} placeholder="e.g., Personal Assistant" />
+                </div>
+                <div>
+                  <label className="label">
+                    <Phone size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+                    Phone Number
+                  </label>
+                  <input
+                    className="input"
+                    type="tel"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    placeholder="e.g. +91 98765 43210"
+                  />
                 </div>
                 <div>
                   <label className="label">
