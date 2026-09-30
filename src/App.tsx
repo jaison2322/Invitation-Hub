@@ -4,7 +4,7 @@ import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { useAppStore } from './store/useAppStore';
 import {
-  LayoutDashboard, Calendar, ScanLine, Users, Settings,
+  Home, Calendar, ScanLine, Users, Settings,
 } from 'lucide-react';
 
 // Screens
@@ -112,8 +112,8 @@ function BottomNavigation() {
         aria-label="Home"
         style={{ background: 'none', border: 'none' }}
       >
-        <LayoutDashboard size={20} strokeWidth={1.8} />
-        <span className="nav-item-label">{t('nav.briefing')}</span>
+        <Home size={20} strokeWidth={1.8} />
+        <span className="nav-item-label">{t('nav.home')}</span>
       </button>
 
       <button

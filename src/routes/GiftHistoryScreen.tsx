@@ -52,7 +52,7 @@ export default function GiftHistoryScreen() {
           You do not have permission to view the gift ledger.
         </div>
         <button className="btn btn-gold mt-4" onClick={() => navigate('/dashboard')}>
-          Return to Briefing
+          Return to Home
         </button>
       </div>
     );

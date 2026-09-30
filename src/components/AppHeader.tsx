@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Shield,
-  LayoutDashboard,
+  Home,
   Calendar,
   ScanLine,
   Users,
@@ -42,7 +42,7 @@ export default function AppHeader() {
   if (isAuthPage) return null;
 
   const navItems = [
-    { label: t('nav.briefing'), path: '/dashboard', icon: LayoutDashboard },
+    { label: t('nav.home'), path: '/dashboard', icon: Home },
     { label: t('nav.events'), path: '/upcoming', icon: Calendar },
     { label: t('nav.scanner'), path: '/scan', icon: ScanLine },
     { label: t('nav.contacts'), path: '/people', icon: Users },

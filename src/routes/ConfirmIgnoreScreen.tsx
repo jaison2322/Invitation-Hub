@@ -48,7 +48,7 @@ export default function ConfirmIgnoreScreen() {
   const formData: CanonicalManualInvitationData = canonicalCached
     ? JSON.parse(canonicalCached)
     : (currentScanResult.canonicalManualForm ||
-        mapScanToManualForm(currentScanResult.extractedFields, analysis, people, canConfirmIgnore));
+      mapScanToManualForm(currentScanResult.extractedFields, analysis, people, canConfirmIgnore));
 
   const rawImage = currentScanResult?.imageDataUrl || sessionStorage.getItem('scan-image') || getCachedScanImage() || '';
 
@@ -135,56 +135,56 @@ export default function ConfirmIgnoreScreen() {
         createdBy: isVIP ? 'vip' : (currentPrivilegedUser?.id || 'staff'),
       });
 
-    const userName = isVIP
-      ? (currentUser?.name || 'VIP Principal')
-      : (currentPrivilegedUser?.name || 'Staff User');
-    const userId = isVIP
-      ? (currentUser?.username || 'vip')
-      : (currentPrivilegedUser?.id || 'staff');
+      const userName = isVIP
+        ? (currentUser?.name || 'VIP Principal')
+        : (currentPrivilegedUser?.name || 'Staff User');
+      const userId = isVIP
+        ? (currentUser?.username || 'vip')
+        : (currentPrivilegedUser?.id || 'staff');
 
-    // Add Activity Log
-    addActivityLog({
-      userId,
-      userName,
-      action: `Scanned & recorded invitation "${created.title}" as ${effectiveStatus}`,
-      entityType: 'invitation',
-      entityId: created.id,
-      entityName: created.title,
-    });
-
-    // Add Notification
-    if (analysis.scheduleConflicts && analysis.scheduleConflicts.length > 0) {
-      addNotification({
-        type: 'conflict_warning',
-        title: `Schedule Conflict: ${created.title}`,
-        message: `Invitation conflicts with ${analysis.scheduleConflicts.length} existing event(s) on ${created.date}.`,
-        read: false,
-        relatedEntityId: created.id,
-        actionUrl: `/conflicts`,
+      // Add Activity Log
+      addActivityLog({
+        userId,
+        userName,
+        action: `Scanned & recorded invitation "${created.title}" as ${effectiveStatus}`,
+        entityType: 'invitation',
+        entityId: created.id,
+        entityName: created.title,
       });
-    } else {
-      addNotification({
-        type: 'new_invitation',
-        title: effectiveStatus === 'pending'
-          ? `New Invitation Awaiting Review: ${created.title}`
-          : `New Invitation Scanned: ${created.title}`,
-        message: effectiveStatus === 'pending'
-          ? `Scanned by ${userName} and queued for VIP Principal decision.`
-          : `Scanned and recorded as ${effectiveStatus.toUpperCase()} for ${created.date}.`,
-        read: false,
-        relatedEntityId: created.id,
-        actionUrl: `/event/${created.id}`,
-      });
-    }
 
-    // Clean up
-    setScanResult(null);
-    sessionStorage.removeItem('scan-image');
-    sessionStorage.removeItem('canonical-manual-form');
-    sessionStorage.removeItem('invitation-nickname');
-    sessionStorage.removeItem('edited-fields');
+      // Add Notification
+      if (analysis.scheduleConflicts && analysis.scheduleConflicts.length > 0) {
+        addNotification({
+          type: 'conflict_warning',
+          title: `Schedule Conflict: ${created.title}`,
+          message: `Invitation conflicts with ${analysis.scheduleConflicts.length} existing event(s) on ${created.date}.`,
+          read: false,
+          relatedEntityId: created.id,
+          actionUrl: `/conflicts`,
+        });
+      } else {
+        addNotification({
+          type: 'new_invitation',
+          title: effectiveStatus === 'pending'
+            ? `New Invitation Awaiting Review: ${created.title}`
+            : `New Invitation Scanned: ${created.title}`,
+          message: effectiveStatus === 'pending'
+            ? `Scanned by ${userName} and queued for VIP Principal decision.`
+            : `Scanned and recorded as ${effectiveStatus.toUpperCase()} for ${created.date}.`,
+          read: false,
+          relatedEntityId: created.id,
+          actionUrl: `/event/${created.id}`,
+        });
+      }
 
-    navigate('/dashboard', { replace: true });
+      // Clean up
+      setScanResult(null);
+      sessionStorage.removeItem('scan-image');
+      sessionStorage.removeItem('canonical-manual-form');
+      sessionStorage.removeItem('invitation-nickname');
+      sessionStorage.removeItem('edited-fields');
+
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('[ConfirmIgnoreScreen] Error saving event:', err);
       alert('An error occurred while saving the event. Please try again.');
@@ -277,140 +277,140 @@ export default function ConfirmIgnoreScreen() {
 
         {/* ── Executive Briefing Event Pass ─────────────────────────────────── */}
         <div className="hero-event-card mb-3">
-        <div className="flex items-start justify-between mb-3">
-          <EventBadgeIcon type={formData.eventType || 'other'} size="hero" showGlow />
-          <PriorityBadge priority={formData.priority || analysis.suggestedPriority} />
+          <div className="flex items-start justify-between mb-3">
+            <EventBadgeIcon type={formData.eventType || 'other'} size="hero" showGlow />
+            <PriorityBadge priority={formData.priority || analysis.suggestedPriority} />
+          </div>
+
+          <h1
+            className="font-heading font-semibold text-white tracking-tight"
+            style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '2px' }}
+          >
+            {formData.title || formData.hostName || 'New Event'}
+          </h1>
+          {formData.hostName && formData.hostName !== formData.title && (
+            <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
+              Host: {formData.hostName}
+            </p>
+          )}
+
+          <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '10px 0' }} />
+
+          <div className="flex flex-col gap-2" style={{ fontSize: '13px' }}>
+            <div className="flex items-center gap-2 text-slate-200">
+              <Calendar size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span>{formData.date ? formatFullDate(formData.date) : 'Date not specified'}</span>
+            </div>
+            {formData.time && (
+              <div className="flex items-center gap-2 text-slate-200">
+                <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                <span>{formatTime(formData.time)}</span>
+              </div>
+            )}
+            {(formData.venue || formData.location) && (
+              <div className="flex items-center gap-2 text-slate-200">
+                <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                <span className="truncate">
+                  {formData.venue && formData.location ? `${formData.venue}, ${formData.location}` : (formData.venue || formData.location)}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
-        <h1
-          className="font-heading font-semibold text-white tracking-tight"
-          style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '2px' }}
-        >
-          {formData.title || formData.hostName || 'New Event'}
-        </h1>
-        {formData.hostName && formData.hostName !== formData.title && (
-          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '10px' }}>
-            Host: {formData.hostName}
+        {/* ── Apple Intelligence Recommendation ──────────────────────────────── */}
+        <div className="apple-intelligence-card mb-3">
+          <div className="flex items-center gap-2 mb-1.5">
+            <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff' }} />
+            <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              AI Suggested Priority: {analysis.suggestedPriority.toUpperCase()}
+            </span>
+          </div>
+          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: '1.45' }}>
+            {analysis.priorityReason}
           </p>
+        </div>
+
+        {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
+        {analysis.scheduleConflicts.length > 0 && (
+          <div className="mb-3">
+            {analysis.scheduleConflicts.map((conflict, i) => (
+              <div key={i} className="conflict-card mb-2">
+                <div className="conflict-icon">
+                  <AlertTriangle size={14} strokeWidth={2} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
+                    {conflict.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                    {conflict.conflictingItemTitle} at {conflict.conflictingTime}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
-        <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '10px 0' }} />
+        {/* ── Protocol History (Grouped List) ─────────────────────────────────── */}
+        {analysis.relationshipHistory.length > 0 && (
+          <div className="ios-grouped-list mb-3">
+            {analysis.relatedPerson && (
+              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <div className="avatar avatar-sm">
+                  {getInitials(analysis.relatedPerson.name)}
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    {analysis.relatedPerson.nickname}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                    {analysis.relatedPerson.name}
+                  </div>
+                </div>
+              </div>
+            )}
 
-        <div className="flex flex-col gap-2" style={{ fontSize: '13px' }}>
-          <div className="flex items-center gap-2 text-slate-200">
-            <Calendar size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-            <span>{formData.date ? formatFullDate(formData.date) : 'Date not specified'}</span>
+            {analysis.relationshipHistory.map((item, i) => (
+              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                  <History size={15} strokeWidth={2} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>
+                    {item.role} — {item.eventName}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                    {formatDate(item.eventDate)}
+                  </div>
+                </div>
+                <CheckCircle2 size={14} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
+              </div>
+            ))}
           </div>
-          {formData.time && (
-            <div className="flex items-center gap-2 text-slate-200">
-              <Clock size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span>{formatTime(formData.time)}</span>
-            </div>
-          )}
-          {(formData.venue || formData.location) && (
-            <div className="flex items-center gap-2 text-slate-200">
-              <MapPin size={14} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span className="truncate">
-                {formData.venue && formData.location ? `${formData.venue}, ${formData.location}` : (formData.venue || formData.location)}
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+        )}
 
-      {/* ── Apple Intelligence Recommendation ──────────────────────────────── */}
-      <div className="apple-intelligence-card mb-3">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff' }} />
-          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            AI Suggested Priority: {analysis.suggestedPriority.toUpperCase()}
-          </span>
-        </div>
-        <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', lineHeight: '1.45' }}>
-          {analysis.priorityReason}
-        </p>
-      </div>
-
-      {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
-      {analysis.scheduleConflicts.length > 0 && (
-        <div className="mb-3">
-          {analysis.scheduleConflicts.map((conflict, i) => (
-            <div key={i} className="conflict-card mb-2">
-              <div className="conflict-icon">
-                <AlertTriangle size={14} strokeWidth={2} />
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
-                  {conflict.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
+        {/* ── Gift History ───────────────────────────────────────────────────── */}
+        {analysis.giftHistory.length > 0 && (
+          <div className="ios-grouped-list mb-3">
+            {analysis.giftHistory.map((gift, i) => (
+              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
+                  <Gift size={15} strokeWidth={2} />
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
-                  {conflict.conflictingItemTitle} at {conflict.conflictingTime}
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{gift.gift}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{gift.eventName}</div>
                 </div>
+                {gift.estimatedValue && (
+                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>
+                    {formatCurrency(gift.estimatedValue)}
+                  </span>
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Protocol History (Grouped List) ─────────────────────────────────── */}
-      {analysis.relationshipHistory.length > 0 && (
-        <div className="ios-grouped-list mb-3">
-          {analysis.relatedPerson && (
-            <div className="ios-grouped-item" style={{ cursor: 'default' }}>
-              <div className="avatar avatar-sm">
-                {getInitials(analysis.relatedPerson.name)}
-              </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                  {analysis.relatedPerson.nickname}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-                  {analysis.relatedPerson.name}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {analysis.relationshipHistory.map((item, i) => (
-            <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
-              <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
-                <History size={15} strokeWidth={2} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: '13px', color: 'var(--color-text-primary)' }}>
-                  {item.role} — {item.eventName}
-                </div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
-                  {formatDate(item.eventDate)}
-                </div>
-              </div>
-              <CheckCircle2 size={14} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Gift History ───────────────────────────────────────────────────── */}
-      {analysis.giftHistory.length > 0 && (
-        <div className="ios-grouped-list mb-3">
-          {analysis.giftHistory.map((gift, i) => (
-            <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
-              <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
-                <Gift size={15} strokeWidth={2} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: '13px', fontWeight: 500 }}>{gift.gift}</div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>{gift.eventName}</div>
-              </div>
-              {gift.estimatedValue && (
-                <span className="badge badge-gold" style={{ flexShrink: 0 }}>
-                  {formatCurrency(gift.estimatedValue)}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Decision Bar ────────────────────────────────────────────────────── */}
@@ -432,7 +432,7 @@ export default function ConfirmIgnoreScreen() {
               disabled={isSaving}
               onClick={() => handleDecision('ignored')}
             >
-              Decline
+              Ignored
             </button>
           </div>
           <button

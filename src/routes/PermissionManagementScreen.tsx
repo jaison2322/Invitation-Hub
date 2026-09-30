@@ -8,8 +8,8 @@ import type { PermissionKey } from '../types';
 const PERMISSION_LABELS: Record<PermissionKey, { label: string; desc: string }> = {
   canAddInvitations: { label: 'Add Invitations', desc: 'Can scan and add new invitations' },
   canConfirmIgnoreInvitations: {
-    label: 'Confirm / Decline Invitations',
-    desc: 'Can directly confirm attendance or decline invitations. When disabled, invitations are saved as Pending.',
+    label: 'Confirm / Ignore Invitations',
+    desc: 'Can directly confirm attendance or ignore invitations. When disabled, invitations are saved as Pending.',
   },
   canEditEvents: { label: 'Edit Events', desc: 'Can modify event details and past events' },
   canChangePriority: { label: 'Change Priority', desc: 'Can change event priority levels' },

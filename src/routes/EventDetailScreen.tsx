@@ -331,229 +331,229 @@ export default function EventDetailScreen() {
       <div className="screen-scroll-body" style={{ paddingBottom: invitation.status === 'pending' ? '100px' : '32px' }}>
         {/* ── Executive Protocol Dossier Pass ─────────────────────────────────── */}
         <div className="hero-event-card mb-4">
-        <div className="flex items-start justify-between mb-3">
-          <EventBadgeIcon type={invitation.eventType} size="hero" showGlow />
-          <div className="flex items-center gap-2">
-            <PriorityBadge priority={invitation.priority} />
-            <span className={`badge badge-${invitation.status}`}>
-              {invitation.status}
-            </span>
-            {canManage && (
-              <button
-                type="button"
-                onClick={handleOpenEditModal}
-                className="badge cursor-pointer flex items-center gap-1"
-                style={{
-                  background: 'rgba(212, 168, 83, 0.15)',
-                  color: 'var(--color-accent)',
-                  border: '1px solid rgba(212, 168, 83, 0.3)',
-                  padding: '3px 8px',
-                  fontSize: '11px',
-                }}
-              >
-                <Edit3 size={11} strokeWidth={2} /> Edit
-              </button>
+          <div className="flex items-start justify-between mb-3">
+            <EventBadgeIcon type={invitation.eventType} size="hero" showGlow />
+            <div className="flex items-center gap-2">
+              <PriorityBadge priority={invitation.priority} />
+              <span className={`badge badge-${invitation.status}`}>
+                {invitation.status}
+              </span>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={handleOpenEditModal}
+                  className="badge cursor-pointer flex items-center gap-1"
+                  style={{
+                    background: 'rgba(212, 168, 83, 0.15)',
+                    color: 'var(--color-accent)',
+                    border: '1px solid rgba(212, 168, 83, 0.3)',
+                    padding: '3px 8px',
+                    fontSize: '11px',
+                  }}
+                >
+                  <Edit3 size={11} strokeWidth={2} /> Edit
+                </button>
+              )}
+            </div>
+          </div>
+
+          <h1
+            className="font-heading font-semibold text-white tracking-tight"
+            style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px' }}
+          >
+            {invitation.nickname || invitation.title}
+          </h1>
+          {invitation.nickname && (
+            <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+              {invitation.title}
+            </p>
+          )}
+
+          <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '12px 0' }} />
+
+          {/* Metadata Details */}
+          <div className="flex flex-col gap-2.5" style={{ fontSize: '13px' }}>
+            <div className="flex items-center gap-2.5 text-slate-200">
+              <Calendar size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+              <span>{formatFullDate(invitation.date)}</span>
+            </div>
+            {invitation.time && (
+              <div className="flex items-center gap-2.5 text-slate-200">
+                <Clock size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                <span>{formatTime(invitation.time)}</span>
+              </div>
+            )}
+            {(invitation.venue || invitation.location) && (
+              <div className="flex items-center gap-2.5 text-slate-200">
+                <MapPin size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
+                <span className="break-words">
+                  {invitation.venue && invitation.location
+                    ? `${invitation.venue}, ${invitation.location}`
+                    : (invitation.venue || invitation.location)}
+                </span>
+              </div>
+            )}
+            {invitation.mainPerson && (
+              <div className="flex items-center gap-2.5 text-slate-200">
+                <User size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
+                <span>Hosted by {invitation.mainPerson}</span>
+              </div>
             )}
           </div>
         </div>
 
-        <h1
-          className="font-heading font-semibold text-white tracking-tight"
-          style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px' }}
-        >
-          {invitation.nickname || invitation.title}
-        </h1>
-        {invitation.nickname && (
-          <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
-            {invitation.title}
-          </p>
+        {/* ── Original Invitation Photo Card ─────────────────────────────────── */}
+        {photoUrl && (
+          <div className="ios-card mb-4 overflow-hidden">
+            <div className="flex items-center justify-between mb-2.5">
+              <div className="flex items-center gap-2">
+                <FileText size={15} style={{ color: 'var(--color-accent)' }} />
+                <span className="text-xs font-semibold text-white tracking-wide uppercase">
+                  Original Invitation Photo
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImageModal(true)}
+                className="text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
+                style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
+                aria-label="View Full Invitation"
+              >
+                <Maximize2 size={13} /> View Full
+              </button>
+            </div>
+            <div
+              className="relative rounded-lg overflow-hidden cursor-pointer group"
+              style={{ maxHeight: '240px', background: 'rgba(0, 0, 0, 0.4)', border: '1px solid var(--glass-border)' }}
+              onClick={() => setShowImageModal(true)}
+            >
+              <img
+                src={photoUrl}
+                alt={invitation.title}
+                className="w-full h-auto object-cover max-h-60 rounded-lg transition-transform duration-300 group-hover:scale-105"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <span className="badge badge-gold flex items-center gap-1.5 shadow-lg">
+                  <Maximize2 size={12} /> Tap to view full size
+                </span>
+              </div>
+            </div>
+          </div>
         )}
 
-        <div style={{ height: '0.5px', background: 'var(--color-separator)', margin: '12px 0' }} />
-
-        {/* Metadata Details */}
-        <div className="flex flex-col gap-2.5" style={{ fontSize: '13px' }}>
-          <div className="flex items-center gap-2.5 text-slate-200">
-            <Calendar size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-            <span>{formatFullDate(invitation.date)}</span>
+        {/* ── Apple Intelligence Analysis ────────────────────────────────────── */}
+        {invitation.aiReason && (
+          <div className="apple-intelligence-card mb-4">
+            <div className="flex items-start gap-2.5">
+              <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff', flexShrink: 0, marginTop: '2px' }} />
+              <div style={{ fontSize: '13px', lineHeight: '1.45', color: 'var(--color-text-secondary)' }}>
+                <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>Strategic Briefing: </strong>
+                {invitation.aiReason}
+              </div>
+            </div>
           </div>
-          {invitation.time && (
-            <div className="flex items-center gap-2.5 text-slate-200">
-              <Clock size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span>{formatTime(invitation.time)}</span>
-            </div>
-          )}
-          {(invitation.venue || invitation.location) && (
-            <div className="flex items-center gap-2.5 text-slate-200">
-              <MapPin size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)', flexShrink: 0 }} />
-              <span className="break-words">
-                {invitation.venue && invitation.location
-                  ? `${invitation.venue}, ${invitation.location}`
-                  : (invitation.venue || invitation.location)}
-              </span>
-            </div>
-          )}
-          {invitation.mainPerson && (
-            <div className="flex items-center gap-2.5 text-slate-200">
-              <User size={15} strokeWidth={1.8} style={{ color: 'var(--color-accent)' }} />
-              <span>Hosted by {invitation.mainPerson}</span>
-            </div>
-          )}
-        </div>
-      </div>
+        )}
 
-      {/* ── Original Invitation Photo Card ─────────────────────────────────── */}
-      {photoUrl && (
-        <div className="ios-card mb-4 overflow-hidden">
-          <div className="flex items-center justify-between mb-2.5">
-            <div className="flex items-center gap-2">
-              <FileText size={15} style={{ color: 'var(--color-accent)' }} />
-              <span className="text-xs font-semibold text-white tracking-wide uppercase">
-                Original Invitation Photo
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowImageModal(true)}
-              className="text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
-              style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
-              aria-label="View Full Invitation"
+        {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
+        {conflicts.length > 0 && (
+          <div className="mb-4">
+            {conflicts.map((c, i) => (
+              <div key={i} className="conflict-card mb-2">
+                <div className="conflict-icon">
+                  <AlertTriangle size={14} strokeWidth={2} />
+                </div>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
+                    {c.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+                    {c.conflictingItemTitle} at {c.conflictingTime}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Host Profile Inset Link ────────────────────────────────────────── */}
+        {person && (
+          <div className="ios-grouped-list mb-4">
+            <div
+              className="ios-grouped-item"
+              onClick={() => navigate(`/person/${person.id}`)}
             >
-              <Maximize2 size={13} /> View Full
-            </button>
-          </div>
-          <div
-            className="relative rounded-lg overflow-hidden cursor-pointer group"
-            style={{ maxHeight: '240px', background: 'rgba(0, 0, 0, 0.4)', border: '1px solid var(--glass-border)' }}
-            onClick={() => setShowImageModal(true)}
-          >
-            <img
-              src={photoUrl}
-              alt={invitation.title}
-              className="w-full h-auto object-cover max-h-60 rounded-lg transition-transform duration-300 group-hover:scale-105"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-              <span className="badge badge-gold flex items-center gap-1.5 shadow-lg">
-                <Maximize2 size={12} /> Tap to view full size
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Apple Intelligence Analysis ────────────────────────────────────── */}
-      {invitation.aiReason && (
-        <div className="apple-intelligence-card mb-4">
-          <div className="flex items-start gap-2.5">
-            <Sparkles size={16} strokeWidth={2} style={{ color: '#64d2ff', flexShrink: 0, marginTop: '2px' }} />
-            <div style={{ fontSize: '13px', lineHeight: '1.45', color: 'var(--color-text-secondary)' }}>
-              <strong style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>Strategic Briefing: </strong>
-              {invitation.aiReason}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Schedule Conflicts ──────────────────────────────────────────────── */}
-      {conflicts.length > 0 && (
-        <div className="mb-4">
-          {conflicts.map((c, i) => (
-            <div key={i} className="conflict-card mb-2">
-              <div className="conflict-icon">
-                <AlertTriangle size={14} strokeWidth={2} />
+              <div className="avatar avatar-sm">
+                {getInitials(person.name)}
               </div>
-              <div>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-danger)' }}>
-                  {c.type === 'time_overlap' ? 'Time Overlap Conflict' : 'Same Day Event'}
-                </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                  {c.conflictingItemTitle} at {c.conflictingTime}
+              <div className="flex-1 min-w-0">
+                <div style={{ fontSize: '14px', fontWeight: 600 }}>{person.nickname}</div>
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                  {person.name} · {getRelationshipLabel(person.relationship)}
                 </div>
               </div>
+              <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
             </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── Host Profile Inset Link ────────────────────────────────────────── */}
-      {person && (
-        <div className="ios-grouped-list mb-4">
-          <div
-            className="ios-grouped-item"
-            onClick={() => navigate(`/person/${person.id}`)}
-          >
-            <div className="avatar avatar-sm">
-              {getInitials(person.name)}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div style={{ fontSize: '14px', fontWeight: 600 }}>{person.nickname}</div>
-              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                {person.name} · {getRelationshipLabel(person.relationship)}
-              </div>
-            </div>
-            <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
           </div>
-        </div>
-      )}
+        )}
 
-      {/* ── Relationship History ───────────────────────────────────────────── */}
-      {relHistory.length > 0 && (
-        <section className="mb-4">
-          <div className="section-header">
-            <span className="section-title">Protocol History</span>
-          </div>
+        {/* ── Relationship History ───────────────────────────────────────────── */}
+        {relHistory.length > 0 && (
+          <section className="mb-4">
+            <div className="section-header">
+              <span className="section-title">Protocol History</span>
+            </div>
 
-          <div className="ios-grouped-list">
-            {relHistory.map((item, i) => (
-              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
-                <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
-                  <History size={16} strokeWidth={2} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)' }}>
-                    {item.role} — {item.eventName}
+            <div className="ios-grouped-list">
+              {relHistory.map((item, i) => (
+                <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                  <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                    <History size={16} strokeWidth={2} />
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
-                    {formatDate(item.eventDate)}
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)' }}>
+                      {item.role} — {item.eventName}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                      {formatDate(item.eventDate)}
+                    </div>
                   </div>
+                  <CheckCircle2 size={15} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
                 </div>
-                <CheckCircle2 size={15} strokeWidth={2} style={{ color: 'var(--color-confirmed)', flexShrink: 0 }} />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )}
 
-      {/* ── Gift History ───────────────────────────────────────────────────── */}
-      {giftHist.length > 0 && (
-        <section className="mb-4">
-          <div className="section-header">
-            <span className="section-title">Gift Registry Record</span>
-          </div>
+        {/* ── Gift History ───────────────────────────────────────────────────── */}
+        {giftHist.length > 0 && (
+          <section className="mb-4">
+            <div className="section-header">
+              <span className="section-title">Gift Registry Record</span>
+            </div>
 
-          <div className="ios-grouped-list">
-            {giftHist.map((g, i) => (
-              <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
-                <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
-                  <Gift size={16} strokeWidth={2} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div style={{ fontSize: '13px', fontWeight: 500 }}>{g.gift}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
-                    {g.eventName}
+            <div className="ios-grouped-list">
+              {giftHist.map((g, i) => (
+                <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
+                  <div className="ios-icon-squircle" style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}>
+                    <Gift size={16} strokeWidth={2} />
                   </div>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: '13px', fontWeight: 500 }}>{g.gift}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                      {g.eventName}
+                    </div>
+                  </div>
+                  {g.estimatedValue && (
+                    <span className="badge badge-gold" style={{ flexShrink: 0 }}>
+                      {formatCurrency(g.estimatedValue)}
+                    </span>
+                  )}
                 </div>
-                {g.estimatedValue && (
-                  <span className="badge badge-gold" style={{ flexShrink: 0 }}>
-                    {formatCurrency(g.estimatedValue)}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+              ))}
+            </div>
+          </section>
+        )}
       </div>
 
       {/* ── Decision Bar for Pending Events ────────────────────────────────── */}
@@ -578,7 +578,7 @@ export default function EventDetailScreen() {
                 navigate(-1);
               }}
             >
-              Decline
+              Ignored
             </button>
           </div>
         ) : (
@@ -716,9 +716,8 @@ export default function EventDetailScreen() {
                     <button
                       key={p}
                       type="button"
-                      className={`btn flex-1 text-xs capitalize ${
-                        editPriority === p ? 'btn-gold' : 'btn-outline'
-                      }`}
+                      className={`btn flex-1 text-xs capitalize ${editPriority === p ? 'btn-gold' : 'btn-outline'
+                        }`}
                       style={{ padding: '8px 6px' }}
                       onClick={() => setEditPriority(p)}
                     >
@@ -737,19 +736,18 @@ export default function EventDetailScreen() {
                       <button
                         key={s}
                         type="button"
-                        className={`btn flex-1 text-xs capitalize ${
-                          editStatus === s
+                        className={`btn flex-1 text-xs capitalize ${editStatus === s
                             ? s === 'confirmed'
                               ? 'btn-confirm'
                               : s === 'ignored'
-                              ? 'btn-ignore'
-                              : 'btn-gold'
+                                ? 'btn-ignore'
+                                : 'btn-gold'
                             : 'btn-outline'
-                        }`}
+                          }`}
                         style={{ padding: '8px 6px' }}
                         onClick={() => setEditStatus(s)}
                       >
-                        {s === 'ignored' ? 'Declined' : s}
+                        {s === 'ignored' ? 'Ignored' : s}
                       </button>
                     ))}
                   </div>

@@ -180,7 +180,7 @@ export default function PeopleListScreen() {
         <div className="search-bar mb-3">
           <Search size={16} className="search-bar-icon" />
           <input
-            placeholder="Search by name, nickname, or tier..."
+            placeholder="Search by name or nickname"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -210,66 +210,66 @@ export default function PeopleListScreen() {
       <div className="screen-scroll-body">
         {/* ── Apple Inset Grouped Contact List ────────────────────────────────── */}
         {filtered.length > 0 ? (
-        <div className="ios-grouped-list">
-          {filtered.map((person) => (
-            <div
-              key={person.id}
-              className="ios-grouped-item"
-              onClick={() => navigate(`/person/${person.id}`)}
-            >
-              <div className="avatar avatar-sm">
-                {getInitials(person.name)}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-                  {person.nickname || person.name}
+          <div className="ios-grouped-list">
+            {filtered.map((person) => (
+              <div
+                key={person.id}
+                className="ios-grouped-item"
+                onClick={() => navigate(`/person/${person.id}`)}
+              >
+                <div className="avatar avatar-sm">
+                  {getInitials(person.name)}
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
-                  {person.name}
+
+                <div className="flex-1 min-w-0">
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                    {person.nickname || person.name}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                    {person.name}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                  <span className="badge badge-info">
+                    {getRelationshipLabel(person.relationship)}
+                  </span>
+
+                  {canManagePeople && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: '28px', height: '28px' }}
+                      title="Edit Contact"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleOpenEdit(person);
+                      }}
+                    >
+                      <Edit3 size={13} strokeWidth={1.8} />
+                    </button>
+                  )}
+                  <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
                 </div>
               </div>
-
-              <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
-                <span className="badge badge-info">
-                  {getRelationshipLabel(person.relationship)}
-                </span>
-
-                {canManagePeople && (
-                  <button
-                    type="button"
-                    className="btn-icon"
-                    style={{ width: '28px', height: '28px' }}
-                    title="Edit Contact"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleOpenEdit(person);
-                    }}
-                  >
-                    <Edit3 size={13} strokeWidth={1.8} />
-                  </button>
-                )}
-                <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
-              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">
+            <div className="empty-state-icon">
+              <Users size={24} strokeWidth={1.8} />
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="empty-state">
-          <div className="empty-state-icon">
-            <Users size={24} strokeWidth={1.8} />
+            <div className="empty-state-title" style={{ fontSize: '18px' }}>No Contacts Found</div>
+            <div className="empty-state-text" style={{ fontSize: '13px' }}>
+              {search ? 'No contacts match your query.' : 'Add your executive contacts to begin.'}
+            </div>
+            {canManagePeople && (
+              <button className="btn btn-gold mt-4" onClick={handleOpenAdd}>
+                Add First Contact
+              </button>
+            )}
           </div>
-          <div className="empty-state-title" style={{ fontSize: '18px' }}>No Contacts Found</div>
-          <div className="empty-state-text" style={{ fontSize: '13px' }}>
-            {search ? 'No contacts match your query.' : 'Add your executive contacts to begin.'}
-          </div>
-          {canManagePeople && (
-            <button className="btn btn-gold mt-4" onClick={handleOpenAdd}>
-              Add First Contact
-            </button>
-          )}
-        </div>
-      )}
+        )}
       </div>
 
       {/* ─── MODAL: ADD / EDIT PERSON ───────────────────────────────────────── */}

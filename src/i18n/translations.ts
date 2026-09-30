@@ -2,6 +2,7 @@ import type { LanguageCode } from '../types';
 
 export interface TranslationDictionary {
   nav: {
+    home: string;
     briefing: string;
     events: string;
     scanner: string;
@@ -174,7 +175,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 1. ENGLISH ─────────────────────────────────────────────────────────────
   en: {
     nav: {
-      briefing: 'Briefing',
+      home: 'Home',
+      briefing: 'Home',
       events: 'Events',
       scanner: 'Scanner',
       contacts: 'Contacts',
@@ -242,20 +244,20 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       title: 'Invitation Dashboard',
       all: 'All Events',
       confirmed: 'Confirmed',
-      pending: 'Pending Review',
-      ignored: 'Declined / Ignored',
+      pending: 'Pending',
+      ignored: 'Ignored',
       addInvitation: 'Record Invitation',
       searchEvents: 'Search invitations & events...',
       noEventsFound: 'No invitations match criteria',
       suggestedPriority: 'AI Recommended Protocol',
       protocolReason: 'Protocol Advice',
       confirmAttendance: 'Confirm Attendance',
-      declineIgnore: 'Decline / Ignore',
+      declineIgnore: 'Ignored',
       viewProtocol: 'View Protocol Details',
       priorityRequired: 'High Attention Required',
     },
     contacts: {
-      title: 'VIP Registry',
+      title: 'Contacts',
       searchContacts: 'Search contacts & dignitaries...',
       addContact: 'Add Contact',
       vipRegistry: 'Directory & Relationships',
@@ -345,7 +347,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 2. HINDI (हिन्दी) ─────────────────────────────────────────────────────
   hi: {
     nav: {
-      briefing: 'ब्रीफिंग',
+      home: 'होम',
+      briefing: 'होम',
       events: 'निमंत्रण',
       scanner: 'स्कैनर',
       contacts: 'संपर्क',
@@ -426,7 +429,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       priorityRequired: 'विशेष ध्यान अपेक्षित',
     },
     contacts: {
-      title: 'वीआईपी संपर्क सूची',
+      title: 'संपर्क',
       searchContacts: 'संपर्क या गणमान्य खोजें...',
       addContact: 'नया वीआईपी जोड़ें',
       vipRegistry: 'निर्देशिका और संबंध',
@@ -516,7 +519,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 3. TAMIL (தமிழ்) ──────────────────────────────────────────────────────
   ta: {
     nav: {
-      briefing: 'சுருக்கம்',
+      home: 'முகப்பு',
+      briefing: 'முகப்பு',
       events: 'நிகழ்வுகள்',
       scanner: 'ஸ்கேனர்',
       contacts: 'தொடர்புகள்',
@@ -597,7 +601,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       priorityRequired: 'முக்கிய கவனம் தேவை',
     },
     contacts: {
-      title: 'விஐபி தொடர்புகள்',
+      title: 'தொடர்புகள்',
       searchContacts: 'தொடர்புகளைத் தேடு...',
       addContact: 'தொடர்பைச் சேர்க்க',
       vipRegistry: 'தொடர்புகள் & உறவுகள்',
@@ -687,7 +691,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 4. TELUGU (తెలుగు) ────────────────────────────────────────────────────
   te: {
     nav: {
-      briefing: 'సమీక్ష',
+      home: 'హోమ్',
+      briefing: 'హోమ్',
       events: 'ఈవెంట్లు',
       scanner: 'స్కానర్',
       contacts: 'పరిచయాలు',
@@ -768,7 +773,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       priorityRequired: 'ప్రత్యేక శ్రద్ధ అవసరం',
     },
     contacts: {
-      title: 'విఐపి పరిచయాలు',
+      title: 'పరిచయాలు',
       searchContacts: 'పరిచయాల కోసం వెతకండి...',
       addContact: 'విఐపిని చేర్చండి',
       vipRegistry: 'డైరెక్టరీ & సంబంధాలు',
@@ -858,7 +863,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 5. KANNADA (ಕನ್ನಡ) ────────────────────────────────────────────────────
   kn: {
     nav: {
-      briefing: 'ವಿವರಣೆ',
+      home: 'ಮುಖಪುಟ',
+      briefing: 'ಮುಖಪುಟ',
       events: 'ಕಾರ್ಯಕ್ರಮಗಳು',
       scanner: 'ಸ್ಕ್ಯಾನರ್',
       contacts: 'ಸಂಪರ್ಕಗಳು',
@@ -939,7 +945,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       priorityRequired: 'ವಿಶೇಷ ಗಮನದ ಅಗತ್ಯವಿದೆ',
     },
     contacts: {
-      title: 'ವಿಐಪಿ ಸಂಪರ್ಕಗಳು',
+      title: 'ಸಂಪರ್ಕಗಳು',
       searchContacts: 'ಸಂಪರ್ಕಗಳನ್ನು ಹುಡುಕಿ...',
       addContact: 'ವಿಐಪಿ ಸೇರಿಸಿ',
       vipRegistry: 'ಸಂಪರ್ಕ ಪಟ್ಟಿ & ಸಂಬಂಧಗಳು',
@@ -1029,7 +1035,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 6. MALAYALAM (മലയാളം) ────────────────────────────────────────────────
   ml: {
     nav: {
-      briefing: 'ചുരുക്കം',
+      home: 'ഹോം',
+      briefing: 'ഹോം',
       events: 'പരിപാടികൾ',
       scanner: 'സ്കാനർ',
       contacts: 'സമ്പർക്കങ്ങൾ',
@@ -1110,7 +1117,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       priorityRequired: 'പ്രത്യേക ശ്രദ്ധ ആവശ്യമാണ്',
     },
     contacts: {
-      title: 'വിഐപി സമ്പർക്കങ്ങൾ',
+      title: 'സമ്പർക്കങ്ങൾ',
       searchContacts: 'വ്യക്തികളെ തിരയുക...',
       addContact: 'വിഐപി ചേർക്കുക',
       vipRegistry: 'ഡയറക്ടറിയും ബന്ധങ്ങളും',
@@ -1200,7 +1207,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 7. SPANISH (Español) ──────────────────────────────────────────────────
   es: {
     nav: {
-      briefing: 'Informe',
+      home: 'Inicio',
+      briefing: 'Inicio',
       events: 'Eventos',
       scanner: 'Escáner',
       contacts: 'Contactos',
@@ -1269,19 +1277,19 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       all: 'Todos los Eventos',
       confirmed: 'Confirmado',
       pending: 'Pendiente',
-      ignored: 'Rechazado',
+      ignored: 'Ignorar',
       addInvitation: 'Registrar Invitación',
       searchEvents: 'Buscar eventos e invitaciones...',
       noEventsFound: 'No se encontraron eventos',
       suggestedPriority: 'Prioridad Sugerida por IA',
       protocolReason: 'Consejo de Protocolo',
       confirmAttendance: 'Confirmar Asistencia',
-      declineIgnore: 'Rechazar / Ignorar',
+      declineIgnore: 'Ignorar',
       viewProtocol: 'Ver Detalles del Protocolo',
       priorityRequired: 'Atención Prioritaria Requerida',
     },
     contacts: {
-      title: 'Registro VIP',
+      title: 'Contactos',
       searchContacts: 'Buscar contactos y dignatarios...',
       addContact: 'Añadir Contacto',
       vipRegistry: 'Directorio y Relaciones',
@@ -1371,7 +1379,8 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
   // ── 8. FRENCH (Français) ──────────────────────────────────────────────────
   fr: {
     nav: {
-      briefing: 'Briefing',
+      home: 'Accueil',
+      briefing: 'Accueil',
       events: 'Événements',
       scanner: 'Scanner',
       contacts: 'Contacts',
@@ -1440,19 +1449,19 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
       all: 'Tous les Événements',
       confirmed: 'Confirmé',
       pending: 'En Attente',
-      ignored: 'Décliné / Ignoré',
+      ignored: 'Ignorer',
       addInvitation: 'Enregistrer une Invitation',
       searchEvents: 'Rechercher invitations et événements...',
       noEventsFound: 'Aucun événement correspondant',
       suggestedPriority: 'Priorité Recommandée par IA',
       protocolReason: 'Conseil Protocolaire',
       confirmAttendance: 'Confirmer la Présence',
-      declineIgnore: 'Décliner / Ignorer',
+      declineIgnore: 'Ignorer',
       viewProtocol: 'Voir Détails du Protocole',
       priorityRequired: 'Attention Prioritaire Requise',
     },
     contacts: {
-      title: 'Annuaire VIP',
+      title: 'Contacts',
       searchContacts: 'Rechercher contacts & dignitaires...',
       addContact: 'Ajouter un Contact',
       vipRegistry: 'Annuaire & Relations',
