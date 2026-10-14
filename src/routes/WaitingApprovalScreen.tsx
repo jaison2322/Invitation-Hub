@@ -122,14 +122,14 @@ export default function WaitingApprovalScreen() {
                   width: '32px',
                   height: '32px',
                   borderRadius: '10px',
-                  background: 'rgba(10, 132, 255, 0.12)',
+                  background: 'rgba(212, 175, 55, 0.15)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexShrink: 0,
                 }}
               >
-                <Shield size={17} style={{ color: 'var(--color-accent, #0a84ff)' }} />
+                <Shield size={17} style={{ color: 'var(--color-gold, #D4AF37)' }} />
               </div>
               <span
                 style={{
@@ -200,7 +200,7 @@ export default function WaitingApprovalScreen() {
               </span>
               <span
                 style={{
-                  color: 'var(--color-accent, #0a84ff)',
+                  color: 'var(--color-gold, #D4AF37)',
                   fontFamily: 'var(--font-mono)',
                   fontWeight: 600,
                 }}

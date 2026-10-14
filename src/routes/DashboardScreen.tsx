@@ -419,7 +419,7 @@ export default function DashboardScreen() {
                 <div className="ios-grouped-list">
                   {todaySchedule.map((item) => (
                     <div key={item.id} className="ios-grouped-item">
-                      <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                      <div className="ios-icon-squircle" style={{ background: 'rgba(212, 175, 55, 0.18)', color: 'var(--color-gold)' }}>
                         <Calendar size={16} strokeWidth={2} />
                       </div>
                       <div className="flex-1">
@@ -487,7 +487,7 @@ export default function DashboardScreen() {
                   className="ios-grouped-item"
                   onClick={() => navigate('/past-events')}
                 >
-                  <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                  <div className="ios-icon-squircle" style={{ background: 'rgba(212, 175, 55, 0.18)', color: 'var(--color-gold)' }}>
                     <Users size={16} strokeWidth={2} />
                   </div>
                   <div className="flex-1">

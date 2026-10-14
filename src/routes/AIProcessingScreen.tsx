@@ -272,26 +272,27 @@ export default function AIProcessingScreen() {
   return (
     <div className="screen-no-nav flex flex-col items-center justify-center" style={{ minHeight: '100vh' }}>
       <div style={{ width: '100%', maxWidth: '340px', padding: '0 16px' }}>
-        {/* Apple Intelligence Glowing Ring Centerpiece */}
+        {/* AI Intelligence Glowing Ring Centerpiece */}
         <div
           style={{
             width: '64px',
             height: '64px',
             borderRadius: '20px',
-            background: 'rgba(28, 28, 30, 0.9)',
-            border: '1px solid rgba(100, 180, 255, 0.4)',
-            boxShadow: '0 0 24px rgba(100, 180, 255, 0.25), 0 0 40px rgba(180, 100, 255, 0.15)',
+            background: 'linear-gradient(135deg, rgba(28, 28, 30, 0.95), rgba(44, 38, 20, 0.9))',
+            border: '1.5px solid rgba(212, 175, 55, 0.5)',
+            boxShadow: '0 0 30px rgba(212, 175, 55, 0.35), 0 0 60px rgba(232, 197, 71, 0.2)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 20px',
-            color: '#64d2ff',
+            color: 'var(--color-gold, #D4AF37)',
+            animation: 'pulse 2.5s ease-in-out infinite',
           }}
         >
           <Sparkles size={28} strokeWidth={1.8} />
         </div>
 
-        <h2 className="font-heading font-semibold text-white text-center" style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px' }}>
+        <h2 className="font-heading font-semibold text-center" style={{ fontSize: '20px', letterSpacing: '-0.02em', marginBottom: '4px', color: 'var(--color-text-primary)' }}>
           Analysing
         </h2>
         <p className="text-center" style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '28px' }}>
@@ -321,13 +322,13 @@ export default function AIProcessingScreen() {
                     step.status === 'completed'
                       ? 'rgba(48, 209, 88, 0.15)'
                       : step.status === 'active'
-                      ? 'rgba(10, 132, 255, 0.15)'
+                      ? 'rgba(212, 175, 55, 0.18)'
                       : 'rgba(255, 255, 255, 0.05)',
                   color:
                     step.status === 'completed'
                       ? '#30d158'
                       : step.status === 'active'
-                      ? '#0a84ff'
+                      ? 'var(--color-gold, #D4AF37)'
                       : 'var(--color-text-muted)',
                 }}
               >

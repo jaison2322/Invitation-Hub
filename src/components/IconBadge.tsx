@@ -17,7 +17,7 @@ interface IconBadgeProps {
 }
 
 const VARIANT_COLORS: Record<IconBadgeVariant, { color: string; bg: string }> = {
-  gold: { color: 'var(--color-apple-blue)', bg: 'rgba(10, 132, 255, 0.15)' },
+  gold: { color: '#D4AF37', bg: 'rgba(212, 175, 55, 0.15)' },
   emerald: { color: 'var(--color-apple-green)', bg: 'rgba(48, 209, 88, 0.15)' },
   amber: { color: 'var(--color-apple-orange)', bg: 'rgba(255, 159, 10, 0.15)' },
   rose: { color: 'var(--color-apple-red)', bg: 'rgba(255, 69, 58, 0.15)' },

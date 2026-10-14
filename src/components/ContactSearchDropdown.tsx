@@ -179,7 +179,7 @@ export default function ContactSearchDropdown({
               style={{
                 fontSize: '11px',
                 fontWeight: 600,
-                background: 'var(--color-gold, #0a84ff)',
+                background: 'var(--color-gold, #D4AF37)',
                 color: '#fff',
                 border: 'none',
                 borderRadius: '6px',
@@ -253,9 +253,9 @@ export default function ContactSearchDropdown({
                               fontSize: '9px',
                               padding: '1px 5px',
                               borderRadius: '4px',
-                              background: 'rgba(10, 132, 255, 0.15)',
-                              color: 'var(--color-accent, #0a84ff)',
-                              border: '0.5px solid rgba(10, 132, 255, 0.3)',
+                              background: 'rgba(212, 175, 55, 0.15)',
+                              color: 'var(--color-gold, #D4AF37)',
+                              border: '0.5px solid rgba(212, 175, 55, 0.35)',
                               fontWeight: 500,
                             }}
                           >
@@ -374,10 +374,10 @@ export default function ContactSearchDropdown({
                     padding: '12px 14px',
                     borderRadius: 'var(--radius-md, 10px)',
                     border: selectedPhoneOption === phone
-                      ? '1px solid var(--color-gold, #0a84ff)'
+                      ? '1px solid var(--color-gold, #D4AF37)'
                       : '1px solid rgba(255, 255, 255, 0.1)',
                     background: selectedPhoneOption === phone
-                      ? 'rgba(10, 132, 255, 0.12)'
+                      ? 'rgba(212, 175, 55, 0.15)'
                       : 'rgba(255, 255, 255, 0.03)',
                     display: 'flex',
                     alignItems: 'center',
@@ -386,13 +386,13 @@ export default function ContactSearchDropdown({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Phone size={14} style={{ color: selectedPhoneOption === phone ? 'var(--color-gold, #0a84ff)' : 'inherit' }} />
+                    <Phone size={14} style={{ color: selectedPhoneOption === phone ? 'var(--color-gold, #D4AF37)' : 'inherit' }} />
                     <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary, #ffffff)' }}>
                       {phone}
                     </span>
                   </div>
                   {selectedPhoneOption === phone && (
-                    <Check size={16} style={{ color: 'var(--color-gold, #0a84ff)' }} />
+                    <Check size={16} style={{ color: 'var(--color-gold, #D4AF37)' }} />
                   )}
                 </div>
               ))}

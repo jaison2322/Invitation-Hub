@@ -527,7 +527,7 @@ export default function EventDetailScreen() {
             <div className="ios-grouped-list">
               {relHistory.map((item, i) => (
                 <div key={i} className="ios-grouped-item" style={{ cursor: 'default' }}>
-                  <div className="ios-icon-squircle" style={{ background: 'rgba(10, 132, 255, 0.15)', color: '#0a84ff' }}>
+                  <div className="ios-icon-squircle" style={{ background: 'rgba(212, 175, 55, 0.18)', color: 'var(--color-gold)' }}>
                     <History size={16} strokeWidth={2} />
                   </div>
                   <div className="flex-1 min-w-0">

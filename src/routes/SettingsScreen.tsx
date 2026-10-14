@@ -304,7 +304,7 @@ export default function SettingsScreen() {
       id: 'light' as const,
       name: t('settings.themeLight'),
       desc: t('settings.themeLightDesc'),
-      icon: <Sun size={22} color="#0a84ff" style={{ color: '#0a84ff', stroke: '#0a84ff' }} strokeWidth={2} />,
+      icon: <Sun size={22} color="var(--color-gold)" style={{ color: 'var(--color-gold)', stroke: 'var(--color-gold)' }} strokeWidth={2} />,
       previewBg: '#f8fafc',
       previewBorder: 'rgba(15, 23, 42, 0.12)',
     },
@@ -747,7 +747,7 @@ export default function SettingsScreen() {
           <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
             <div className="modal-handle" />
             <div className="flex items-center gap-2 mb-2">
-              <Globe size={20} className="text-apple-blue" />
+              <Globe size={20} style={{ color: 'var(--color-gold)' }} />
               <h3 style={{ margin: 0 }}>{t('settings.selectLanguage')}</h3>
             </div>
             <p className="text-xs text-secondary mb-4">
@@ -760,12 +760,12 @@ export default function SettingsScreen() {
                 return (
                   <div
                     key={langOpt.code}
-                    className={`glass-card flex items-center justify-between p-3 ${isSelected ? 'glass-card-blue' : ''
+                    className={`glass-card flex items-center justify-between p-3 ${isSelected ? 'glass-card-gold' : ''
                       }`}
                     style={{
                       cursor: 'pointer',
-                      border: isSelected ? '1px solid var(--color-accent)' : '1px solid var(--glass-border)',
-                      background: isSelected ? 'rgba(10, 132, 255, 0.12)' : undefined,
+                      border: isSelected ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                      background: isSelected ? 'rgba(212, 175, 55, 0.15)' : undefined,
                       borderRadius: 'var(--radius-lg)',
                     }}
                     onClick={() => {
@@ -779,15 +779,23 @@ export default function SettingsScreen() {
                           width: '38px',
                           height: '38px',
                           borderRadius: 'var(--radius-md)',
-                          background: 'rgba(255, 255, 255, 0.05)',
+                          background: isSelected ? 'rgba(212, 175, 55, 0.18)' : 'rgba(255, 255, 255, 0.05)',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          fontSize: '18px',
-                          border: '1px solid var(--glass-border)',
+                          border: isSelected ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
                         }}
                       >
-                        {langOpt.flag || '🌐'}
+                        <span
+                          className="font-mono font-bold"
+                          style={{
+                            fontSize: '13px',
+                            color: isSelected ? 'var(--color-gold)' : 'var(--color-text-secondary)',
+                            letterSpacing: '0.04em',
+                          }}
+                        >
+                          {langOpt.code.toUpperCase()}
+                        </span>
                       </div>
                       <div>
                         <div

@@ -177,8 +177,8 @@ export default function ScanInvitationScreen() {
                   left: '12px',
                   width: '20px',
                   height: '20px',
-                  borderTop: '2px solid #0a84ff',
-                  borderLeft: '2px solid #0a84ff',
+                  borderTop: '2px solid var(--color-gold, #D4AF37)',
+                  borderLeft: '2px solid var(--color-gold, #D4AF37)',
                   borderRadius: '4px 0 0 0',
                 }}
               />
@@ -189,8 +189,8 @@ export default function ScanInvitationScreen() {
                   right: '12px',
                   width: '20px',
                   height: '20px',
-                  borderTop: '2px solid #0a84ff',
-                  borderRight: '2px solid #0a84ff',
+                  borderTop: '2px solid var(--color-gold, #D4AF37)',
+                  borderRight: '2px solid var(--color-gold, #D4AF37)',
                   borderRadius: '0 4px 0 0',
                 }}
               />
@@ -201,8 +201,8 @@ export default function ScanInvitationScreen() {
                   left: '12px',
                   width: '20px',
                   height: '20px',
-                  borderBottom: '2px solid #0a84ff',
-                  borderLeft: '2px solid #0a84ff',
+                  borderBottom: '2px solid var(--color-gold, #D4AF37)',
+                  borderLeft: '2px solid var(--color-gold, #D4AF37)',
                   borderRadius: '0 0 0 4px',
                 }}
               />
@@ -213,8 +213,8 @@ export default function ScanInvitationScreen() {
                   right: '12px',
                   width: '20px',
                   height: '20px',
-                  borderBottom: '2px solid #0a84ff',
-                  borderRight: '2px solid #0a84ff',
+                  borderBottom: '2px solid var(--color-gold, #D4AF37)',
+                  borderRight: '2px solid var(--color-gold, #D4AF37)',
                   borderRadius: '0 0 4px 0',
                 }}
               />
@@ -225,15 +225,16 @@ export default function ScanInvitationScreen() {
                   width: '52px',
                   height: '52px',
                   borderRadius: '16px',
-                  background: 'rgba(10, 132, 255, 0.15)',
-                  color: '#0a84ff',
+                  background: 'rgba(212, 175, 55, 0.15)',
+                  color: 'var(--color-gold, #D4AF37)',
                   marginBottom: '16px',
+                  boxShadow: '0 0 20px rgba(212, 175, 55, 0.2)',
                 }}
               >
                 <Camera size={24} strokeWidth={1.8} />
               </div>
 
-              <h2 className="font-heading font-semibold text-white mb-1" style={{ fontSize: '17px' }}>
+              <h2 className="font-heading font-semibold mb-1" style={{ fontSize: '17px', color: 'var(--color-text-primary)' }}>
                 Capture Invitation Card
               </h2>
               <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', maxWidth: '240px' }}>
