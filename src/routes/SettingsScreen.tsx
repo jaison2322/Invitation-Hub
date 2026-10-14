@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -6,7 +6,6 @@ import {
   Lock,
   Bell,
   Palette,
-  Database,
   FileSpreadsheet,
   Info,
   LogOut,
@@ -16,18 +15,19 @@ import {
   Check,
   Moon,
   Sun,
-  Sparkles,
   ShieldAlert,
   Phone,
   Globe,
   History,
   UserCheck,
+  AlertCircle,
+  FileText,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
-import { exportToExcel } from '../services/exportService';
+import { exportUpcomingEventsToExcel, exportUpcomingEventsToPdf } from '../services/exportService';
 import { useTranslation } from '../i18n/useTranslation';
-import { permissionService } from '../services/permissionService';
 import { mobileNotificationService } from '../services/mobileNotificationService';
+import appLogo from '../assets/icon.png';
 
 export default function SettingsScreen() {
   const navigate = useNavigate();
@@ -44,10 +44,9 @@ export default function SettingsScreen() {
     clearAllData,
     invitations,
     people,
-    schedule,
-    familyEvents,
     activeVipId,
     syncWithSupabase,
+    checkAndTriggerUpcomingReminders,
   } = useAppStore();
 
   // Auto-sync with Supabase on mount so pending requests and staff counts are always live
@@ -71,10 +70,57 @@ export default function SettingsScreen() {
 
   const { t, language, setLanguage, currentLanguageOption, supportedLanguages } = useTranslation();
 
-  // Modals state
-  const [activeModal, setActiveModal] = useState<
-    'theme' | 'language' | 'profile' | 'password' | 'notifications' | 'about' | 'clear' | 'privileged-info' | null
-  >(null);
+  // Modals state with back-button interception
+  type ModalType =
+    | 'theme'
+    | 'language'
+    | 'profile'
+    | 'password'
+    | 'notifications'
+    | 'about'
+    | 'clear'
+    | 'privileged-info'
+    | 'export-confirm'
+    | 'export-empty'
+    | null;
+  const [activeModal, setRawActiveModal] = useState<ModalType>(null);
+  const activeModalRef = useRef<ModalType>(null);
+
+  useEffect(() => {
+    activeModalRef.current = activeModal;
+  }, [activeModal]);
+
+  const setActiveModal = useCallback((modal: ModalType) => {
+    if (modal) {
+      window.history.pushState({ settingsModal: modal }, '');
+      setRawActiveModal(modal);
+    } else {
+      setRawActiveModal(null);
+      if (window.history.state?.settingsModal) {
+        window.history.back();
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    const handlePop = () => {
+      setRawActiveModal(null);
+    };
+
+    const handleHardwareBack = (e: Event) => {
+      if (activeModalRef.current) {
+        e.preventDefault();
+        setActiveModal(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePop);
+    window.addEventListener('hardwareBackButton', handleHardwareBack);
+    return () => {
+      window.removeEventListener('popstate', handlePop);
+      window.removeEventListener('hardwareBackButton', handleHardwareBack);
+    };
+  }, [setActiveModal]);
 
   // Profile Edit Form State
   const [editName, setEditName] = useState(activeUserName);
@@ -94,7 +140,8 @@ export default function SettingsScreen() {
   const [notifScheduleChanges, setNotifScheduleChanges] = useState(true);
   const [notifReminders, setNotifReminders] = useState(true);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-  const [testNotificationStatus, setTestNotificationStatus] = useState<string | null>(null);
+  const [testNotifFeedback, setTestNotifFeedback] = useState<string | null>(null);
+  const [isSyncingReminders, setIsSyncingReminders] = useState(false);
 
   useEffect(() => {
     mobileNotificationService.checkPermission().then((res) => {
@@ -142,62 +189,59 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSendTestNotification = async () => {
-    try {
-      setTestNotificationStatus('Dispatching...');
-      const check = await mobileNotificationService.checkPermission();
-      if (!check.granted) {
-        const req = await mobileNotificationService.requestPermission(true);
-        if (!req.granted) {
-          setTestNotificationStatus('Permission required');
-          setTimeout(() => setTestNotificationStatus(null), 3500);
-          return;
-        }
-        setPermissionStatus('granted');
-      }
-
-      const ok = await mobileNotificationService.sendTestNotification();
-      if (ok) {
-        setTestNotificationStatus('Alert delivered to device!');
-      } else {
-        setTestNotificationStatus('Delivered to notification shade.');
-      }
-      setTimeout(() => setTestNotificationStatus(null), 3500);
-    } catch (err: any) {
-      setTestNotificationStatus('Failed to send test alert');
-      setTimeout(() => setTestNotificationStatus(null), 3500);
-    }
-  };
-
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
   };
 
   const [isExporting, setIsExporting] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'excel' | 'pdf' | null>(null);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
 
-  const handleExportExcel = async () => {
+  const handleConfirmExportDownload = async (format: 'excel' | 'pdf' = 'excel') => {
     if (isExporting) return;
     try {
       setIsExporting(true);
+      setExportFormat(format);
       setExportStatus(null);
-      const res = await exportToExcel({
-        invitations,
-        people,
-        schedule,
-        familyEvents,
-        privilegedUsers,
-        activeUser,
-        isVIP,
-      });
-      setExportStatus(res.summary);
+
+      const res = format === 'pdf'
+        ? await exportUpcomingEventsToPdf({
+          invitations,
+          people,
+        })
+        : await exportUpcomingEventsToExcel({
+          invitations,
+          people,
+        });
+
+      if (!res.success && res.reason === 'NO_UPCOMING_EVENTS') {
+        setActiveModal('export-empty');
+        return;
+      }
+
+      if (!res.success) {
+        setActiveModal(null);
+        setExportStatus(res.summary || 'Export failed: Unknown error');
+        setTimeout(() => setExportStatus(null), 5000);
+        return;
+      }
+
+      setActiveModal(null);
+      setExportStatus(
+        res.summary ||
+        (format === 'pdf'
+          ? 'Upcoming events exported to PDF successfully.'
+          : 'Upcoming events exported to Excel successfully.')
+      );
       setTimeout(() => setExportStatus(null), 5000);
     } catch (err: any) {
+      setActiveModal(null);
       setExportStatus('Export failed: ' + (err?.message || 'Unknown error'));
       setTimeout(() => setExportStatus(null), 5000);
     } finally {
       setIsExporting(false);
+      setExportFormat(null);
     }
   };
 
@@ -249,41 +293,27 @@ export default function SettingsScreen() {
 
   const themeOptions = [
     {
-      id: 'dark',
-      name: 'Midnight Gold',
-      desc: 'Dark navy glassmorphism with radiant gold',
-      icon: <Moon size={20} className="text-gold" />,
-      colors: ['#060a13', '#131b2e', '#d4a853'],
+      id: 'dark' as const,
+      name: t('settings.themeDark'),
+      desc: t('settings.themeDarkDesc'),
+      icon: <Moon size={22} color="#ffffff" style={{ color: '#ffffff', stroke: '#ffffff' }} strokeWidth={2} />,
+      previewBg: '#121620',
+      previewBorder: 'rgba(255, 255, 255, 0.15)',
     },
     {
-      id: 'light',
-      name: 'Platinum Ivory',
-      desc: 'Clean executive light mode with warm accents',
-      icon: <Sun size={20} style={{ color: '#b3821a' }} />,
-      colors: ['#f5f7fc', '#ffffff', '#b3821a'],
-    },
-    {
-      id: 'onyx',
-      name: 'Royal Onyx',
-      desc: 'Pure pitch black OLED with high-contrast gold',
-      icon: <Shield size={20} className="text-gold" />,
-      colors: ['#000000', '#161616', '#e5b352'],
-    },
-    {
-      id: 'sapphire',
-      name: 'Royal Sapphire',
-      desc: 'Deep imperial blue glass with champagne gold',
-      icon: <Sparkles size={20} style={{ color: '#60a5fa' }} />,
-      colors: ['#040916', '#101e40', '#d8ad56'],
+      id: 'light' as const,
+      name: t('settings.themeLight'),
+      desc: t('settings.themeLightDesc'),
+      icon: <Sun size={22} color="#0a84ff" style={{ color: '#0a84ff', stroke: '#0a84ff' }} strokeWidth={2} />,
+      previewBg: '#f8fafc',
+      previewBorder: 'rgba(15, 23, 42, 0.12)',
     },
   ];
 
-  const getThemeLabel = (t: string) => {
-    switch (t) {
-      case 'light': return 'Platinum Ivory (Light)';
-      case 'onyx': return 'Royal Onyx (Pure Black)';
-      case 'sapphire': return 'Royal Sapphire (Deep Blue)';
-      default: return 'Midnight Gold (Dark)';
+  const getThemeLabel = (tName: string) => {
+    switch (tName) {
+      case 'light': return t('settings.themeLight');
+      default: return t('settings.themeDark');
     }
   };
 
@@ -316,37 +346,37 @@ export default function SettingsScreen() {
         },
         ...(isVIP
           ? [
-              {
-                icon: <UserCheck size={18} style={{ color: pendingRequestsCount > 0 ? '#fbbf24' : undefined }} />,
-                label: 'Staff Access Requests',
-                desc:
-                  pendingRequestsCount > 0
-                    ? `${pendingRequestsCount} pending authorization request${pendingRequestsCount > 1 ? 's' : ''}`
-                    : 'Review and authorize staff requests',
-                onClick: () => navigate('/staff-requests'),
-                badge: pendingRequestsCount > 0,
-                badgeText: pendingRequestsCount > 0 ? `${pendingRequestsCount} Pending` : undefined,
-                badgeVariant: 'warning',
-              },
-              {
-                icon: <Shield size={18} />,
-                label: 'Privileged Users',
-                desc: `${activeStaffCount}/5 staff members active`,
-                onClick: () => navigate('/privileged-users'),
-                badge: true,
-                isInfoOnly: false,
-              },
-            ]
+            {
+              icon: <UserCheck size={18} style={{ color: pendingRequestsCount > 0 ? '#fbbf24' : undefined }} />,
+              label: 'User Access Requests',
+              desc:
+                pendingRequestsCount > 0
+                  ? `${pendingRequestsCount} pending authorization request${pendingRequestsCount > 1 ? 's' : ''}`
+                  : 'Review and authorize User requests',
+              onClick: () => navigate('/staff-requests'),
+              badge: pendingRequestsCount > 0,
+              badgeText: pendingRequestsCount > 0 ? `${pendingRequestsCount} Pending` : undefined,
+              badgeVariant: 'warning',
+            },
+            {
+              icon: <Shield size={18} />,
+              label: 'User Management',
+              desc: `${activeStaffCount}/5 active users`,
+              onClick: () => navigate('/privileged-users'),
+              badge: true,
+              isInfoOnly: false,
+            },
+          ]
           : [
-              {
-                icon: <Shield size={18} style={{ color: 'var(--color-info)' }} />,
-                label: 'Privileged Access',
-                desc: 'You are a privileged person only',
-                onClick: () => setActiveModal('privileged-info'),
-                badge: false,
-                isInfoOnly: true,
-              },
-            ]),
+            {
+              icon: <Shield size={18} style={{ color: 'var(--color-info)' }} />,
+              label: 'User Access',
+              desc: 'You are a user only',
+              onClick: () => setActiveModal('privileged-info'),
+              badge: false,
+              isInfoOnly: true,
+            },
+          ]),
       ],
     },
     {
@@ -361,11 +391,10 @@ export default function SettingsScreen() {
         {
           icon: <Globe size={18} />,
           label: t('settings.language'),
-          desc: `${currentLanguageOption.nativeName}${
-            currentLanguageOption.name !== currentLanguageOption.nativeName
-              ? ` (${currentLanguageOption.name})`
-              : ''
-          }`,
+          desc: `${currentLanguageOption.nativeName}${currentLanguageOption.name !== currentLanguageOption.nativeName
+            ? ` (${currentLanguageOption.name})`
+            : ''
+            }`,
           onClick: () => setActiveModal('language'),
         },
         {
@@ -377,7 +406,7 @@ export default function SettingsScreen() {
         {
           icon: <History size={18} />,
           label: 'Activity History',
-          desc: 'Audit trail of changes & actions',
+          desc: 'Changes & action made by the admin',
           onClick: () => navigate('/activity'),
         },
       ],
@@ -391,7 +420,7 @@ export default function SettingsScreen() {
           desc: isExporting
             ? 'Generating Excel spreadsheet...'
             : t('settings.exportDesc'),
-          onClick: handleExportExcel,
+          onClick: () => setActiveModal('export-confirm'),
         },
         {
           icon: <Trash2 size={18} />,
@@ -436,260 +465,276 @@ export default function SettingsScreen() {
       {/* ── Scrollable Settings Body ────────────────────────────────────────── */}
       <div className="screen-scroll-body">
         {/* ── Export Status Alert Banner ─────────────────────────────────────── */}
-      {exportStatus && (
-        <div
-          className="glass-card animate-fade-in mb-4"
-          style={{
-            padding: '12px 16px',
-            borderRadius: 'var(--radius-lg)',
-            background: exportStatus.startsWith('Export failed')
-              ? 'rgba(255, 69, 58, 0.15)'
-              : 'rgba(48, 209, 88, 0.15)',
-            border: exportStatus.startsWith('Export failed')
-              ? '1px solid rgba(255, 69, 58, 0.3)'
-              : '1px solid rgba(48, 209, 88, 0.3)',
-            color: exportStatus.startsWith('Export failed')
-              ? 'var(--color-danger)'
-              : 'var(--color-confirmed)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            fontSize: '13px',
-            fontWeight: 500,
-          }}
-        >
-          {exportStatus.startsWith('Export failed') ? (
-            <ShieldAlert size={16} />
-          ) : (
-            <Check size={16} />
-          )}
-          <span>{exportStatus}</span>
-        </div>
-      )}
-
-      {/* ── Apple Profile Card (iOS Inset Grouped) ─────────────────────────── */}
-      <div className="ios-grouped-list mb-5">
-        <div
-          className="ios-grouped-item"
-          style={{ padding: '16px' }}
-          onClick={() => {
-            setEditName(activeUserName);
-            setEditPhone(activeUser?.phone || '');
-            setActiveModal('profile');
-          }}
-        >
-          <div className="avatar avatar-lg" style={{ width: '52px', height: '52px', fontSize: '18px' }}>
-            {getInitials(activeUserName)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-heading font-semibold" style={{ fontSize: '17px', letterSpacing: '-0.015em', color: 'var(--color-text-primary)' }}>
-              {activeUserName}
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className={`badge ${isVIP ? 'badge-gold' : 'badge-info'}`}>
-                {isVIP ? 'VIP Principal' : activeUserRole}
-              </span>
-              <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
-                @{activeUsername}
-              </span>
-            </div>
-            {activeUser?.phone && (
-              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }} className="truncate">
-                {activeUser.phone}
-              </div>
-            )}
-          </div>
-          <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-        </div>
-      </div>
-
-      {/* ── Apple Settings Groups (Inset Grouped Lists) ────────────────────── */}
-      {settingsGroups.map((group, gi) => (
-        <section key={gi} style={{ marginBottom: '20px' }}>
+        {exportStatus && (
           <div
+            className="glass-card animate-fade-in mb-4"
             style={{
-              fontSize: '12px',
-              fontWeight: 600,
-              color: 'var(--color-text-secondary)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.04em',
-              marginBottom: '6px',
-              paddingLeft: '4px',
+              padding: '12px 16px',
+              borderRadius: 'var(--radius-lg)',
+              background: exportStatus.startsWith('Export failed')
+                ? 'rgba(255, 69, 58, 0.15)'
+                : 'rgba(48, 209, 88, 0.15)',
+              border: exportStatus.startsWith('Export failed')
+                ? '1px solid rgba(255, 69, 58, 0.3)'
+                : '1px solid rgba(48, 209, 88, 0.3)',
+              color: exportStatus.startsWith('Export failed')
+                ? 'var(--color-danger)'
+                : 'var(--color-confirmed)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              fontSize: '13px',
+              fontWeight: 500,
             }}
           >
-            {group.title}
+            {exportStatus.startsWith('Export failed') ? (
+              <ShieldAlert size={16} />
+            ) : (
+              <Check size={16} />
+            )}
+            <span>{exportStatus}</span>
           </div>
+        )}
 
-          <div className="ios-grouped-list">
-            {group.items.map((item: any, ii) => {
-              // System squircle color mapping
-              const squircleBg = item.danger
-                ? 'rgba(255, 69, 58, 0.15)'
-                : ii % 4 === 0
-                ? 'rgba(10, 132, 255, 0.15)'
-                : ii % 4 === 1
-                ? 'rgba(48, 209, 88, 0.15)'
-                : ii % 4 === 2
-                ? 'rgba(255, 159, 10, 0.15)'
-                : 'rgba(191, 90, 242, 0.15)';
-
-              const iconColor = item.danger
-                ? 'var(--color-danger)'
-                : ii % 4 === 0
-                ? 'var(--color-accent)'
-                : ii % 4 === 1
-                ? 'var(--color-confirmed)'
-                : ii % 4 === 2
-                ? 'var(--color-pending)'
-                : 'var(--color-apple-purple)';
-
-              return (
-                <div
-                  key={ii}
-                  className="ios-grouped-item"
-                  onClick={item.onClick}
-                >
-                  <div
-                    className="ios-icon-squircle"
-                    style={{ background: squircleBg, color: iconColor }}
-                  >
-                    {item.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div
-                      style={{
-                        fontSize: '14px',
-                        fontWeight: 500,
-                        color: item.danger ? 'var(--color-danger)' : 'var(--color-text-primary)',
-                      }}
-                    >
-                      {item.label}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }} className="truncate">
-                      {item.desc}
-                    </div>
-                  </div>
-                  {item.badgeText && (
-                    <span
-                      className={`badge ${item.badgeVariant === 'warning' ? 'badge-warning' : 'badge-gold'}`}
-                      style={{
-                        fontSize: '11px',
-                        padding: '2px 8px',
-                        marginRight: '6px',
-                        fontWeight: 600,
-                        backgroundColor: item.badgeVariant === 'warning' ? 'rgba(245, 158, 11, 0.2)' : undefined,
-                        color: item.badgeVariant === 'warning' ? '#fbbf24' : undefined,
-                        border: item.badgeVariant === 'warning' ? '0.5px solid rgba(245, 158, 11, 0.4)' : undefined,
-                      }}
-                    >
-                      {item.badgeText}
-                    </span>
-                  )}
-                  {item.isInfoOnly ? (
-                    <span className="badge badge-info" style={{ fontSize: '10px' }}>Active</span>
-                  ) : (
-                    <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
-                  )}
+        {/* ── Apple Profile Card (iOS Inset Grouped) ─────────────────────────── */}
+        <div className="ios-grouped-list mb-5">
+          <div
+            className="ios-grouped-item"
+            style={{ padding: '16px' }}
+            onClick={() => {
+              setEditName(activeUserName);
+              setEditPhone(activeUser?.phone || '');
+              setActiveModal('profile');
+            }}
+          >
+            <div className="avatar avatar-lg" style={{ width: '52px', height: '52px', fontSize: '18px' }}>
+              {getInitials(activeUserName)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-heading font-semibold" style={{ fontSize: '17px', letterSpacing: '-0.015em', color: 'var(--color-text-primary)' }}>
+                {activeUserName}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`badge ${isVIP ? 'badge-gold' : 'badge-info'}`}>
+                  {isVIP ? 'Admin' : activeUserRole}
+                </span>
+                <span style={{ fontSize: '12px', color: 'var(--color-text-muted)' }}>
+                  @{activeUsername}
+                </span>
+              </div>
+              {activeUser?.phone && (
+                <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '4px' }} className="truncate">
+                  {activeUser.phone}
                 </div>
-              );
-            })}
+              )}
+            </div>
+            <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
           </div>
-        </section>
-      ))}
+        </div>
 
-      {/* ── Sign Out Button ────────────────────────────────────────────────── */}
-      <div style={{ marginTop: '28px', marginBottom: '20px' }}>
-        <button
-          type="button"
-          className="btn btn-danger w-full"
-          onClick={handleLogout}
-        >
-          <LogOut size={16} strokeWidth={2} />
-          <span>{t('settings.signOut')}</span>
-        </button>
-      </div>
+        {/* ── Apple Settings Groups (Inset Grouped Lists) ────────────────────── */}
+        {settingsGroups.map((group, gi) => (
+          <section key={gi} style={{ marginBottom: '20px' }}>
+            <div
+              style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                color: 'var(--color-text-secondary)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                marginBottom: '6px',
+                paddingLeft: '4px',
+              }}
+            >
+              {group.title}
+            </div>
+
+            <div className="ios-grouped-list">
+              {group.items.map((item: any, ii) => {
+                // System squircle color mapping
+                const squircleBg = item.danger
+                  ? 'rgba(255, 69, 58, 0.15)'
+                  : ii % 4 === 0
+                    ? 'rgba(10, 132, 255, 0.15)'
+                    : ii % 4 === 1
+                      ? 'rgba(48, 209, 88, 0.15)'
+                      : ii % 4 === 2
+                        ? 'rgba(255, 159, 10, 0.15)'
+                        : 'rgba(191, 90, 242, 0.15)';
+
+                const iconColor = item.danger
+                  ? 'var(--color-danger)'
+                  : ii % 4 === 0
+                    ? 'var(--color-accent)'
+                    : ii % 4 === 1
+                      ? 'var(--color-confirmed)'
+                      : ii % 4 === 2
+                        ? 'var(--color-pending)'
+                        : 'var(--color-apple-purple)';
+
+                return (
+                  <div
+                    key={ii}
+                    className="ios-grouped-item"
+                    onClick={item.onClick}
+                  >
+                    <div
+                      className="ios-icon-squircle"
+                      style={{ background: squircleBg, color: iconColor }}
+                    >
+                      {item.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div
+                        style={{
+                          fontSize: '14px',
+                          fontWeight: 500,
+                          color: item.danger ? 'var(--color-danger)' : 'var(--color-text-primary)',
+                        }}
+                      >
+                        {item.label}
+                      </div>
+                      <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '1px' }} className="truncate">
+                        {item.desc}
+                      </div>
+                    </div>
+                    {item.badgeText && (
+                      <span
+                        className={`badge ${item.badgeVariant === 'warning' ? 'badge-warning' : 'badge-gold'}`}
+                        style={{
+                          fontSize: '11px',
+                          padding: '2px 8px',
+                          marginRight: '6px',
+                          fontWeight: 600,
+                          backgroundColor: item.badgeVariant === 'warning' ? 'rgba(245, 158, 11, 0.2)' : undefined,
+                          color: item.badgeVariant === 'warning' ? '#fbbf24' : undefined,
+                          border: item.badgeVariant === 'warning' ? '0.5px solid rgba(245, 158, 11, 0.4)' : undefined,
+                        }}
+                      >
+                        {item.badgeText}
+                      </span>
+                    )}
+                    {item.isInfoOnly ? (
+                      <span className="badge badge-info" style={{ fontSize: '10px' }}>Active</span>
+                    ) : (
+                      <ChevronRight size={15} strokeWidth={2} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+
+        {/* ── Sign Out Button ────────────────────────────────────────────────── */}
+        <div style={{ marginTop: '28px', marginBottom: '20px' }}>
+          <button
+            type="button"
+            className="btn btn-danger w-full"
+            onClick={handleLogout}
+          >
+            <LogOut size={16} strokeWidth={2} />
+            <span>{t('settings.signOut')}</span>
+          </button>
+        </div>
       </div>
 
       {/* ─── MODAL: THEME SELECTION ────────────────────────────────────────── */}
       {activeModal === 'theme' && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px', width: '100%' }}>
             <div className="modal-handle" />
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-1.5">
               <Palette size={20} className="text-gold" />
-              <h3 style={{ margin: 0 }}>{t('settings.selectTheme')}</h3>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 600 }}>{t('settings.selectTheme')}</h3>
             </div>
             <p className="text-xs text-secondary mb-4">
               {t('settings.themeSubtitle')}
             </p>
 
-            <div className="flex flex-col gap-3 mb-5">
-              {themeOptions.map((t) => {
-                const isSelected = (theme || 'dark') === t.id;
+            <div className="flex flex-col gap-3" style={{ marginBottom: '24px' }}>
+              {themeOptions.map((opt) => {
+                const isSelected = (theme === 'light' ? 'light' : 'dark') === opt.id;
                 return (
                   <div
-                    key={t.id}
-                    className={`glass-card flex items-center justify-between p-3 ${
-                      isSelected ? 'glass-card-gold' : ''
-                    }`}
+                    key={opt.id}
+                    className={`glass-card flex items-center justify-between p-3.5 ${isSelected ? 'glass-card-gold' : ''
+                      }`}
                     style={{
                       cursor: 'pointer',
-                      border: isSelected ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                      borderRadius: 'var(--radius-xl)',
+                      border: isSelected ? '1.5px solid var(--color-gold)' : '1px solid var(--glass-border)',
                       background: isSelected ? 'var(--color-gold-muted)' : undefined,
+                      transition: 'all 0.18s ease',
                     }}
                     onClick={() => {
-                      setTheme(t.id as any);
+                      setTheme(opt.id);
                     }}
                   >
-                    <div className="flex items-center gap-3">
-                      <div
-                        style={{
-                          width: '40px',
-                          height: '40px',
-                          borderRadius: 'var(--radius-md)',
-                          background: t.colors[0],
-                          border: `2px solid ${t.colors[2]}`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        {t.icon}
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold flex items-center gap-2">
-                          {t.name}
-                          {t.id === 'light' && (
-                            <span className="badge badge-info" style={{ fontSize: '0.6rem' }}>
-                              Light Mode
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted">{t.desc}</div>
-                      </div>
-                    </div>
-
+                    {/* Left: Theme Logo Icon */}
                     <div
                       style={{
-                        width: '24px',
-                        height: '24px',
-                        borderRadius: '50%',
-                        border: isSelected ? '2px solid var(--color-gold)' : '2px solid var(--glass-border)',
-                        background: isSelected ? 'var(--color-gold)' : 'transparent',
-                        color: 'var(--color-text-inverse)',
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '12px',
+                        background: opt.previewBg,
+                        border: `1px solid ${opt.previewBorder}`,
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
+                        boxShadow: isSelected ? '0 0 14px rgba(10, 132, 255, 0.25)' : 'none',
+                        flexShrink: 0,
                       }}
                     >
-                      {isSelected && <Check size={14} />}
+                      {opt.icon}
+                    </div>
+
+                    {/* Center: Theme Name */}
+                    <div
+                      className="font-semibold text-center flex-1"
+                      style={{
+                        fontSize: '1.08rem',
+                        color: 'var(--color-text-primary)',
+                        letterSpacing: '-0.01em',
+                      }}
+                    >
+                      {opt.name}
+                    </div>
+
+                    {/* Right: Select Option Indicator */}
+                    <div
+                      style={{
+                        width: '44px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        flexShrink: 0,
+                        paddingRight: '4px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '22px',
+                          height: '22px',
+                          borderRadius: '50%',
+                          border: isSelected ? '2px solid var(--color-gold)' : '2px solid var(--glass-border)',
+                          background: isSelected ? 'var(--color-gold)' : 'transparent',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        {isSelected && <Check size={13} strokeWidth={3} />}
+                      </div>
                     </div>
                   </div>
                 );
               })}
             </div>
 
-            <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
+            <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)} style={{ height: '46px', fontWeight: 600 }}>
               {t('common.done')}
             </button>
           </div>
@@ -715,9 +760,8 @@ export default function SettingsScreen() {
                 return (
                   <div
                     key={langOpt.code}
-                    className={`glass-card flex items-center justify-between p-3 ${
-                      isSelected ? 'glass-card-blue' : ''
-                    }`}
+                    className={`glass-card flex items-center justify-between p-3 ${isSelected ? 'glass-card-blue' : ''
+                      }`}
                     style={{
                       cursor: 'pointer',
                       border: isSelected ? '1px solid var(--color-accent)' : '1px solid var(--glass-border)',
@@ -818,13 +862,12 @@ export default function SettingsScreen() {
               <div>
                 <label className="label">
                   <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                  Full Name / Title
+                  Full Name
                 </label>
                 <input
                   className="input"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  autoFocus
                   required
                 />
               </div>
@@ -837,7 +880,7 @@ export default function SettingsScreen() {
                 <input
                   className="input"
                   type="tel"
-                  placeholder="e.g. +91 98765 43210"
+                  placeholder="Enter phone number"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
                 />
@@ -970,21 +1013,21 @@ export default function SettingsScreen() {
                     permissionStatus === 'granted'
                       ? 'rgba(34, 197, 94, 0.15)'
                       : permissionStatus === 'denied'
-                      ? 'rgba(239, 68, 68, 0.15)'
-                      : 'rgba(245, 158, 11, 0.15)',
+                        ? 'rgba(239, 68, 68, 0.15)'
+                        : 'rgba(245, 158, 11, 0.15)',
                   color:
                     permissionStatus === 'granted'
                       ? '#22c55e'
                       : permissionStatus === 'denied'
-                      ? '#ef4444'
-                      : '#f59e0b',
+                        ? '#ef4444'
+                        : '#f59e0b',
                 }}
               >
                 {permissionStatus === 'granted'
                   ? 'Active'
                   : permissionStatus === 'denied'
-                  ? 'Blocked'
-                  : 'Not Allowed'}
+                    ? 'Blocked'
+                    : 'Not Allowed'}
               </span>
             </div>
             <p className="text-xs text-secondary mb-4">Choose which alerts you receive on this device</p>
@@ -1012,11 +1055,11 @@ export default function SettingsScreen() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 mb-5">
+            <div className="flex flex-col gap-3" style={{ marginBottom: '24px' }}>
               <div className="glass-card flex items-center justify-between p-3">
                 <div>
-                  <div className="text-sm font-semibold">Schedule Conflict Warnings</div>
-                  <div className="text-xs text-muted">Immediate alert when events overlap</div>
+                  <div className="text-sm font-semibold">More Events Overlaps alerts</div>
+                  <div className="text-xs text-muted">Immediate alert when more then one event overlaps</div>
                 </div>
                 <input
                   type="checkbox"
@@ -1029,7 +1072,7 @@ export default function SettingsScreen() {
               <div className="glass-card flex items-center justify-between p-3">
                 <div>
                   <div className="text-sm font-semibold">New Invitation Alerts</div>
-                  <div className="text-xs text-muted">Alerts when staff submits an invitation</div>
+                  <div className="text-xs text-muted">Alerts when users submit new invitations</div>
                 </div>
                 <input
                   type="checkbox"
@@ -1042,7 +1085,7 @@ export default function SettingsScreen() {
               <div className="glass-card flex items-center justify-between p-3">
                 <div>
                   <div className="text-sm font-semibold">Event Reminders</div>
-                  <div className="text-xs text-muted">48h & 24h reminders before confirmed events</div>
+                  <div className="text-xs text-muted">48h, 24h (1 day left) & day-of alerts for events</div>
                 </div>
                 <input
                   type="checkbox"
@@ -1055,7 +1098,7 @@ export default function SettingsScreen() {
               <div className="glass-card flex items-center justify-between p-3">
                 <div>
                   <div className="text-sm font-semibold">Schedule Modifications</div>
-                  <div className="text-xs text-muted">Changes made by privileged assistants</div>
+                  <div className="text-xs text-muted">Alerts when changes are made by other users</div>
                 </div>
                 <input
                   type="checkbox"
@@ -1067,16 +1110,63 @@ export default function SettingsScreen() {
             </div>
 
             <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                className="btn btn-sm btn-ghost w-full"
-                style={{ fontSize: '12px', border: '1px solid var(--color-border)' }}
-                onClick={handleSendTestNotification}
-              >
-                {testNotificationStatus || 'Send Test Mobile Alert'}
-              </button>
-
-              <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
+              {testNotifFeedback && (
+                <div
+                  className="text-xs text-center p-2 rounded"
+                  style={{
+                    background: testNotifFeedback.includes('sent') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: testNotifFeedback.includes('sent') ? '#22c55e' : '#ef4444',
+                  }}
+                >
+                  {testNotifFeedback}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn btn-outline flex-1"
+                  style={{ height: '40px', fontSize: '12px' }}
+                  onClick={async () => {
+                    try {
+                      setTestNotifFeedback('Sending test alert...');
+                      const delivered = await mobileNotificationService.sendTestNotification();
+                      if (delivered) {
+                        setTestNotifFeedback('Test alert sent to device!');
+                      } else {
+                        setTestNotifFeedback('Alert blocked: Check notification permissions');
+                      }
+                    } catch {
+                      setTestNotifFeedback('Failed to send test alert');
+                    }
+                    setTimeout(() => setTestNotifFeedback(null), 3500);
+                  }}
+                >
+                  <Bell size={13} style={{ marginRight: '4px' }} /> Test Alert
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline flex-1"
+                  style={{ height: '40px', fontSize: '12px' }}
+                  disabled={isSyncingReminders}
+                  onClick={async () => {
+                    try {
+                      setIsSyncingReminders(true);
+                      setTestNotifFeedback('Checking upcoming events...');
+                      await syncWithSupabase(activeVipId);
+                      await checkAndTriggerUpcomingReminders(activeVipId);
+                      setTestNotifFeedback('Upcoming reminders checked & sent!');
+                    } catch {
+                      setTestNotifFeedback('Error syncing reminders');
+                    } finally {
+                      setIsSyncingReminders(false);
+                      setTimeout(() => setTestNotifFeedback(null), 3500);
+                    }
+                  }}
+                >
+                  Check Reminders
+                </button>
+              </div>
+              <button className="btn btn-gold w-full mt-1" onClick={() => setActiveModal(null)} style={{ height: '44px', fontWeight: 600 }}>
                 Save Preferences
               </button>
             </div>
@@ -1087,38 +1177,111 @@ export default function SettingsScreen() {
       {/* ─── MODAL: ABOUT ───────────────────────────────────────────────────── */}
       {activeModal === 'about' && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '460px', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}
+          >
             <div className="modal-handle" />
-            <div className="text-center mb-4">
+            <div className="text-center mb-3">
               <div
                 style={{
                   width: '56px',
                   height: '56px',
                   borderRadius: '16px',
-                  background: 'linear-gradient(135deg, var(--color-gold-light), var(--color-gold))',
+                  overflow: 'hidden',
+                  margin: '0 auto var(--space-2)',
+                  border: '1px solid rgba(212, 175, 55, 0.35)',
+                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(212, 175, 55, 0.2)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  margin: '0 auto var(--space-3)',
-                  color: 'var(--color-text-inverse)',
                 }}
               >
-                <Shield size={28} />
+                <img
+                  src={appLogo}
+                  alt="Invitation Hub"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               </div>
-              <h3 style={{ marginBottom: '2px' }}>Invitation Hub</h3>
-              <p className="text-xs text-gold">Executive Private Assistant v2.0</p>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 600 }}>About Invitation Hub</h3>
             </div>
 
-            <div className="flex flex-col gap-2 text-xs text-secondary mb-5">
+            <div
+              className="flex flex-col gap-2.5 text-xs text-secondary mb-4"
+              style={{ overflowY: 'auto', paddingRight: '4px', flex: 1 }}
+            >
+              <p style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--color-text-secondary)', margin: '0 0 4px 0', textAlign: 'center' }}>
+                Invitation Hub is a smart and convenient invitation management application designed to help you organize, track, and manage your invitations and events in one place.
+              </p>
+
               <div className="glass-card p-3">
-                <strong>Protocol Intelligence:</strong> Prioritization matrix & family relationship memory ledger.
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Smart Invitation Management
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  Save invitation details, upload or capture invitation card photos, and keep important event information such as event name, date, time, venue, relationship, and other details organized and easily accessible.
+                </div>
               </div>
+
               <div className="glass-card p-3">
-                <strong>Security:</strong> Encrypted password isolation & delegated staff role-based permissions.
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Invitation Scanning
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  Invitation Hub supports smart invitation scanning to help extract important information from invitation cards and organize it into the appropriate event details.
+                </div>
+              </div>
+
+              <div className="glass-card p-3">
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Never Miss an Important Event
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  Keep track of upcoming invitations with reminders and organized event information. Invitations can also be prioritized when multiple events occur on the same day.
+                </div>
+              </div>
+
+              <div className="glass-card p-3">
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Past Events &amp; Gifts
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  Keep track of past family functions and associated gifts, making it easier to remember important occasions and relationships.
+                </div>
+              </div>
+
+              <div className="glass-card p-3">
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Delegated Access
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  VIP account owners can provide controlled access to trusted users such as personal assistants or other authorized users. The account owner remains in control of the shared access.
+                </div>
+              </div>
+
+              <div className="glass-card p-3">
+                <div className="font-semibold text-sm mb-1" style={{ color: 'var(--color-text-primary)' }}>
+                  Everything in One Place
+                </div>
+                <div style={{ lineHeight: 1.45 }}>
+                  From receiving an invitation to attending an event and remembering past occasions, Invitation Hub brings important invitation and event information together in one organized place.
+                </div>
+              </div>
+
+              <div
+                className="text-center font-semibold pt-2 pb-1"
+                style={{ fontSize: '12.5px', color: 'var(--color-gold)', letterSpacing: '0.01em', lineHeight: 1.4 }}
+              >
+                Invitation Hub — Your Invitations. Your Events. One Smart Place.
               </div>
             </div>
 
-            <button className="btn btn-gold w-full" onClick={() => setActiveModal(null)}>
+            <button
+              className="btn btn-gold w-full"
+              onClick={() => setActiveModal(null)}
+              style={{ height: '46px', fontWeight: 600, flexShrink: 0 }}
+            >
               Close
             </button>
           </div>
@@ -1160,6 +1323,108 @@ export default function SettingsScreen() {
         </div>
       )}
 
+      {/* ─── MODAL: EXPORT FORMAT SELECTION ─────────────────────────────────── */}
+      {activeModal === 'export-confirm' && (
+        <div className="modal-overlay modal-centered" onClick={() => !isExporting && setActiveModal(null)}>
+          <div className="modal-dialog animate-scale-in text-center" onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'rgba(212, 175, 55, 0.12)',
+                color: 'var(--color-gold)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto var(--space-3)',
+              }}
+            >
+              <FileSpreadsheet size={26} />
+            </div>
+            <h3 style={{ marginBottom: 'var(--space-1)', fontSize: '1.2rem', fontWeight: 600 }}>Export Data</h3>
+            <p className="text-xs text-secondary mb-5" style={{ lineHeight: 1.5 }}>
+              Choose a format to download your data
+            </p>
+
+            <div className="flex flex-col gap-2.5 mb-3">
+              <button
+                type="button"
+                className="btn btn-gold w-full flex items-center justify-center gap-2.5"
+                onClick={() => handleConfirmExportDownload('excel')}
+                disabled={isExporting}
+                style={{ height: '46px', fontWeight: 600, fontSize: '14px' }}
+              >
+                <FileSpreadsheet size={18} />
+                {isExporting && exportFormat === 'excel' ? 'Exporting Excel...' : 'Excel (.xlsx)'}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-outline w-full flex items-center justify-center gap-2.5"
+                onClick={() => handleConfirmExportDownload('pdf')}
+                disabled={isExporting}
+                style={{
+                  height: '46px',
+                  fontWeight: 600,
+                  fontSize: '14px',
+                  border: '1px solid var(--glass-border)',
+                  background: 'var(--glass-bg)',
+                  color: 'var(--color-text-primary)',
+                }}
+              >
+                <FileText size={18} style={{ color: '#ff453a' }} />
+                {isExporting && exportFormat === 'pdf' ? 'Exporting PDF...' : 'PDF (.pdf)'}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-ghost w-full"
+              onClick={() => setActiveModal(null)}
+              disabled={isExporting}
+              style={{ height: '40px', fontWeight: 500 }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: NO UPCOMING EVENTS TO EXPORT ─────────────────────────────── */}
+      {activeModal === 'export-empty' && (
+        <div className="modal-overlay modal-centered" onClick={() => setActiveModal(null)}>
+          <div className="modal-dialog animate-scale-in text-center" onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{
+                width: '52px',
+                height: '52px',
+                borderRadius: '50%',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#f59e0b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto var(--space-3)',
+              }}
+            >
+              <AlertCircle size={26} />
+            </div>
+            <h3 style={{ marginBottom: 'var(--space-2)', fontSize: '1.15rem', fontWeight: 600 }}>No Upcoming Events</h3>
+            <p className="text-xs text-secondary mb-5" style={{ lineHeight: 1.5 }}>
+              No upcoming events available to export.
+            </p>
+            <button
+              className="btn btn-gold w-full"
+              onClick={() => setActiveModal(null)}
+              style={{ height: '44px', fontWeight: 600 }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── MODAL: PRIVILEGED ACCESS INFO ──────────────────────────────────── */}
       {activeModal === 'privileged-info' && (
         <div className="modal-overlay modal-centered" onClick={() => setActiveModal(null)}>
@@ -1179,15 +1444,15 @@ export default function SettingsScreen() {
             >
               <Shield size={26} />
             </div>
-            <h3 style={{ marginBottom: 'var(--space-1)' }}>Privileged Account</h3>
+            <h3 style={{ marginBottom: 'var(--space-1)' }}>User Account</h3>
             <p className="text-xs text-secondary mb-4">
-              You are a privileged person only. Staff member delegation & access permissions are managed exclusively by the VIP Principal.
+              You are a user.
             </p>
 
             <div className="glass-card text-left p-3 mb-4" style={{ background: 'rgba(255,255,255,0.03)' }}>
-              <div className="text-xs text-muted mb-1">Your Delegated Role</div>
+              <div className="text-xs text-muted mb-1">Your Role</div>
               <div className="font-semibold text-sm mb-3 text-primary">
-                {currentPrivilegedUser?.role || 'Personal Assistant'}
+                {currentPrivilegedUser?.role || 'User'}
               </div>
               <div className="text-xs text-muted mb-2">Active Permissions</div>
               <div className="flex flex-wrap gap-1">

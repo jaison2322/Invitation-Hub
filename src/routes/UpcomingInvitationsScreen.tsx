@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { Calendar, Clock, MapPin, Search, Plus, ChevronRight } from 'lucide-react';
-import { formatDate, formatTime } from '../utils/formatters';
+import { formatDate, formatTime, getLocalTodayDateString, isInvitationPastByDate } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
 import type { InvitationStatus } from '../types';
@@ -13,22 +13,38 @@ export default function UpcomingInvitationsScreen() {
   const { invitations, updateInvitationStatus, isVIP, currentPrivilegedUser } = useAppStore();
   const { t } = useTranslation();
   const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
+  const [scope, setScope] = useState<'upcoming' | 'past'>('upcoming');
   const [activeTab, setActiveTab] = useState<'all' | InvitationStatus>('all');
   const [search, setSearch] = useState('');
+  const [todayStr, setTodayStr] = useState(() => getLocalTodayDateString());
+
+  // Periodically re-sync local date (e.g. across midnight transitions)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const current = getLocalTodayDateString();
+      setTodayStr((prev) => (prev !== current ? current : prev));
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const filtered = invitations
+    // 1. Strict calendar date scope filter (today or future = Upcoming, past calendar date = Past)
+    .filter((inv) => {
+      const isPast = isInvitationPastByDate(inv, todayStr);
+      return scope === 'past' ? isPast : !isPast;
+    })
+    // 2. Existing invitation status filter
     .filter((inv) => activeTab === 'all' || inv.status === activeTab)
+    // 3. Search query filter (checks name/title only from starting letter)
     .filter((inv) => {
       if (!search) return true;
-      const q = search.toLowerCase();
-      return (
-        inv.title.toLowerCase().includes(q) ||
-        (inv.nickname || '').toLowerCase().includes(q) ||
-        (inv.venue || '').toLowerCase().includes(q) ||
-        (inv.location || '').toLowerCase().includes(q)
-      );
+      const q = search.trim().toLowerCase();
+      const title = (inv.title || '').trim().toLowerCase();
+      const words = title.split(/\s+/);
+      return title.startsWith(q) || words.some((w) => w.startsWith(q));
     })
-    .sort((a, b) => a.date.localeCompare(b.date));
+    // 4. Sorting: nearest date first for upcoming, most recent first for past
+    .sort((a, b) => (scope === 'past' ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)));
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: 'all', label: t('common.all') },
@@ -59,21 +75,28 @@ export default function UpcomingInvitationsScreen() {
             <Plus size={18} strokeWidth={2} />
           </button>
         </div>
-        <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '16px' }}>
-          {invitations.length} total invitations in the dashboard
-        </p>
 
-        {/* ── Apple Search Field ──────────────────────────────────────────────── */}
-        <div className="search-bar mb-3">
-          <Search size={16} className="search-bar-icon" />
-          <input
-            placeholder="Search invitations"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        {/* ── Dashboard Scope Options (Upcoming vs Past) ────────────────────── */}
+        <div className="segmented-control mb-3">
+          <button
+            type="button"
+            className={`segmented-item ${scope === 'upcoming' ? 'active' : ''}`}
+            onClick={() => setScope('upcoming')}
+            style={{ fontWeight: 600, padding: '8px 12px', fontSize: '13px' }}
+          >
+            Upcoming Invitations
+          </button>
+          <button
+            type="button"
+            className={`segmented-item ${scope === 'past' ? 'active' : ''}`}
+            onClick={() => setScope('past')}
+            style={{ fontWeight: 600, padding: '8px 12px', fontSize: '13px' }}
+          >
+            Past Invitations
+          </button>
         </div>
 
-        {/* ── Apple Segmented Control ─────────────────────────────────────────── */}
+        {/* ── Apple Segmented Control (Status Tabs) ───────────────────────────── */}
         <div className="segmented-control">
           {tabs.map((tab) => (
             <button
@@ -89,7 +112,17 @@ export default function UpcomingInvitationsScreen() {
       </div>
 
       {/* ── Scrollable Events Content ───────────────────────────────────────── */}
-      <div className="screen-scroll-body">
+      <div className="screen-scroll-body" style={{ paddingTop: '12px' }}>
+        {/* ── Search Field (Scrolls with page content) ───────────────────────── */}
+        <div className="search-bar mb-3">
+          <Search size={16} className="search-bar-icon" />
+          <input
+            placeholder="Search invitations"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
         {/* ── Events List ────────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-5">
           {filtered.map((inv) => (
@@ -170,11 +203,21 @@ export default function UpcomingInvitationsScreen() {
               <div className="empty-state-icon">
                 <Calendar size={24} strokeWidth={1.8} />
               </div>
-              <div className="empty-state-title" style={{ fontSize: '18px' }}>{t('events.noEventsFound')}</div>
-              <div className="empty-state-text" style={{ fontSize: '13px' }}>
-                {search ? t('events.noEventsFound') : t('events.noEventsFound')}
+              <div className="empty-state-title" style={{ fontSize: '18px' }}>
+                {search
+                  ? t('events.noEventsFound')
+                  : scope === 'upcoming'
+                  ? 'No Upcoming Invitations'
+                  : 'No Past Invitations'}
               </div>
-              {!search && (
+              <div className="empty-state-text" style={{ fontSize: '13px' }}>
+                {search
+                  ? t('events.noEventsFound')
+                  : scope === 'upcoming'
+                  ? 'You have no upcoming invitations scheduled.'
+                  : 'You have no past invitation records.'}
+              </div>
+              {!search && scope === 'upcoming' && (
                 <div className="flex gap-2 mt-4" style={{ justifyContent: 'center' }}>
                   <button
                     className="btn btn-gold"

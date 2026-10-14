@@ -9,19 +9,16 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
-  Shield,
-  Calendar,
   Phone,
   Lock,
   Eye,
   EyeOff,
   AtSign,
   Award,
-  Check,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import IconBadge from '../components/IconBadge';
 import { supabaseDbService } from '../services/supabaseDbService';
+import appLogo from '../assets/icon.png';
 
 export default function LoginScreen() {
   const navigate = useNavigate();
@@ -33,8 +30,8 @@ export default function LoginScreen() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Auth View: 'landing' (welcome screen) | 'login' (username & password) | 'register' (create account)
-  const [authView, setAuthView] = useState<'landing' | 'login' | 'register'>('landing');
+  // Auth View: 'login' (default single login screen) | 'register' (create account)
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
 
   // ── Login Form State ────────────────────────────────────────────────────────
   const [loginUsername, setLoginUsername] = useState('');
@@ -52,7 +49,7 @@ export default function LoginScreen() {
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
   const [showRegPassword, setShowRegPassword] = useState(false);
   const [regPhone, setRegPhone] = useState('');
-  const [regRole, setRegRole] = useState('Personal Assistant');
+  const [regRole, setRegRole] = useState('');
   const [regVipPrincipal, setRegVipPrincipal] = useState('');
   const [regError, setRegError] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
@@ -207,114 +204,30 @@ export default function LoginScreen() {
 
       <div className="auth-card">
         {/* ══════════════════════════════════════════════════════════════════════
-            VIEW 1: LANDING / WELCOME SCREEN (Default)
+            VIEW 1: SINGLE LOGIN SCREEN (Default)
             ══════════════════════════════════════════════════════════════════════ */}
-        {authView === 'landing' && (
+        {authView === 'login' && (
           <div className="text-center">
             {/* Executive Logo & Header */}
-            <div className="auth-header mb-6">
+            <div className="auth-header mb-5">
               <div className="flex justify-center mb-3">
-                <IconBadge icon={Shield} variant="gold" size="hero" glow />
+                <img
+                  src={appLogo}
+                  alt="Invitation Hub Logo"
+                  className="select-none"
+                  style={{
+                    width: '64px',
+                    height: '64px',
+                    borderRadius: '16px',
+                    objectFit: 'cover',
+                    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), 0 0 20px rgba(212, 175, 55, 0.25)',
+                    border: '1px solid rgba(212, 175, 55, 0.35)',
+                  }}
+                />
               </div>
               <h1 className="auth-title">
                 Invitation Hub
               </h1>
-              <p className="auth-subtitle">
-                Executive Schedule & Protocol Management
-              </p>
-            </div>
-
-            {/* Inset Highlights */}
-            <div className="ios-grouped-list mb-5 text-left">
-              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
-                <IconBadge icon={Award} variant="gold" size="sm" />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Executive Protocol</div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Relationship memory & event prioritization</div>
-                </div>
-              </div>
-
-              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
-                <IconBadge icon={Briefcase} variant="cyan" size="sm" />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Role Delegated Access</div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>Secure authentication for VIPs and Staff</div>
-                </div>
-              </div>
-
-              <div className="ios-grouped-item" style={{ cursor: 'default' }}>
-                <IconBadge icon={Calendar} variant="emerald" size="sm" />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Schedule Intelligence</div>
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>AI invitation scanning & conflict detection</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Apple Actions */}
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                className="btn btn-gold w-full"
-                onClick={() => {
-                  setLoginError('');
-                  setAuthView('login');
-                }}
-              >
-                <LogIn size={16} strokeWidth={2} />
-                <span>Sign In</span>
-              </button>
-
-              <button
-                type="button"
-                className="btn btn-outline w-full"
-                onClick={() => {
-                  setRegError('');
-                  setAuthView('register');
-                }}
-              >
-                <UserPlus size={16} strokeWidth={2} />
-                <span>Create Account</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ══════════════════════════════════════════════════════════════════════
-            VIEW 2: SIGN IN (USERNAME & PASSWORD SCREEN)
-            ══════════════════════════════════════════════════════════════════════ */}
-        {authView === 'login' && (
-          <div>
-            {/* Top Back Nav */}
-            <div className="flex items-center justify-between mb-3">
-              <button
-                type="button"
-                className="btn-ghost flex items-center gap-1"
-                style={{ padding: '4px 8px', fontSize: '13px' }}
-                onClick={() => setAuthView('landing')}
-              >
-                <ArrowLeft size={16} strokeWidth={2} />
-                <span>Back</span>
-              </button>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Sign In
-              </span>
-              <div style={{ width: '40px' }} />
-            </div>
-
-            {/* Logo Badge & Header */}
-            <div className="text-center" style={{ marginBottom: '16px' }}>
-              <div className="flex justify-center mb-2.5">
-                <IconBadge icon={Shield} variant="gold" size="md" glow />
-              </div>
-              <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em' }}>
-                {isSuccess ? 'Access Granted' : 'Enter Credentials'}
-              </h2>
-              <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                {isSuccess
-                  ? 'Loading executive interface...'
-                  : 'Enter your username and password'}
-              </p>
             </div>
 
             {/* Error Banner */}
@@ -339,9 +252,9 @@ export default function LoginScreen() {
             )}
 
             {/* Username & Password Form */}
-            <form onSubmit={handleLogin} className="flex flex-col gap-3">
+            <form onSubmit={handleLogin} className="flex flex-col gap-3 text-left" style={{ textAlign: 'left' }}>
               <div>
-                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px', textAlign: 'left' }}>
                   <AtSign size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                   Username or Phone
                 </label>
@@ -353,14 +266,13 @@ export default function LoginScreen() {
                   onChange={(e) => setLoginUsername(e.target.value)}
                   autoCapitalize="none"
                   autoCorrect="off"
-                  autoFocus
                   required
                   disabled={isLoggingIn || isSuccess}
                 />
               </div>
 
               <div>
-                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px', textAlign: 'left' }}>
                   <Lock size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
                   Password
                 </label>
@@ -418,25 +330,42 @@ export default function LoginScreen() {
               </button>
             </form>
 
-            <div style={{ marginTop: '16px', fontSize: '12px', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
-              Don&apos;t have an account yet?{' '}
-              <button
-                type="button"
+            {/* Apple-style "OR" Divider */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                margin: '18px 0',
+                gap: '12px',
+              }}
+            >
+              <div style={{ flex: 1, height: '1px', background: 'var(--color-separator)' }} />
+              <span
                 style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
+                  fontSize: '11px',
                   fontWeight: 600,
-                  color: 'var(--color-accent)',
-                }}
-                onClick={() => {
-                  setRegError('');
-                  setAuthView('register');
+                  letterSpacing: '0.08em',
+                  color: 'var(--color-text-secondary)',
+                  textTransform: 'uppercase',
                 }}
               >
-                Create One
-              </button>
+                OR
+              </span>
+              <div style={{ flex: 1, height: '1px', background: 'var(--color-separator)' }} />
             </div>
+
+            {/* Create Account Action */}
+            <button
+              type="button"
+              className="btn btn-outline w-full"
+              onClick={() => {
+                setRegError('');
+                setAuthView('register');
+              }}
+            >
+              <UserPlus size={16} strokeWidth={2} />
+              <span>Create Account</span>
+            </button>
           </div>
         )}
 
@@ -451,7 +380,7 @@ export default function LoginScreen() {
                 type="button"
                 className="btn-ghost flex items-center gap-1"
                 style={{ padding: '4px 8px', fontSize: '13px' }}
-                onClick={() => setAuthView('landing')}
+                onClick={() => setAuthView('login')}
               >
                 <ArrowLeft size={16} strokeWidth={2} />
                 <span>Back</span>
@@ -463,9 +392,6 @@ export default function LoginScreen() {
               <h2 className="font-heading font-semibold text-white" style={{ fontSize: '18px', letterSpacing: '-0.02em' }}>
                 Create Account
               </h2>
-              <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-                Set credentials and contact details
-              </p>
             </div>
 
             {/* Apple Segmented Control for Role */}
@@ -475,7 +401,7 @@ export default function LoginScreen() {
                 className={`segmented-item ${regType === 'vip' ? 'active' : ''}`}
                 onClick={() => setRegType('vip')}
               >
-                Principal
+                Admin
               </button>
               <button
                 type="button"
@@ -521,7 +447,6 @@ export default function LoginScreen() {
                 onChange={(e) => setRegUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
                 autoCapitalize="none"
                 autoCorrect="off"
-                autoFocus
                 required
               />
             </div>
@@ -599,7 +524,7 @@ export default function LoginScreen() {
                 <div style={{ marginBottom: '10px' }}>
                   <label className="label" style={{ fontSize: '12px', marginBottom: '3px' }}>
                     <Award size={12} strokeWidth={2} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                    Principal Username
+                    Admin Username
                   </label>
                   <input
                     className="input"
@@ -618,6 +543,7 @@ export default function LoginScreen() {
                   <input
                     className="input"
                     type="text"
+                    placeholder="Enter role"
                     value={regRole}
                     onChange={(e) => setRegRole(e.target.value)}
                     required

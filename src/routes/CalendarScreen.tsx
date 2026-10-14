@@ -44,7 +44,7 @@ export default function CalendarScreen() {
               <ArrowLeft size={16} />
             </button>
             <div>
-              <h2>Calendar Matrix</h2>
+              <h2>Calendar</h2>
               <p className="text-sm text-secondary mt-1">
                 Monthly schedule timeline and function invited
               </p>
@@ -55,121 +55,121 @@ export default function CalendarScreen() {
 
       <div className="screen-scroll-body">
         <div className="desktop-grid-2">
-        {/* Left Column: Month Navigation & Grid */}
-        <div className="glass-card" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)' }}>
-          <div className="flex items-center justify-between mb-2">
-            <button className="btn-icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
-              <ChevronLeft size={18} />
-            </button>
-            <span className="font-heading font-bold text-lg text-white" style={{ letterSpacing: '-0.02em' }}>
-              {format(currentMonth, 'MMMM yyyy')}
-            </span>
-            <button className="btn-icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
-              <ChevronRight size={18} />
-            </button>
-          </div>
-
-          {/* Week headers */}
-          <div className="calendar-grid" style={{ marginTop: 'var(--space-3)' }}>
-            {weekDays.map((day) => (
-              <div key={day} className="calendar-header-cell">{day}</div>
-            ))}
-
-            {/* Days */}
-            {calendarDays.map((day, i) => {
-              const events = getEventsForDate(day);
-              const hasEvents = events.invitations.length > 0 || events.schedule.length > 0;
-              const hasConflict = events.invitations.length + events.schedule.length > 1;
-              const isSelected = selectedDate && isSameDay(day, selectedDate);
-              const isCurrentMonth = isSameMonth(day, currentMonth);
-
-              return (
-                <div
-                  key={i}
-                  className={`calendar-cell ${isToday(day) ? 'today' : ''} ${isSelected ? 'selected' : ''} ${!isCurrentMonth ? 'other-month' : ''} ${hasEvents ? 'has-events' : ''} ${hasConflict ? 'has-conflict' : ''}`}
-                  onClick={() => setSelectedDate(day)}
-                >
-                  {format(day, 'd')}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Right Column: Selected Date Agenda */}
-        {selectedDate && (
-          <div className="animate-slide-up">
-            <div className="section-header">
-              <span className="section-title flex items-center gap-2">
-                <CalendarIcon size={16} style={{ color: 'var(--color-gold)' }} />
-                <span>{format(selectedDate, 'EEEE, MMMM d, yyyy')}</span>
+          {/* Left Column: Month Navigation & Grid */}
+          <div className="glass-card" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-4)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <button className="btn-icon" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>
+                <ChevronLeft size={18} />
+              </button>
+              <span className="font-heading font-bold text-lg text-white" style={{ letterSpacing: '-0.02em' }}>
+                {format(currentMonth, 'MMMM yyyy')}
               </span>
+              <button className="btn-icon" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>
+                <ChevronRight size={18} />
+              </button>
             </div>
 
-            {selectedEvents.invitations.length === 0 && selectedEvents.schedule.length === 0 ? (
-              <div className="glass-card text-center" style={{ padding: 'var(--space-8)' }}>
-                <p className="text-sm text-muted">No scheduled commitments or invitations on this day</p>
+            {/* Week headers */}
+            <div className="calendar-grid" style={{ marginTop: 'var(--space-3)' }}>
+              {weekDays.map((day) => (
+                <div key={day} className="calendar-header-cell">{day}</div>
+              ))}
+
+              {/* Days */}
+              {calendarDays.map((day, i) => {
+                const events = getEventsForDate(day);
+                const hasEvents = events.invitations.length > 0 || events.schedule.length > 0;
+                const hasConflict = events.invitations.length + events.schedule.length > 1;
+                const isSelected = selectedDate && isSameDay(day, selectedDate);
+                const isCurrentMonth = isSameMonth(day, currentMonth);
+
+                return (
+                  <div
+                    key={i}
+                    className={`calendar-cell ${isToday(day) ? 'today' : ''} ${isSelected ? 'selected' : ''} ${!isCurrentMonth ? 'other-month' : ''} ${hasEvents ? 'has-events' : ''} ${hasConflict ? 'has-conflict' : ''}`}
+                    onClick={() => setSelectedDate(day)}
+                  >
+                    {format(day, 'd')}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Right Column: Selected Date Agenda */}
+          {selectedDate && (
+            <div className="animate-slide-up">
+              <div className="section-header">
+                <span className="section-title flex items-center gap-2">
+                  <CalendarIcon size={16} style={{ color: 'var(--color-gold)' }} />
+                  <span>{format(selectedDate, 'EEEE, MMMM d, yyyy')}</span>
+                </span>
               </div>
-            ) : (
-              <div className="flex flex-col gap-5">
-                {selectedEvents.schedule.map((item) => (
-                  <div key={item.id} className="glass-card flex items-center gap-3" style={{ padding: '14px', marginBottom: '14px' }}>
-                    <div style={{ width: '4px', height: '40px', borderRadius: '2px', background: 'var(--color-info)' }} />
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-white">{item.title}</div>
-                      <div className="text-xs text-muted flex items-center gap-2 mt-1">
-                        <span className="flex items-center gap-1 font-mono">
-                          <Clock size={11} />
-                          {formatTime(item.startTime)}{item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
+
+              {selectedEvents.invitations.length === 0 && selectedEvents.schedule.length === 0 ? (
+                <div className="glass-card text-center" style={{ padding: 'var(--space-8)' }}>
+                  <p className="text-sm text-muted">No scheduled commitments or invitations on this day</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-5">
+                  {selectedEvents.schedule.map((item) => (
+                    <div key={item.id} className="glass-card flex items-center gap-3" style={{ padding: '14px', marginBottom: '14px' }}>
+                      <div style={{ width: '4px', height: '40px', borderRadius: '2px', background: 'var(--color-info)' }} />
+                      <div className="flex-1">
+                        <div className="text-sm font-semibold text-white">{item.title}</div>
+                        <div className="text-xs text-muted flex items-center gap-2 mt-1">
+                          <span className="flex items-center gap-1 font-mono">
+                            <Clock size={11} />
+                            {formatTime(item.startTime)}{item.endTime ? ` – ${formatTime(item.endTime)}` : ''}
+                          </span>
+                          {item.location && (
+                            <span className="flex items-center gap-1">
+                              <MapPin size={11} />
+                              {item.location}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {selectedEvents.invitations.map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="event-card cursor-pointer"
+                      style={{ marginBottom: '20px' }}
+                      onClick={() => navigate(`/event/${inv.id}`)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <EventBadgeIcon type={inv.eventType} size="xs" />
+                          <PriorityBadge priority={inv.priority} size="sm" />
+                        </div>
+                        <span className={`badge badge-${inv.status}`} style={{ fontSize: '10px' }}>
+                          {inv.status}
                         </span>
-                        {item.location && (
+                      </div>
+                      <div className="event-card-title">{inv.nickname || inv.title}</div>
+                      <div className="text-xs text-secondary flex items-center gap-3 mt-1.5 font-mono">
+                        {inv.time && (
                           <span className="flex items-center gap-1">
+                            <Clock size={11} /> {formatTime(inv.time)}
+                          </span>
+                        )}
+                        {(inv.venue || inv.location) && (
+                          <span className="flex items-center gap-1 truncate font-sans">
                             <MapPin size={11} />
-                            {item.location}
+                            {inv.venue && inv.location ? `${inv.venue}, ${inv.location}` : (inv.venue || inv.location)}
                           </span>
                         )}
                       </div>
                     </div>
-                  </div>
-                ))}
-
-                {selectedEvents.invitations.map((inv) => (
-                  <div
-                    key={inv.id}
-                    className="event-card cursor-pointer"
-                    style={{ marginBottom: '20px' }}
-                    onClick={() => navigate(`/event/${inv.id}`)}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <EventBadgeIcon type={inv.eventType} size="xs" />
-                        <PriorityBadge priority={inv.priority} size="sm" />
-                      </div>
-                      <span className={`badge badge-${inv.status}`} style={{ fontSize: '10px' }}>
-                        {inv.status}
-                      </span>
-                    </div>
-                    <div className="event-card-title">{inv.nickname || inv.title}</div>
-                    <div className="text-xs text-secondary flex items-center gap-3 mt-1.5 font-mono">
-                      {inv.time && (
-                        <span className="flex items-center gap-1">
-                          <Clock size={11} /> {formatTime(inv.time)}
-                        </span>
-                      )}
-                      {(inv.venue || inv.location) && (
-                        <span className="flex items-center gap-1 truncate font-sans">
-                          <MapPin size={11} />
-                          {inv.venue && inv.location ? `${inv.venue}, ${inv.location}` : (inv.venue || inv.location)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

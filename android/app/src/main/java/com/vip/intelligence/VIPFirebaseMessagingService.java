@@ -190,6 +190,9 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
                 conn.setRequestProperty("Authorization", "Bearer " + apiKey);
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Prefer", "resolution=merge-duplicates");
+                if (vipId != null && !vipId.trim().isEmpty()) {
+                    conn.setRequestProperty("x-vip-id", vipId.trim());
+                }
                 conn.setDoOutput(true);
                 conn.setConnectTimeout(10000);
                 conn.setReadTimeout(10000);

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, Shield, RefreshCw, LogOut, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Clock, Shield, RefreshCw, LogOut, AlertCircle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import IconBadge from '../components/IconBadge';
 
@@ -8,7 +8,6 @@ export default function WaitingApprovalScreen() {
   const navigate = useNavigate();
   const { currentPrivilegedUser, checkStaffStatus, logout, isAuthenticated } = useAppStore();
   const [isChecking, setIsChecking] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   // If already authenticated and approved, proceed to dashboard
   useEffect(() => {
@@ -17,19 +16,27 @@ export default function WaitingApprovalScreen() {
     }
   }, [isAuthenticated, navigate]);
 
-  const targetVip = currentPrivilegedUser?.targetVipUsername || 'VIP Principal';
+  const targetVip = currentPrivilegedUser?.targetVipUsername || 'Admin';
   const staffName = currentPrivilegedUser?.name || 'Staff Member';
   const staffUsername = currentPrivilegedUser?.username || '';
-  const staffRole = currentPrivilegedUser?.role || 'Personal Assistant';
+  const staffRole = currentPrivilegedUser?.role || currentPrivilegedUser?.staffTitle || 'Staff';
 
-  const handleCheckStatus = async () => {
+  const [statusMessage, setStatusMessage] = useState<string>(
+    `Your access request is currently pending review by @${targetVip}.`
+  );
+
+  // Status check logic:
+  // When isManual is true, we show button loading state.
+  // When isManual is false (background 5s poll), it refreshes status silently without flickering or disabling the button.
+  const performCheck = async (isManual = false) => {
     if (!staffUsername) {
       navigate('/login', { replace: true });
       return;
     }
 
-    setIsChecking(true);
-    setStatusMessage(null);
+    if (isManual) {
+      setIsChecking(true);
+    }
 
     try {
       const result = await checkStaffStatus(staffUsername);
@@ -43,16 +50,22 @@ export default function WaitingApprovalScreen() {
         setStatusMessage(`Your access request is currently pending review by @${targetVip}.`);
       }
     } catch {
-      setStatusMessage('Unable to reach server. Please check your connection.');
+      if (isManual) {
+        setStatusMessage('Unable to reach server. Please check your connection.');
+      }
     } finally {
-      setIsChecking(false);
+      if (isManual) {
+        setIsChecking(false);
+      }
     }
   };
 
-  // Check periodically while screen is open
+  // Background silent auto-refresh every 5 seconds (does not cause UI to disappear or jump)
   useEffect(() => {
-    handleCheckStatus();
-    const interval = setInterval(handleCheckStatus, 5000);
+    performCheck(false);
+    const interval = setInterval(() => {
+      performCheck(false);
+    }, 5000);
     return () => clearInterval(interval);
   }, [staffUsername]);
 
@@ -74,56 +87,173 @@ export default function WaitingApprovalScreen() {
         <h1 className="auth-title">
           Approval Pending
         </h1>
-        <p className="auth-subtitle">
-          Waiting for VIP Principal Authorization
+        <p className="auth-subtitle mb-5">
+          Waiting for Admin Authorization
         </p>
 
-        {/* Status Card */}
+        {/* Formal Ticket / Credential Card matching reference sketch */}
         <div
-          className="p-4 rounded-xl mb-6 text-left"
+          className="mb-5 overflow-hidden text-left"
           style={{
-            background: 'var(--color-surface-elevated, #1A1A1A)',
-            border: '1px solid var(--color-border-subtle, rgba(255, 215, 0, 0.15))',
+            background: 'var(--color-bg-card, #ffffff)',
+            borderRadius: '20px',
+            border: '1.5px solid var(--color-separator, rgba(0, 0, 0, 0.12))',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.05)',
           }}
         >
-          <div className="flex items-center gap-3 mb-3 pb-3" style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-            <Shield size={18} className="text-amber-400" />
-            <div>
-              <div className="text-xs text-secondary">Target Principal</div>
-              <div className="font-semibold text-white">@{targetVip}</div>
+          {/* Top Section: Centered Shield + Target Admin */}
+          <div
+            className="p-4 flex flex-col items-center justify-center text-center"
+            style={{
+              background: 'transparent',
+            }}
+          >
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                marginBottom: '4px',
+              }}
+            >
+              <div
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '10px',
+                  background: 'rgba(10, 132, 255, 0.12)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Shield size={17} style={{ color: 'var(--color-accent, #0a84ff)' }} />
+              </div>
+              <span
+                style={{
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: 'var(--color-text-secondary, #8e8e93)',
+                }}
+              >
+                Target admin
+              </span>
+            </div>
+            <div
+              style={{
+                fontSize: '20px',
+                fontWeight: 700,
+                color: 'var(--color-text-primary, #000000)',
+                fontFamily: 'var(--font-heading)',
+                letterSpacing: '-0.02em',
+              }}
+            >
+              @{targetVip}
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 text-xs">
-            <div>
-              <span className="text-secondary block">Applicant</span>
-              <span className="text-white font-medium">{staffName}</span>
+          {/* Clean Horizontal Divider Line as drawn in the reference sketch */}
+          <div
+            style={{
+              height: '1px',
+              background: 'var(--color-separator, rgba(0, 0, 0, 0.1))',
+              marginLeft: '16px',
+              marginRight: '16px',
+            }}
+          />
+
+          {/* 3 Vertically Stacked Rows matching the reference sketch */}
+          <div className="p-4 flex flex-col gap-3.5">
+            {/* Row 1: Applicant */}
+            <div className="flex items-baseline" style={{ gap: '8px', fontSize: '14px' }}>
+              <span
+                style={{
+                  color: 'var(--color-text-secondary, #8e8e93)',
+                  fontWeight: 500,
+                  minWidth: '115px',
+                }}
+              >
+                Applicant :
+              </span>
+              <span
+                style={{
+                  color: 'var(--color-text-primary, #000000)',
+                  fontWeight: 600,
+                }}
+              >
+                {staffName}
+              </span>
             </div>
-            <div>
-              <span className="text-secondary block">Username</span>
-              <span className="text-white font-mono">@{staffUsername}</span>
+
+            {/* Row 2: Username */}
+            <div className="flex items-baseline" style={{ gap: '8px', fontSize: '14px' }}>
+              <span
+                style={{
+                  color: 'var(--color-text-secondary, #8e8e93)',
+                  fontWeight: 500,
+                  minWidth: '115px',
+                }}
+              >
+                Username :
+              </span>
+              <span
+                style={{
+                  color: 'var(--color-accent, #0a84ff)',
+                  fontFamily: 'var(--font-mono)',
+                  fontWeight: 600,
+                }}
+              >
+                @{staffUsername}
+              </span>
             </div>
-            <div className="col-span-2">
-              <span className="text-secondary block">Assigned Role</span>
-              <span className="text-white font-medium">{staffRole}</span>
+
+            {/* Row 3: Assigned role */}
+            <div className="flex items-baseline" style={{ gap: '8px', fontSize: '14px' }}>
+              <span
+                style={{
+                  color: 'var(--color-text-secondary, #8e8e93)',
+                  fontWeight: 500,
+                  minWidth: '115px',
+                }}
+              >
+                Assigned role :
+              </span>
+              <span
+                style={{
+                  color: 'var(--color-text-primary, #000000)',
+                  fontWeight: 600,
+                  textTransform: 'capitalize',
+                }}
+              >
+                {staffRole}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* Message Banner */}
+        {/* Message Banner (Permanent, does not flicker or disappear) */}
         {statusMessage && (
-          <div className="p-3 mb-4 rounded-lg text-xs flex items-center gap-2 text-amber-300 bg-amber-950/40 border border-amber-800/40 text-left">
-            <AlertCircle size={16} className="shrink-0" />
-            <span>{statusMessage}</span>
+          <div
+            className="p-3 mb-4 rounded-xl text-xs flex items-center gap-2.5 text-left"
+            style={{
+              background: 'rgba(255, 159, 10, 0.1)',
+              border: '0.5px solid rgba(255, 159, 10, 0.25)',
+              color: 'var(--color-text-primary)',
+            }}
+          >
+            <AlertCircle size={16} className="shrink-0 text-amber-500" />
+            <span style={{ lineHeight: 1.4 }}>{statusMessage}</span>
           </div>
         )}
 
-        <div className="space-y-3">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
           <button
             type="button"
-            onClick={handleCheckStatus}
+            onClick={() => performCheck(true)}
             disabled={isChecking}
-            className="btn btn-primary w-full flex items-center justify-center gap-2"
+            className="btn btn-gold w-full flex items-center justify-center gap-2"
           >
             <RefreshCw size={16} className={isChecking ? 'animate-spin' : ''} />
             <span>{isChecking ? 'Checking Authorization...' : 'Check Approval Status'}</span>
@@ -132,16 +262,12 @@ export default function WaitingApprovalScreen() {
           <button
             type="button"
             onClick={handleSignOut}
-            className="btn btn-secondary w-full flex items-center justify-center gap-2"
+            className="btn btn-gold w-full flex items-center justify-center gap-2"
           >
             <LogOut size={16} />
             <span>Return to Sign In</span>
           </button>
         </div>
-
-        <p className="text-xs text-secondary mt-6">
-          Once approved by @{targetVip}, you will proceed to the mandatory Phone Verification Gate.
-        </p>
       </div>
     </div>
   );

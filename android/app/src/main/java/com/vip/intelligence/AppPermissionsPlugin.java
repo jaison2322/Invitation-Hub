@@ -21,6 +21,16 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import android.database.Cursor;
+import android.provider.ContactsContract;
+import com.getcapacitor.JSArray;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @CapacitorPlugin(
@@ -33,6 +43,10 @@ import java.util.UUID;
         @Permission(
             alias = "notifications",
             strings = { Manifest.permission.POST_NOTIFICATIONS }
+        ),
+        @Permission(
+            alias = "contacts",
+            strings = { Manifest.permission.READ_CONTACTS }
         )
     }
 )
@@ -44,6 +58,7 @@ public class AppPermissionsPlugin extends Plugin {
 
     private static final String CAMERA_ALIAS = "camera";
     private static final String NOTIFICATIONS_ALIAS = "notifications";
+    private static final String CONTACTS_ALIAS = "contacts";
     private static final String PREF_NOTIF_REQUESTED = "notif_permission_requested";
 
     @Override
@@ -132,6 +147,209 @@ public class AppPermissionsPlugin extends Plugin {
         // If denied and rationale is false, the user selected "Don't ask again"
         ret.put("canAskAgain", granted || rationale);
         call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void checkContactsPermission(PluginCall call) {
+        boolean granted = ContextCompat.checkSelfPermission(
+            getContext(),
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        Context context = getContext();
+        android.content.SharedPreferences prefs = context != null ?
+            context.getSharedPreferences(BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE) : null;
+        boolean askedBefore = prefs != null && prefs.getBoolean("contacts_permission_requested", false);
+
+        boolean canAskAgain = true;
+        if (!granted && askedBefore && getActivity() != null) {
+            canAskAgain = ActivityCompat.shouldShowRequestPermissionRationale(
+                getActivity(),
+                Manifest.permission.READ_CONTACTS
+            );
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("granted", granted);
+        ret.put("status", granted ? "granted" : (!canAskAgain ? "denied" : "prompt"));
+        ret.put("canAskAgain", canAskAgain);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void requestContactsPermission(PluginCall call) {
+        boolean granted = ContextCompat.checkSelfPermission(
+            getContext(),
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        if (granted) {
+            JSObject ret = new JSObject();
+            ret.put("granted", true);
+            ret.put("status", "granted");
+            ret.put("canAskAgain", true);
+            call.resolve(ret);
+            return;
+        }
+
+        Context context = getContext();
+        if (context != null) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(
+                BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
+            if (prefs != null) {
+                prefs.edit().putBoolean("contacts_permission_requested", true).apply();
+            }
+        }
+
+        requestPermissionForAlias(CONTACTS_ALIAS, call, "contactsCallback");
+    }
+
+    @PermissionCallback
+    public void contactsCallback(PluginCall call) {
+        boolean granted = ContextCompat.checkSelfPermission(
+            getContext(),
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        boolean rationale = false;
+        if (getActivity() != null) {
+            rationale = ActivityCompat.shouldShowRequestPermissionRationale(
+                getActivity(),
+                Manifest.permission.READ_CONTACTS
+            );
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("granted", granted);
+        ret.put("status", granted ? "granted" : "denied");
+        ret.put("canAskAgain", granted || rationale);
+        android.util.Log.d("AppPermissionsPlugin", "CONTACT PERMISSION = " + (granted ? "GRANTED" : "DENIED"));
+        call.resolve(ret);
+    }
+
+    private static String normalizePhoneNumberKey(String raw) {
+        if (raw == null) return "";
+        String digits = raw.replaceAll("[^0-9]", "");
+        if (digits.length() >= 10) {
+            return digits.substring(digits.length() - 10);
+        }
+        return digits.isEmpty() ? raw.replaceAll("\\s+", "") : digits;
+    }
+
+    @PluginMethod
+    public void getPhoneContacts(PluginCall call) {
+        boolean granted = ContextCompat.checkSelfPermission(
+            getContext(),
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED;
+
+        if (!granted) {
+            android.util.Log.w("AppPermissionsPlugin", "getPhoneContacts rejected: READ_CONTACTS permission not granted");
+            call.reject("PERMISSION_DENIED", "READ_CONTACTS permission not granted");
+            return;
+        }
+
+        Context context = getContext();
+        if (context == null) {
+            call.reject("CONTEXT_NULL", "Android Context is null");
+            return;
+        }
+
+        try {
+            Map<String, JSObject> contactMap = new LinkedHashMap<>();
+            Map<String, List<String>> phonesMap = new HashMap<>();
+            Map<String, Set<String>> seenPhoneKeysMap = new HashMap<>();
+
+            String displayNameCol = Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB ?
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY :
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME;
+
+            Cursor cursor = context.getContentResolver().query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                new String[]{
+                    ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                    displayNameCol,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                },
+                null,
+                null,
+                displayNameCol + " COLLATE NOCASE ASC"
+            );
+
+            if (cursor != null) {
+                int idIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.CONTACT_ID);
+                int nameIdx = cursor.getColumnIndex(displayNameCol);
+                if (nameIdx < 0) {
+                    nameIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME);
+                }
+                int numIdx = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER);
+
+                while (cursor.moveToNext()) {
+                    String contactId = idIdx >= 0 ? cursor.getString(idIdx) : "";
+                    String name = nameIdx >= 0 ? cursor.getString(nameIdx) : "";
+                    String rawNumber = numIdx >= 0 ? cursor.getString(numIdx) : "";
+
+                    if (name == null || name.trim().isEmpty()) continue;
+                    name = name.trim();
+                    String cleanNumber = rawNumber != null ? rawNumber.trim() : "";
+                    if (cleanNumber.isEmpty()) continue;
+
+                    String phoneKey = normalizePhoneNumberKey(cleanNumber);
+                    String key = contactId + "_" + name.toLowerCase();
+
+                    if (!contactMap.containsKey(key)) {
+                        JSObject c = new JSObject();
+                        c.put("id", contactId);
+                        c.put("name", name);
+                        c.put("phone", cleanNumber);
+                        contactMap.put(key, c);
+
+                        List<String> list = new ArrayList<>();
+                        list.add(cleanNumber);
+                        phonesMap.put(key, list);
+
+                        Set<String> seenKeys = new HashSet<>();
+                        seenKeys.add(phoneKey);
+                        seenPhoneKeysMap.put(key, seenKeys);
+                    } else {
+                        Set<String> seenKeys = seenPhoneKeysMap.get(key);
+                        if (seenKeys != null && !seenKeys.contains(phoneKey)) {
+                            seenKeys.add(phoneKey);
+                            List<String> list = phonesMap.get(key);
+                            if (list != null) {
+                                list.add(cleanNumber);
+                            }
+                        }
+                    }
+                }
+                cursor.close();
+            }
+
+            JSArray result = new JSArray();
+            for (Map.Entry<String, JSObject> entry : contactMap.entrySet()) {
+                String key = entry.getKey();
+                JSObject c = entry.getValue();
+                List<String> phones = phonesMap.get(key);
+                JSArray phonesArr = new JSArray();
+                if (phones != null) {
+                    for (String p : phones) {
+                        phonesArr.put(p);
+                    }
+                }
+                c.put("phones", phonesArr);
+                result.put(c);
+            }
+
+            android.util.Log.d("AppPermissionsPlugin", "CONTACT PERMISSION = GRANTED");
+            android.util.Log.d("AppPermissionsPlugin", "NUMBER OF PHONE CONTACTS READ = " + result.length());
+
+            JSObject res = new JSObject();
+            res.put("contacts", result);
+            call.resolve(res);
+        } catch (Exception e) {
+            android.util.Log.e("AppPermissionsPlugin", "Error reading contacts: " + e.getMessage(), e);
+            call.reject("ERROR_READING_CONTACTS", e.getMessage());
+        }
     }
 
     @PluginMethod
@@ -445,6 +663,141 @@ public class AppPermissionsPlugin extends Plugin {
             } catch (Exception e2) {
                 call.reject("Unable to open app settings: " + e2.getMessage());
             }
+        }
+    }
+
+    @PluginMethod
+    public void saveFileToDownloads(PluginCall call) {
+        String filename = call.getString("filename", "Invitation_Hub_Upcoming_Events.xlsx");
+        String base64Data = call.getString("base64Data");
+        String mimeType = call.getString("mimeType", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+        if (base64Data == null || base64Data.trim().isEmpty()) {
+            call.reject("Base64 data is required");
+            return;
+        }
+
+        try {
+            if (base64Data.contains(",")) {
+                base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
+            }
+            byte[] fileBytes = android.util.Base64.decode(base64Data, android.util.Base64.DEFAULT);
+
+            Context context = getContext();
+            if (context == null) {
+                call.reject("Context is not available");
+                return;
+            }
+
+            Uri publicUri = null;
+            String savedPath = "";
+
+            // 1. Modern Android (API 29+ / Android 10+): Write to MediaStore Downloads
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                android.content.ContentValues values = new android.content.ContentValues();
+                values.put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, filename);
+                values.put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                values.put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS);
+                values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1);
+
+                android.content.ContentResolver resolver = context.getContentResolver();
+                Uri collection = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI;
+                publicUri = resolver.insert(collection, values);
+
+                if (publicUri != null) {
+                    try (java.io.OutputStream out = resolver.openOutputStream(publicUri)) {
+                        if (out != null) {
+                            out.write(fileBytes);
+                            out.flush();
+                        }
+                    }
+                    values.clear();
+                    values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0);
+                    resolver.update(publicUri, values, null, null);
+                    savedPath = "Downloads/" + filename;
+                }
+            }
+
+            // 2. Fallback for older Android (API < 29) or if MediaStore insert failed
+            if (publicUri == null) {
+                java.io.File downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS);
+                if (!downloadDir.exists()) {
+                    downloadDir.mkdirs();
+                }
+                java.io.File destFile = new java.io.File(downloadDir, filename);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(destFile)) {
+                    fos.write(fileBytes);
+                    fos.flush();
+                }
+                savedPath = destFile.getAbsolutePath();
+                android.media.MediaScannerConnection.scanFile(
+                    context,
+                    new String[]{destFile.getAbsolutePath()},
+                    new String[]{mimeType},
+                    null
+                );
+                try {
+                    publicUri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        context.getPackageName() + ".fileprovider",
+                        destFile
+                    );
+                } catch (Exception ignored) {}
+            }
+
+            // 3. Also write to cache directory for reliable FileProvider sharing across apps
+            Uri shareableUri = null;
+            try {
+                java.io.File cacheFile = new java.io.File(context.getCacheDir(), filename);
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(cacheFile)) {
+                    fos.write(fileBytes);
+                    fos.flush();
+                }
+                shareableUri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    context.getPackageName() + ".fileprovider",
+                    cacheFile
+                );
+            } catch (Exception ex) {
+                if (publicUri != null) {
+                    shareableUri = publicUri;
+                }
+            }
+
+            // 4. Prompt the user with Android's native open / share sheet
+            if (shareableUri != null) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setDataAndType(shareableUri, mimeType);
+                    intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                    Intent chooser = Intent.createChooser(intent, "Open " + filename);
+                    chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(chooser);
+                } catch (Exception openEx) {
+                    try {
+                        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                        sendIntent.setType(mimeType);
+                        sendIntent.putExtra(Intent.EXTRA_STREAM, shareableUri);
+                        sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        sendIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+
+                        Intent chooser = Intent.createChooser(sendIntent, "Share " + filename);
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(chooser);
+                    } catch (Exception ignored) {}
+                }
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            ret.put("filename", filename);
+            ret.put("path", savedPath);
+            ret.put("savedToDownloads", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to save file: " + e.getMessage(), e);
         }
     }
 }

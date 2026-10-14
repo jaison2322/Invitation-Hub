@@ -11,8 +11,7 @@ export default function ApprovalRejectedScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const currentVip = currentPrivilegedUser?.targetVipUsername || 'the VIP Principal';
-  const staffUsername = currentPrivilegedUser?.username || '';
+  const currentVip = currentPrivilegedUser?.targetVipUsername || 'Admin';
 
   const handleReassign = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,7 +19,7 @@ export default function ApprovalRejectedScreen() {
 
     const cleanVip = newVipUsername.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
     if (!cleanVip) {
-      setErrorMessage('Please enter the VIP Principal username.');
+      setErrorMessage('Please enter the Admin username.');
       return;
     }
 
@@ -30,10 +29,10 @@ export default function ApprovalRejectedScreen() {
       if (result.success) {
         navigate('/waiting-approval', { replace: true });
       } else {
-        setErrorMessage(result.error || 'VIP Account Not Found');
+        setErrorMessage(result.error || 'Admin Account Not Found');
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Failed to submit request to new VIP.');
+      setErrorMessage(err?.message || 'Failed to submit request to new Admin.');
     } finally {
       setIsSubmitting(false);
     }
@@ -57,28 +56,29 @@ export default function ApprovalRejectedScreen() {
         <h1 className="auth-title">
           Request Declined
         </h1>
-        <p className="auth-subtitle text-rose-300">
+        <p className="auth-subtitle text-rose-400 mb-5">
           Your access request was declined by @{currentVip}
         </p>
 
         <div
-          className="p-4 rounded-xl mb-6 text-left"
+          className="p-4 rounded-2xl mb-6 text-left"
           style={{
-            background: 'var(--color-surface-elevated, #1A1A1A)',
-            border: '1px solid rgba(239, 68, 68, 0.2)',
+            background: 'var(--color-bg-card, #ffffff)',
+            border: '1px solid var(--color-separator, rgba(239, 68, 68, 0.2))',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.04)',
           }}
         >
-          <p className="text-xs text-secondary leading-relaxed mb-3">
-            You cannot access Invitation Hub with your current assignment. You may request access to a different VIP Principal below using your existing credentials, or sign out.
+          <p className="text-xs text-secondary leading-relaxed mb-4">
+            You cannot access Invitation Hub with your current assignment. You may request access to a different Admin below using your existing credentials, or sign out.
           </p>
 
           <form onSubmit={handleReassign} className="space-y-3">
             <div>
-              <label htmlFor="newVipUsernameInput" className="form-label text-xs block mb-1">
-                New VIP Principal Username
+              <label htmlFor="newVipUsernameInput" className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                New Admin Username
               </label>
-              <div className="form-input-icon-wrap">
-                <AtSign size={16} className="form-input-icon text-secondary" />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <AtSign size={15} style={{ position: 'absolute', left: '12px', color: 'var(--color-text-secondary)', pointerEvents: 'none' }} />
                 <input
                   id="newVipUsernameInput"
                   type="text"
@@ -88,7 +88,8 @@ export default function ApprovalRejectedScreen() {
                     setErrorMessage('');
                   }}
                   placeholder="e.g. jaison"
-                  className="form-input"
+                  className="input"
+                  style={{ paddingLeft: '36px' }}
                   autoCapitalize="none"
                   autoCorrect="off"
                 />
@@ -96,7 +97,16 @@ export default function ApprovalRejectedScreen() {
             </div>
 
             {errorMessage && (
-              <div className="text-xs text-rose-400 p-2 rounded bg-rose-950/40 border border-rose-800/40">
+              <div
+                style={{
+                  fontSize: '12px',
+                  color: 'var(--color-danger)',
+                  padding: '8px 12px',
+                  borderRadius: '10px',
+                  background: 'rgba(255, 69, 58, 0.1)',
+                  border: '0.5px solid rgba(255, 69, 58, 0.25)',
+                }}
+              >
                 {errorMessage}
               </div>
             )}
@@ -104,9 +114,9 @@ export default function ApprovalRejectedScreen() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="btn btn-primary w-full flex items-center justify-center gap-2 mt-2"
+              className="btn btn-gold w-full flex items-center justify-center gap-2 mt-2"
             >
-              <span>{isSubmitting ? 'Verifying VIP...' : 'Request Access to VIP'}</span>
+              <span>{isSubmitting ? 'Verifying Admin...' : 'Request Access to Admin'}</span>
               <ArrowRight size={16} />
             </button>
           </form>
@@ -115,7 +125,7 @@ export default function ApprovalRejectedScreen() {
         <button
           type="button"
           onClick={handleSignOut}
-          className="btn btn-secondary w-full flex items-center justify-center gap-2"
+          className="btn btn-outline w-full flex items-center justify-center gap-2"
         >
           <LogOut size={16} />
           <span>Return to Sign In</span>

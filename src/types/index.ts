@@ -132,24 +132,6 @@ export interface PrivilegedUser {
   lastActive?: string;
 }
 
-export type VerificationChannel = 'phone' | 'email';
-
-export interface VerificationSession {
-  target: string;
-  channel: VerificationChannel;
-  code: string;
-  expiresAt: number;
-  attemptsLeft: number;
-  verified: boolean;
-  lastSentAt: number;
-  isSupabaseLive?: boolean;
-  isFirebase?: boolean;
-  isSandbox?: boolean;
-  firebaseConfirmationResult?: any;
-  supabaseMessage?: string;
-  supabaseUserId?: string;
-}
-
 export interface Person {
   id: string;
   vipId?: string;
@@ -195,7 +177,7 @@ export interface FamilyEvent {
   name: string;
   eventType: EventType;
   date: string;
-  familyMember: string;
+  familyMember?: string;
   description?: string;
   venue?: string;
   guests: GuestRecord[];
@@ -314,6 +296,26 @@ export interface GiftHistoryItem {
   estimatedValue?: number;
 }
 
+export interface GiftRecord {
+  id: string;
+  vipId?: string;
+  direction: 'received' | 'given';
+  eventId: string;
+  eventTitle: string;
+  eventDate: string;
+  eventType?: EventType | string;
+  eventVenue?: string;
+  recipientName?: string;
+  recipientPersonId?: string;
+  giftName: string;
+  giftCategory: GiftCategory;
+  estimatedValue?: number;
+  notes?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ScheduleConflict {
   conflictingItemId: string;
   conflictingItemTitle: string;
@@ -330,7 +332,6 @@ export type Screen =
   | 'scan'
   | 'ai-processing'
   | 'extracted-details'
-  | 'confirm-ignore'
   | 'upcoming'
   | 'calendar'
   | 'event-detail'

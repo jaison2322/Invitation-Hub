@@ -1,0 +1,355 @@
+================================================================================
+DETAILED IMPLEMENTATION PLAN: INVITATION HUB — GIFT HISTORY ENHANCEMENT
+================================================================================
+Document Version: 1.0.0
+Status: Ready for Execution
+Target Module: Gift History (src/routes/GiftHistoryScreen.tsx),
+               Event Detail (src/routes/EventDetailScreen.tsx),
+               Database Services (src/services/supabaseDbService.ts),
+               Zustand Store (src/store/useAppStore.ts),
+               Supabase Schema & Migration (supabase/migrations/)
+
+================================================================================
+1. EXECUTIVE SUMMARY & OBJECTIVE
+================================================================================
+The objective of this project is to upgrade the existing Gift History functionality
+in Invitation Hub into a dual-mode "Gift Received" and "Gift Given" ledger system,
+while strictly adhering to the existing UI styling, theme, colors, navigation bar,
+typography, spacing, authentication, and multi-tenant isolation rules.
+
+Key Requirements:
+1. Reorganize Gift History Header:
+   - Move heading upward to eliminate wasted screen space.
+   - Insert a 2-option segmented selector immediately below the heading:
+     Option 1: Gift Received (Default)
+     Option 2: Gift Given
+   - Switching between options updates the displayed ledger smoothly without
+     navigating away.
+   - Preserve existing search input and category filter pills (All Gifts, Gold,
+     Silver, Cash, Electronics, Other).
+
+2. Gift Received Continuity:
+   - Preserve all existing records from the database (past family functions).
+   - Display gift name, category, estimated value (INR), notes, and linked event info.
+   - Do not display gifts given in this section.
+
+3. Gift Given Flow:
+   - Display a prominent "+" button at the top-right of the content area when
+     Gift Given is active.
+   - Restrict button visibility to admin (VIP) and permitted users.
+   - Step 1 (Event Selection): Clicking "+" opens an event selector dialog/sheet
+     listing saved events (invitations & functions) with name, host, date, place.
+     Prioritizes and highlights ended/past events.
+   - Step 2 (Gift Entry Form): Reuses the exact form layout and fields shown in
+     the existing Gift Received form:
+       - Gift Name/Description (Label: "Gift Given", placeholder: "Enter gift")
+       - Gift Category dropdown
+       - Estimated Value (INR) numeric input
+       - Notes textarea
+       - Selected event info header (so the user knows the function context)
+       - Cancel and Save Record buttons
+   - Step 3 (Save & Validation): Prevent duplicate submission on rapid clicks,
+     validate inputs, persist to database with tenant/VIP account ID, update UI
+     optimistically and show success notification.
+
+4. Link to Event Page & Lifecycle Continuity:
+   - Every Gift Given record links to the permanent event ID.
+   - When an event moves from Upcoming to Past based on calendar date passage
+     (isInvitationPastByDate), the event ID remains identical and gift records
+     remain permanently associated.
+   - Display a "Gifts Given" section on the Event Detail screen (/event/:id)
+     for the specific event with proper permission checks.
+
+5. Database & Multi-Tenant Security:
+   - Introduce public.gift_records table via a safe migration.
+   - Apply Row Level Security (RLS) policies scoped strictly via get_auth_vip_id().
+   - Add performance indexes on vip_id, event_id, direction, and event_date.
+   - Support both remote Supabase persistence and offline local storage.
+
+
+================================================================================
+2. CODEBASE & ARCHITECTURAL INSPECTION FINDINGS
+================================================================================
+1. Current UI in src/routes/GiftHistoryScreen.tsx:
+   - Uses .screen-stationary-header with back button, <h2>Gift History</h2>,
+     search input, and horizontal scrollable category tabs.
+   - Currently computes gifts by flattening familyEvents:
+     familyEvents.flatMap(event => event.guests.filter(g => g.gift)...)
+   - Permission check:
+     const canViewGifts = isVIP || currentPrivilegedUser?.permissions?.canViewGiftHistory !== false;
+
+2. Existing Form Structure in src/routes/PastEventDetailScreen.tsx (lines 862-941):
+   - Gift description: <label>Gift Received</label>, <input placeholder="Enter gift" />
+   - Row with 2 columns:
+     - <label>Gift Category</label>, <select> with category options
+     - <label>Estimated Value (₹)</label>, <input type="number" placeholder="Enter gift value" />
+   - Notes: <label>Notes</label>, <textarea placeholder="Enter notes here..." />
+   - Buttons: <button>Cancel</button>, <button>Save Record</button>
+
+3. Event Lifecycle in src/routes/UpcomingInvitationsScreen.tsx:
+   - Scope toggle: "Upcoming Invitations" vs "Past Invitations".
+   - Partitioned dynamically using isInvitationPastByDate(inv, todayStr).
+   - Event records keep their exact same ID in public.invitations.
+
+4. Permission Architecture:
+   - VIP User: isVIP === true (admin, has full permissions).
+   - Staff User: currentPrivilegedUser with permissions record in JSONB:
+     - canViewGiftHistory (boolean)
+     - canEditEvents (boolean)
+     - canAddInvitations (boolean)
+
+
+================================================================================
+3. DATABASE SCHEMA & SUPABASE MIGRATION
+================================================================================
+Create a new migration file:
+supabase/migrations/20261011_add_gift_records.sql
+
+SQL Specification:
+--------------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.gift_records (
+    id TEXT PRIMARY KEY,
+    vip_id TEXT NOT NULL,
+    direction TEXT NOT NULL DEFAULT 'given' CHECK (direction IN ('received', 'given')),
+    event_id TEXT NOT NULL,
+    event_title TEXT NOT NULL,
+    event_date DATE NOT NULL,
+    event_type TEXT,
+    event_venue TEXT,
+    recipient_name TEXT,
+    recipient_person_id TEXT REFERENCES public.people(id) ON DELETE SET NULL,
+    gift_name TEXT NOT NULL,
+    gift_category TEXT NOT NULL DEFAULT 'other',
+    estimated_value NUMERIC,
+    notes TEXT,
+    created_by TEXT DEFAULT 'vip',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Fast lookup indexes
+CREATE INDEX IF NOT EXISTS idx_gift_records_vip_id ON public.gift_records(vip_id);
+CREATE INDEX IF NOT EXISTS idx_gift_records_event_id ON public.gift_records(event_id);
+CREATE INDEX IF NOT EXISTS idx_gift_records_direction ON public.gift_records(direction);
+CREATE INDEX IF NOT EXISTS idx_gift_records_date ON public.gift_records(event_date DESC);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.gift_records ENABLE ROW LEVEL SECURITY;
+
+-- Grant API permissions
+GRANT ALL ON TABLE public.gift_records TO anon, authenticated, service_role;
+
+-- Tenant isolation RLS policies using existing get_auth_vip_id() helper
+CREATE POLICY "gift_records_isolated_select"
+    ON public.gift_records FOR SELECT TO anon, authenticated
+    USING (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "gift_records_isolated_insert"
+    ON public.gift_records FOR INSERT TO anon, authenticated
+    WITH CHECK (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "gift_records_isolated_update"
+    ON public.gift_records FOR UPDATE TO anon, authenticated
+    USING (vip_id = public.get_auth_vip_id())
+    WITH CHECK (vip_id = public.get_auth_vip_id());
+
+CREATE POLICY "gift_records_isolated_delete"
+    ON public.gift_records FOR DELETE TO anon, authenticated
+    USING (vip_id = public.get_auth_vip_id());
+--------------------------------------------------------------------------------
+
+
+================================================================================
+4. DATA TYPES & STORE INTEGRATION
+================================================================================
+1. TypeScript Types (src/types/index.ts):
+   Add GiftRecord interface:
+   export interface GiftRecord {
+     id: string;
+     vipId?: string;
+     direction: 'received' | 'given';
+     eventId: string;
+     eventTitle: string;
+     eventDate: string;
+     eventType?: EventType | string;
+     eventVenue?: string;
+     recipientName?: string;
+     recipientPersonId?: string;
+     giftName: string;
+     giftCategory: GiftCategory;
+     estimatedValue?: number;
+     notes?: string;
+     createdBy?: string;
+     createdAt: string;
+     updatedAt: string;
+   }
+
+2. Supabase DB Service (src/services/supabaseDbService.ts):
+   Add methods:
+   - getGiftRecords(vipId?: string): Promise<GiftRecord[]>
+   - insertGiftRecord(record: GiftRecord, vipId?: string): Promise<boolean>
+   - deleteGiftRecord(id: string, vipId?: string): Promise<boolean>
+
+3. Zustand Store (src/store/useAppStore.ts):
+   - State addition: giftRecords: GiftRecord[]
+   - Actions:
+     - addGiftRecord(record: Omit<GiftRecord, 'id' | 'createdAt' | 'updatedAt'>): GiftRecord
+     - updateGiftRecord(id: string, updates: Partial<GiftRecord>): void
+     - removeGiftRecord(id: string): Promise<void>
+   - In partialize: add giftRecords for local storage persistence.
+   - In initial data fetch: load giftRecords via supabaseDbService.getGiftRecords().
+
+4. Realtime Service (src/services/realtimeService.ts):
+   - Add postgres_changes listener for public.gift_records table.
+
+
+================================================================================
+5. UI & WORKFLOW IMPLEMENTATION
+================================================================================
+
+Step 1: GiftHistoryScreen Layout Refinement
+--------------------------------------------------------------------------------
+- Reduce vertical header padding.
+- Place Back button, Heading ("Gift History"), and (if in Given mode) "+ Record Gift"
+  button on the top line.
+- Render high-contrast Segmented Control:
+  [ Gift Received ]  [ Gift Given ]
+  - Default: 'received'
+  - Tab state maintained in component (useState<'received' | 'given'>('received'))
+- Preserved Search Bar & Category Filter Pills:
+  - Input: "Search gifts such as gold, silver, etc..."
+  - Categories: All Gifts, Gold, Silver, Cash, Electronics, Other
+- Content Rendering:
+  - When 'received' is active:
+    Displays gifts received from familyEvents (+ any received records in gift_records).
+    Preserves recipient card, badge, category, valuation, notes, and navigation to person.
+  - When 'given' is active:
+    Displays gifts given from giftRecords (filtered by search and category).
+    Shows Gift name, Category badge, Value in INR, Event Title, Event Date,
+    Recipient/Host name, and Notes.
+    Provides edit and delete options for authorized users.
+  - Empty states:
+    - Received empty: "No Received Gifts Found"
+    - Given empty: "No Given Gifts Found - Record gifts given to others for their functions."
+
+Step 2: Event Selection Dialog / Modal (SelectEventModal)
+--------------------------------------------------------------------------------
+- Opened when authorized user taps "+" / "Record Gift" in Gift Given mode.
+- Collects saved events from store (invitations and familyEvents).
+- Organizes events:
+  - Section 1: "Past Functions & Events Attended" (Ended/past dates prioritized).
+  - Section 2: "Upcoming Invitations & Events".
+- Displays for each event:
+  - Title (e.g., "Rajesh & Meera Wedding")
+  - Host / Main person
+  - Formatted date
+  - Venue / Location
+  - Status badge (e.g., "Ended", "Upcoming")
+- Search bar to filter events quickly by name or host.
+- Empty state if no events exist: "No saved events found. Please add an invitation first."
+- Tapping an event selects it and opens the Gift Given Entry Form with the event
+  pre-selected.
+
+Step 3: Gift Given Entry Form (AddGiftGivenModal)
+--------------------------------------------------------------------------------
+- Replicates the exact layout from Screenshot 2:
+  1. Selected Event Header Card:
+     Displays Event Name, Host, Date, and Venue in a compact summary card so
+     the user has clear context.
+  2. Input: "Gift Given" (placeholder: "Enter gift")
+  3. Two-Column Grid:
+     - Left: "Gift Category" (select dropdown with standard categories)
+     - Right: "Estimated Value (₹)" (numeric input, placeholder: "Enter gift value")
+  4. Textarea: "Notes" (placeholder: "Enter notes here...", rows: 3)
+  5. Recipient Name field: Pre-filled with event host, editable if gift was given
+     to another person at the function.
+  6. Action Buttons:
+     - "Cancel" button (ghost/secondary)
+     - "Save Record" button (primary blue/gold)
+- Validation & Safety:
+  - Gift name required.
+  - isSubmitting state to prevent double-click duplicate creation.
+  - Try/catch with helpful error alerts if database write fails.
+  - Optimistic UI update in Zustand store so record appears immediately.
+
+Step 4: Linking Gifts Given to Event Detail Screen (src/routes/EventDetailScreen.tsx)
+--------------------------------------------------------------------------------
+- On the event detail page (/event/:id):
+  - Retrieve all gift records where eventId === id and direction === 'given'.
+  - If records exist (or if user has permission to add), display a "Gifts Given"
+    section with:
+    - List of gifts given for this specific event.
+    - Gift name, category badge, estimated value in INR, notes.
+    - Quick "+ Record Gift" shortcut button for authorized users.
+- Event Lifecycle Continuity:
+  - When an invitation transitions from Upcoming to Past (isInvitationPastByDate),
+    the invitation ID remains identical.
+  - Linked gift records remain associated with the event and display properly
+    in both the event detail page and Gift History.
+
+
+================================================================================
+6. AUTHORIZATION & ACCESS CONTROL
+================================================================================
+- Admin (isVIP === true):
+  - Can view Gift Received and Gift Given.
+  - Can see "+" button and record given gifts.
+  - Can edit and delete records.
+- Delegated Staff User:
+  - Viewing Gift History: checked via permissions.canViewGiftHistory !== false.
+  - Adding / Editing Given Gifts: checked via permissions.canEditEvents !== false
+    or permissions.canViewGiftHistory !== false.
+- Unauthorized Users:
+  - "+" button is hidden in UI.
+  - Database calls rejected via Supabase RLS policies.
+
+
+================================================================================
+7. TESTING & VERIFICATION CHECKLIST (18 SCENARIOS)
+================================================================================
+1.  [ ] Gift History screen opens with "Gift Received" selected by default.
+2.  [ ] Existing received gift records from family events display accurately.
+3.  [ ] Switching to "Gift Given" switches records without navigating away.
+4.  [ ] Authorized user (VIP/permitted staff) sees the "+" button in Gift Given mode.
+5.  [ ] Unauthorized user cannot see the "+" button and cannot add records.
+6.  [ ] Clicking "+" displays the actual saved event list.
+7.  [ ] Ended/past events are prioritized and clearly badged in the event list.
+8.  [ ] Selecting an event opens the Gift Given entry form with event info displayed.
+9.  [ ] The form replicates the layout, fields, and styling of Screenshot 2.
+10. [ ] Validation prevents submitting without a gift name.
+11. [ ] Repeated button clicks do not produce duplicate submissions.
+12. [ ] Saving a gift creates one record in public.gift_records linked to the event ID.
+13. [ ] Newly saved gift immediately appears in the Gift Given list.
+14. [ ] Switching tabs does not mix received and given gifts.
+15. [ ] Gift Given records persist across app restart, reload, and re-login.
+16. [ ] When an event moves from Upcoming to Past, its gift records remain intact.
+17. [ ] Gifts linked to one event do not appear under unrelated events.
+18. [ ] Multi-tenant isolation verified: another VIP cannot see private gift records.
+
+
+================================================================================
+8. STEP-BY-STEP EXECUTION ORDER
+================================================================================
+Phase 1: Database Migration & Model Definition
+  - Create supabase/migrations/20261011_add_gift_records.sql.
+  - Add GiftRecord interface in src/types/index.ts.
+  - Add service methods in src/services/supabaseDbService.ts.
+  - Add store slice and actions in src/store/useAppStore.ts.
+
+Phase 2: UI Overhaul of Gift History
+  - Refactor src/routes/GiftHistoryScreen.tsx:
+    - Move title upward and compact stationary header.
+    - Add segmented control (Gift Received / Gift Given).
+    - Add prominent "+" button for authorized users.
+    - Integrate dual-ledger rendering, cards, search, and category filtering.
+
+Phase 3: Event Picker & Gift Entry Modals
+  - Implement SelectEventModal and AddGiftGivenModal.
+  - Connect selection flow, field validation, and anti-duplicate guards.
+
+Phase 4: Event Detail Page Integration
+  - Update src/routes/EventDetailScreen.tsx with "Gifts Given" section.
+
+Phase 5: Validation & Quality Assurance
+  - Verify all 18 scenarios on desktop and mobile viewports.
+================================================================================

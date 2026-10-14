@@ -535,8 +535,8 @@ function applyOptimalContrastAndFlatten(
  */
 function applyAlternativeGrayscale(
   data: Uint8ClampedArray,
-  width: number,
-  height: number
+  _width?: number,
+  _height?: number
 ): void {
   let minLum = 255;
   let maxLum = 0;

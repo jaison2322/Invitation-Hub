@@ -7,7 +7,6 @@ import {
   Gift,
   History,
   Edit3,
-  User,
   Trash2,
   Phone,
   PhoneCall,
@@ -49,7 +48,6 @@ export default function PersonProfileScreen() {
 
   // Form Fields
   const [editName, setEditName] = useState(person?.name || '');
-  const [editNickname, setEditNickname] = useState(person?.nickname || '');
   const [editRelationship, setEditRelationship] = useState<RelationshipType>(
     person?.relationship || 'friend'
   );
@@ -127,7 +125,7 @@ export default function PersonProfileScreen() {
     setTimeout(() => setCopiedPhone(false), 2000);
   };
 
-  const handleCallPhone = (e?: React.MouseEvent) => {
+  const handleCallPhone = () => {
     if (!person?.phone) return;
     const cleanNumber = person.phone.replace(/[^0-9+*#]/g, '');
     window.location.href = `tel:${cleanNumber}`;
@@ -139,15 +137,11 @@ export default function PersonProfileScreen() {
     'friend',
     'business_partner',
     'client',
-    'colleague',
-    'neighbor',
-    'acquaintance',
     'other',
   ];
 
   const handleOpenEdit = () => {
     setEditName(person.name);
-    setEditNickname(person.nickname || person.name);
     setEditRelationship(person.relationship);
     setEditPhone(person.phone || '');
     setEditNotes(person.notes || '');
@@ -162,7 +156,7 @@ export default function PersonProfileScreen() {
 
     updatePerson(person.id, {
       name: trimmedName,
-      nickname: editNickname.trim() || trimmedName,
+      nickname: trimmedName,
       relationship: editRelationship,
       phone: editPhone.trim() || undefined,
       notes: editNotes.trim() || undefined,
@@ -467,7 +461,7 @@ export default function PersonProfileScreen() {
               </button>
             </div>
             <p className="text-xs text-secondary mb-4">
-              Update relationship tier, nickname, and notes
+              Update contact details, relationship, and description
             </p>
 
             <form onSubmit={handleSaveEdit} className="flex flex-col gap-3">
@@ -477,23 +471,13 @@ export default function PersonProfileScreen() {
                   className="input"
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Full Name"
+                  placeholder="Enter full name"
                   required
                 />
               </div>
 
               <div>
-                <label className="label">Display Name / Nickname</label>
-                <input
-                  className="input"
-                  value={editNickname}
-                  onChange={(e) => setEditNickname(e.target.value)}
-                  placeholder="Display Name"
-                />
-              </div>
-
-              <div>
-                <label className="label">Relationship Tier *</label>
+                <label className="label">Relationship *</label>
                 <select
                   className="select"
                   value={editRelationship}
@@ -514,17 +498,17 @@ export default function PersonProfileScreen() {
                   type="tel"
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                  placeholder="+91 98765 43210"
+                  placeholder="Enter phone number"
                 />
               </div>
 
               <div>
-                <label className="label">VIP Notes / Background</label>
+                <label className="label">Description</label>
                 <textarea
                   className="textarea"
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
-                  placeholder="Relationship notes, preferences, family ties..."
+                  placeholder="Enter any notes about the contact"
                   rows={2}
                 />
               </div>

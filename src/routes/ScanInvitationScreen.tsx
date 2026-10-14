@@ -1,4 +1,4 @@
-import { useState, useRef, type ChangeEvent } from 'react';
+import { useState, useRef, useEffect, type ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Camera, Upload, ArrowLeft, Sparkles, PenLine } from 'lucide-react';
 import { permissionService } from '../services/permissionService';
@@ -10,6 +10,18 @@ export default function ScanInvitationScreen() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Dismiss preview first if Android hardware back button is pressed
+  useEffect(() => {
+    const handleHardwareBack = (e: Event) => {
+      if (preview) {
+        e.preventDefault();
+        setPreview(null);
+      }
+    };
+    window.addEventListener('hardwareBackButton', handleHardwareBack);
+    return () => window.removeEventListener('hardwareBackButton', handleHardwareBack);
+  }, [preview]);
 
   const handleFile = (file: File) => {
     setIsAnalyzing(false);
@@ -107,21 +119,41 @@ export default function ScanInvitationScreen() {
   };
 
   return (
-    <div className="screen-no-nav">
+    <div className="screen">
       {/* ── Stationary Top Bar ────────────────────────────────────────────── */}
       <div className="screen-stationary-header">
         <div className="top-bar">
-          <button className="top-bar-back" onClick={() => navigate(-1)} aria-label="Go Back">
+          <button
+            className="top-bar-back"
+            onClick={() => {
+              if (preview) {
+                setPreview(null);
+              } else {
+                navigate(-1);
+              }
+            }}
+            aria-label="Go Back"
+          >
             <ArrowLeft size={16} strokeWidth={2} />
           </button>
-          <span className="top-bar-title">Document Scanner</span>
+          <span className="top-bar-title">Invitation Scanner</span>
           <div style={{ width: '36px' }} />
         </div>
       </div>
 
-      <div className="screen-scroll-body flex flex-col items-center justify-center gap-6" style={{ paddingLeft: '16px', paddingRight: '16px' }}>
+      <div
+        className="screen-scroll-body flex flex-col items-center gap-6"
+        style={{
+          paddingLeft: '16px',
+          paddingRight: '16px',
+          paddingBottom: 'calc(var(--bottom-nav-height) + var(--bottom-nav-pad) + 40px)',
+        }}
+      >
         {!preview ? (
-          <>
+          <div
+            className="flex flex-col items-center gap-6 w-full"
+            style={{ margin: 'auto 0', maxWidth: '340px' }}
+          >
             {/* Apple Viewfinder Frame */}
             <div
               className="ios-card text-center cursor-pointer transition-transform"
@@ -239,41 +271,58 @@ export default function ScanInvitationScreen() {
                 <span>Enter Details Manually</span>
               </button>
             </div>
-          </>
+          </div>
         ) : (
-          <>
+          <div
+            className="flex flex-col items-center gap-4 w-full"
+            style={{ margin: 'auto 0', maxWidth: '340px' }}
+          >
             {/* Captured Preview */}
-            <div style={{ width: '100%', maxWidth: '320px' }}>
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+            >
               <img
                 src={preview}
                 alt="Invitation scan preview"
                 style={{
-                  width: '100%',
+                  maxWidth: '100%',
+                  maxHeight: 'min(48vh, 380px)',
+                  width: 'auto',
+                  height: 'auto',
+                  objectFit: 'contain',
                   borderRadius: '18px',
                   border: '0.5px solid rgba(255, 255, 255, 0.2)',
                   boxShadow: '0 8px 30px rgba(0, 0, 0, 0.5)',
+                  display: 'block',
                 }}
               />
             </div>
 
-            <div className="flex gap-2 w-full" style={{ maxWidth: '320px' }}>
+            {/* Action Buttons: Cancel and Analyze */}
+            <div className="flex gap-2.5 w-full" style={{ maxWidth: '320px' }}>
               <button
                 type="button"
                 className="btn btn-ignore flex-1"
                 onClick={() => setPreview(null)}
               >
-                Retake
+                Cancel
               </button>
               <button
                 type="button"
                 className="btn btn-gold flex-1"
                 onClick={handleAnalyze}
+                disabled={isAnalyzing}
               >
                 <Sparkles size={16} strokeWidth={2} />
-                <span>Analyze</span>
+                <span>{isAnalyzing ? 'Analyzing...' : 'Analyze'}</span>
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
 

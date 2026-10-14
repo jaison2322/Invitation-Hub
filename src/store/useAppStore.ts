@@ -11,10 +11,10 @@ import type {
   ActivityLog,
   Notification,
   InvitationStatus,
-  Priority,
   ScanResult,
   UserAccount,
   LanguageCode,
+  GiftRecord,
 } from '../types';
 import { sanitizePermissions } from '../types';
 import { generateId } from '../utils/id';
@@ -22,7 +22,6 @@ import { hashPassword } from '../utils/crypto';
 import { supabaseDbService } from '../services/supabaseDbService';
 import { setSupabaseAuthSession, clearSupabaseAuthSession } from '../utils/supabase';
 import { realtimeService } from '../services/realtimeService';
-import { seedPrivilegedUsers } from '../data/seedData';
 import { daysUntil } from '../utils/formatters';
 import { mobileNotificationService } from '../services/mobileNotificationService';
 import { storageService } from '../services/storageService';
@@ -50,6 +49,7 @@ interface AppState {
   familyEvents: FamilyEvent[];
   schedule: ScheduleItem[];
   reminders: Reminder[];
+  giftRecords: GiftRecord[];
   privilegedUsers: PrivilegedUser[];
   activityLogs: ActivityLog[];
   notifications: Notification[];
@@ -58,8 +58,8 @@ interface AppState {
   currentScanResult: ScanResult | null;
 
   // Preferences
-  theme: 'dark' | 'light' | 'onyx' | 'sapphire';
-  setTheme: (theme: 'dark' | 'light' | 'onyx' | 'sapphire') => void;
+  theme: 'dark' | 'light';
+  setTheme: (theme: 'dark' | 'light') => void;
   language: LanguageCode;
   setLanguage: (language: LanguageCode) => void;
 
@@ -115,6 +115,11 @@ interface AppState {
   removeFamilyEvent: (id: string) => void | Promise<void>;
   getFamilyEventById: (id: string) => FamilyEvent | undefined;
 
+  // Gift actions
+  addGiftRecord: (record: Omit<GiftRecord, 'id' | 'createdAt' | 'updatedAt'>) => GiftRecord;
+  updateGiftRecord: (id: string, updates: Partial<GiftRecord>) => void;
+  removeGiftRecord: (id: string) => Promise<void>;
+
   // Schedule actions
   addScheduleItem: (item: Omit<ScheduleItem, 'id' | 'createdAt'>) => ScheduleItem;
   updateScheduleItem: (id: string, updates: Partial<ScheduleItem>) => void;
@@ -133,6 +138,7 @@ interface AppState {
   deleteNotification: (id: string) => void;
   clearNotifications: () => void;
   getUnreadCount: () => number;
+  checkAndTriggerUpcomingReminders: (explicitVipId?: string) => Promise<void>;
 
   // Activity log actions
   addActivityLog: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => ActivityLog;
@@ -172,6 +178,7 @@ export const useAppStore = create<AppState>()(
       familyEvents: [],
       schedule: [],
       reminders: [],
+      giftRecords: [],
       privilegedUsers: [],
       activityLogs: [],
       notifications: [],
@@ -196,6 +203,7 @@ export const useAppStore = create<AppState>()(
           familyEvents: [],
           schedule: [],
           reminders: [],
+          giftRecords: [],
           privilegedUsers: [],
           activityLogs: [],
           notifications: [],
@@ -232,7 +240,7 @@ export const useAppStore = create<AppState>()(
 
         set({ isSyncing: true });
         try {
-          const [people, invitations, familyEvents, schedule, reminders, staffAccounts, remoteLogs, remoteNotifs] = await Promise.all([
+          const [people, invitations, familyEvents, schedule, reminders, staffAccounts, remoteLogs, remoteNotifs, giftRecords] = await Promise.all([
             supabaseDbService.getPeople(targetVipId),
             supabaseDbService.getInvitations(targetVipId),
             supabaseDbService.getFamilyEvents(targetVipId),
@@ -241,6 +249,7 @@ export const useAppStore = create<AppState>()(
             supabaseDbService.getStaffAccounts(targetVipId),
             supabaseDbService.getActivityLogs(targetVipId),
             supabaseDbService.getNotifications(targetVipId),
+            supabaseDbService.getGiftRecords(targetVipId),
           ]);
 
           // Privileged users scoped strictly to this VIP account
@@ -277,25 +286,46 @@ export const useAppStore = create<AppState>()(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
 
-          // Auto-generate protocol reminders for upcoming confirmed events within 48h
-          const upcomingConfirmed = invitations.filter((inv) => {
+          // Auto-generate protocol reminders for upcoming events within 48h
+          // Handles both confirmed and pending events so 1-day-left (tomorrow) and today alerts trigger reliably
+          const upcomingEvents = invitations.filter((inv) => {
             const days = daysUntil(inv.date);
-            return inv.status === 'confirmed' && days >= 0 && days <= 2;
+            return (inv.status === 'confirmed' || inv.status === 'pending') && days >= 0 && days <= 2;
           });
 
-          for (const inv of upcomingConfirmed) {
+          for (const inv of upcomingEvents) {
+            const days = daysUntil(inv.date);
+            const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : '2days';
+            const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : 'in 2 days';
+            const reminderId = `notif-rem-${inv.id}-${milestoneKey}`;
+
             const reminderExists = sortedNotifs.some(
-              (n) => n.relatedEntityId === inv.id && n.type === 'reminder'
+              (n) =>
+                n.id === reminderId ||
+                (n.relatedEntityId === inv.id &&
+                  n.type === 'reminder' &&
+                  ((milestoneKey === 'today' && (n.message.toLowerCase().includes('today') || n.id.includes('-today'))) ||
+                    (milestoneKey === '1day' && (n.message.toLowerCase().includes('tomorrow') || n.message.toLowerCase().includes('1 day') || n.id.includes('-1day'))) ||
+                    (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days')))))
             );
+
             if (!reminderExists) {
-              const days = daysUntil(inv.date);
-              const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : 'in 2 days';
+              const isPending = inv.status === 'pending';
+              const eventName = inv.nickname || inv.title;
+              const reminderTitle = isPending
+                ? (days === 0 ? `Action Required Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`)
+                : (days === 0 ? `Event Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`);
+
+              const reminderMessage = isPending
+                ? `Protocol reminder (1 day left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+                : `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`;
+
               const reminderNotif: Notification = {
-                id: generateId('notif'),
+                id: reminderId,
                 vipId: targetVipId,
                 type: 'reminder',
-                title: `Upcoming Event: ${inv.title}`,
-                message: `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`,
+                title: reminderTitle,
+                message: reminderMessage,
                 read: false,
                 timestamp: new Date().toISOString(),
                 relatedEntityId: inv.id,
@@ -303,6 +333,7 @@ export const useAppStore = create<AppState>()(
               };
               sortedNotifs.unshift(reminderNotif);
               supabaseDbService.insertNotification(reminderNotif, targetVipId).catch(console.warn);
+              mobileNotificationService.deliverNotification(reminderNotif).catch(console.warn);
             }
           }
 
@@ -312,6 +343,7 @@ export const useAppStore = create<AppState>()(
             familyEvents,
             schedule,
             reminders,
+            giftRecords,
             privilegedUsers: privUsers,
             activityLogs: sortedLogs,
             notifications: sortedNotifs,
@@ -325,8 +357,14 @@ export const useAppStore = create<AppState>()(
 
       // ── Theme & Localization Actions ────────────────────────────────────
       setTheme: (theme) => {
-        set({ theme });
-        document.documentElement.setAttribute('data-theme', theme);
+        const safeTheme = theme === 'light' ? 'light' : 'dark';
+        set({ theme: safeTheme });
+        document.documentElement.setAttribute('data-theme', safeTheme);
+        document.documentElement.style.colorScheme = safeTheme;
+        const metaTheme = document.querySelector('meta[name="theme-color"]');
+        if (metaTheme) {
+          metaTheme.setAttribute('content', safeTheme === 'light' ? '#f2f2f7' : '#000000');
+        }
       },
       setLanguage: (language) => {
         set({ language });
@@ -1142,13 +1180,13 @@ export const useAppStore = create<AppState>()(
       getPersonById: (id) => get().people.find((p) => p.id === id),
 
       searchPeople: (query) => {
-        const q = query.toLowerCase();
-        return get().people.filter(
-          (p) =>
-            p.name.toLowerCase().includes(q) ||
-            p.nickname.toLowerCase().includes(q) ||
-            p.relationship.toLowerCase().includes(q)
-        );
+        const q = query.trim().toLowerCase();
+        if (!q) return get().people;
+        return get().people.filter((p) => {
+          const name = (p.name || '').trim().toLowerCase();
+          const words = name.split(/\s+/);
+          return name.startsWith(q) || words.some((w) => w.startsWith(q));
+        });
       },
 
       // ── Invitation Actions ───────────────────────────────────────────────
@@ -1163,6 +1201,7 @@ export const useAppStore = create<AppState>()(
         };
         set((state) => ({ invitations: [...state.invitations, invitation] }));
         supabaseDbService.insertInvitation(invitation, activeVipId || undefined).catch(console.error);
+        setTimeout(() => get().checkAndTriggerUpcomingReminders(activeVipId || undefined), 100);
         return invitation;
       },
 
@@ -1227,6 +1266,9 @@ export const useAppStore = create<AppState>()(
           relatedEntityId: id,
           actionUrl: `/event/${id}`,
         });
+
+        // Trigger immediate check for upcoming reminders now that status has changed
+        setTimeout(() => get().checkAndTriggerUpcomingReminders(activeVipId || undefined), 100);
       },
 
       removeInvitation: async (id) => {
@@ -1234,7 +1276,6 @@ export const useAppStore = create<AppState>()(
         const existing = get().invitations.find((inv) => inv.id === id);
         const eventTitle = existing?.nickname || existing?.title || 'Scheduled Event';
         const eventDate = existing?.date || '';
-        const eventVenue = existing?.venue || '';
 
         const actorUsername = (currentUser?.username || currentPrivilegedUser?.username || (isVIP ? 'vip' : 'staff')).toLowerCase();
         const actorName = isVIP ? (currentUser?.name || 'VIP Principal') : (currentPrivilegedUser?.name || 'Staff Member');
@@ -1271,8 +1312,6 @@ export const useAppStore = create<AppState>()(
           if (currentUser?.username) privUsernames.push(currentUser.username.toLowerCase());
           otherUsernames = privUsernames.filter((u) => u !== actorUsername);
         }
-
-        const pushTokens = await supabaseDbService.getUserPushTokens(otherUsernames, activeVipId || undefined);
 
         const notifId = generateId('notif');
         const myDeviceToken = mobileNotificationService.getDeviceRegistration()?.token || '';
@@ -1364,8 +1403,6 @@ export const useAppStore = create<AppState>()(
           otherUsernames = privUsernames.filter((u) => u !== actorUsername);
         }
 
-        const pushTokens = await supabaseDbService.getUserPushTokens(otherUsernames, activeVipId || undefined);
-
         const notifId = generateId('notif');
         const myDeviceToken = mobileNotificationService.getDeviceRegistration()?.token || '';
         const notification: Notification = {
@@ -1390,6 +1427,72 @@ export const useAppStore = create<AppState>()(
       },
 
       getFamilyEventById: (id) => get().familyEvents.find((e) => e.id === id),
+
+      // ── Gift Actions ─────────────────────────────────────────────────────
+      addGiftRecord: (recordData) => {
+        const { activeVipId, currentUser, currentPrivilegedUser, isVIP } = get();
+        const actorId = isVIP ? 'vip' : currentPrivilegedUser?.id || 'staff';
+        const actorName = isVIP ? (currentUser?.name || 'VIP Principal') : (currentPrivilegedUser?.name || 'Staff User');
+
+        const now = new Date().toISOString();
+        const record: GiftRecord = {
+          ...recordData,
+          id: generateId('gift'),
+          vipId: activeVipId || undefined,
+          createdBy: actorId,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        set((state) => ({ giftRecords: [record, ...state.giftRecords] }));
+        supabaseDbService.insertGiftRecord(record, activeVipId || undefined).catch(console.error);
+
+        get().addActivityLog({
+          userId: actorId,
+          userName: actorName,
+          action: `Recorded gift given "${record.giftName}" for event "${record.eventTitle}"`,
+          entityType: 'gift',
+          entityId: record.id,
+          entityName: record.giftName,
+        });
+
+        return record;
+      },
+
+      updateGiftRecord: (id, updates) => {
+        const { activeVipId } = get();
+        set((state) => {
+          const updated = state.giftRecords.map((g) =>
+            g.id === id ? { ...g, ...updates, updatedAt: new Date().toISOString() } : g
+          );
+          const changed = updated.find((g) => g.id === id);
+          if (changed) supabaseDbService.insertGiftRecord(changed, activeVipId || undefined).catch(console.error);
+          return { giftRecords: updated };
+        });
+      },
+
+      removeGiftRecord: async (id) => {
+        const { activeVipId, isVIP, currentUser, currentPrivilegedUser } = get();
+        const existing = get().giftRecords.find((g) => g.id === id);
+        const giftName = existing?.giftName || 'Gift';
+        const actorId = isVIP ? 'vip' : currentPrivilegedUser?.id || 'staff';
+        const actorName = isVIP ? (currentUser?.name || 'VIP Principal') : (currentPrivilegedUser?.name || 'Staff User');
+
+        set((state) => ({
+          giftRecords: state.giftRecords.filter((g) => g.id !== id),
+        }));
+
+        supabaseDbService.deleteGiftRecord(id, activeVipId || undefined).catch(console.error);
+
+        get().addActivityLog({
+          userId: actorId,
+          userName: actorName,
+          action: `Deleted gift record "${giftName}"`,
+          entityType: 'gift',
+          entityId: id,
+          entityName: giftName,
+        });
+      },
 
       // ── Schedule Actions ─────────────────────────────────────────────────
       addScheduleItem: (itemData) => {
@@ -1593,6 +1696,71 @@ export const useAppStore = create<AppState>()(
 
       getUnreadCount: () => get().notifications.filter((n) => !n.read).length,
 
+      checkAndTriggerUpcomingReminders: async (explicitVipId?: string) => {
+        const { invitations, notifications, activeVipId, currentUser } = get();
+        const targetVipId = explicitVipId || activeVipId || currentUser?.vipId;
+        if (!targetVipId) return;
+
+        const upcomingEvents = invitations.filter((inv) => {
+          const days = daysUntil(inv.date);
+          return (inv.status === 'confirmed' || inv.status === 'pending') && days >= 0 && days <= 2;
+        });
+
+        const newReminders: Notification[] = [];
+
+        for (const inv of upcomingEvents) {
+          const days = daysUntil(inv.date);
+          const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : '2days';
+          const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : 'in 2 days';
+          const reminderId = `notif-rem-${inv.id}-${milestoneKey}`;
+
+          const existingList = [...newReminders, ...notifications];
+          const reminderExists = existingList.some(
+            (n) =>
+              n.id === reminderId ||
+              (n.relatedEntityId === inv.id &&
+                n.type === 'reminder' &&
+                ((milestoneKey === 'today' && (n.message.toLowerCase().includes('today') || n.id.includes('-today'))) ||
+                  (milestoneKey === '1day' && (n.message.toLowerCase().includes('tomorrow') || n.message.toLowerCase().includes('1 day') || n.id.includes('-1day'))) ||
+                  (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days')))))
+          );
+
+          if (!reminderExists) {
+            const isPending = inv.status === 'pending';
+            const eventName = inv.nickname || inv.title;
+            const reminderTitle = isPending
+              ? (days === 0 ? `Action Required Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`)
+              : (days === 0 ? `Event Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`);
+
+            const reminderMessage = isPending
+              ? `Protocol reminder (1 day left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+              : `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`;
+
+            const reminderNotif: Notification = {
+              id: reminderId,
+              vipId: targetVipId,
+              type: 'reminder',
+              title: reminderTitle,
+              message: reminderMessage,
+              read: false,
+              timestamp: new Date().toISOString(),
+              relatedEntityId: inv.id,
+              actionUrl: `/event/${inv.id}`,
+            };
+
+            newReminders.push(reminderNotif);
+            supabaseDbService.insertNotification(reminderNotif, targetVipId).catch(console.warn);
+            mobileNotificationService.deliverNotification(reminderNotif).catch(console.warn);
+          }
+        }
+
+        if (newReminders.length > 0) {
+          set((state) => ({
+            notifications: [...newReminders, ...state.notifications],
+          }));
+        }
+      },
+
       // ── Activity Log Actions ─────────────────────────────────────────────
       addActivityLog: (logData) => {
         const { activeVipId } = get();
@@ -1645,6 +1813,16 @@ export const useAppStore = create<AppState>()(
     {
       name: 'vip-event-intelligence-store-v2',
       onRehydrateStorage: () => (state) => {
+        if (state?.theme) {
+          const safeTheme = state.theme === 'light' ? 'light' : 'dark';
+          state.theme = safeTheme;
+          document.documentElement.setAttribute('data-theme', safeTheme);
+          document.documentElement.style.colorScheme = safeTheme;
+          const metaTheme = document.querySelector('meta[name="theme-color"]');
+          if (metaTheme) {
+            metaTheme.setAttribute('content', safeTheme === 'light' ? '#f2f2f7' : '#000000');
+          }
+        }
         if (state && state.isAuthenticated && state.activeVipId) {
           setSupabaseAuthSession(state.activeVipId, state.authToken || undefined);
         }
@@ -1663,6 +1841,7 @@ export const useAppStore = create<AppState>()(
         familyEvents: state.familyEvents,
         schedule: state.schedule,
         reminders: state.reminders,
+        giftRecords: state.giftRecords,
         privilegedUsers: state.privilegedUsers,
         activityLogs: state.activityLogs,
         notifications: state.notifications,

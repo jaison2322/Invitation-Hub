@@ -182,6 +182,7 @@ public class BackgroundNotificationSync {
                     } catch (Exception ignored) {}
                 }
 
+                String vipId = prefs.getString(KEY_VIP_ID, "").trim();
                 Set<String> deliveredIds = new HashSet<>(prefs.getStringSet(KEY_DELIVERED_IDS, new HashSet<>()));
 
                 URL url = URI.create(baseUrl + "/rest/v1/notifications?order=timestamp.desc&limit=15").toURL();
@@ -190,6 +191,9 @@ public class BackgroundNotificationSync {
                 conn.setRequestProperty("apikey", apiKey);
                 conn.setRequestProperty("Authorization", "Bearer " + apiKey);
                 conn.setRequestProperty("Accept", "application/json");
+                if (vipId != null && !vipId.isEmpty()) {
+                    conn.setRequestProperty("x-vip-id", vipId);
+                }
                 conn.setConnectTimeout(8000);
                 conn.setReadTimeout(8000);
 

@@ -5,7 +5,6 @@ import {
   ArrowLeft,
   Calendar,
   Users,
-  Gift,
   MapPin,
   Edit3,
   Plus,
@@ -15,10 +14,9 @@ import {
   Link2,
   UserPlus,
   UserCheck,
-  CheckCircle2,
-  Clock,
   Award,
   Coins,
+  Search,
 } from 'lucide-react';
 import {
   formatFullDate,
@@ -62,10 +60,11 @@ export default function PastEventDetailScreen() {
   const [guestRelationship, setGuestRelationship] = useState<RelationshipType>('friend');
   const [guestAttendance, setGuestAttendance] = useState<'attended' | 'invited_not_attended' | 'unknown'>('attended');
   const [guestGift, setGuestGift] = useState('');
-  const [guestCategory, setGuestCategory] = useState<GiftCategory>('other');
+  const [guestCategory, setGuestCategory] = useState<GiftCategory>('cash');
   const [guestValue, setGuestValue] = useState<number | undefined>(undefined);
   const [guestNotes, setGuestNotes] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const event = familyEvents.find((e) => e.id === id);
 
@@ -92,7 +91,7 @@ export default function PastEventDetailScreen() {
           </div>
           <h3 className="font-heading font-semibold text-white mb-2">Record Not Found</h3>
           <p className="text-xs text-secondary mb-5">
-            This past family function dossier does not exist or has been relocated.
+            This past family function record does not exist or has been relocated.
           </p>
           <button className="btn btn-gold w-full flex items-center justify-center gap-2" onClick={() => navigate('/past-events')}>
             <ArrowLeft size={16} />
@@ -107,14 +106,20 @@ export default function PastEventDetailScreen() {
   const totalGiftValue = event.guests.reduce((s, g) => s + (g.estimatedValue || 0), 0);
   const attendanceRate = event.guests.length > 0 ? Math.round((attended.length / event.guests.length) * 100) : 0;
 
+  // Search filtered guests (checks name only from starting letter)
+  const filteredGuests = event.guests.filter((guest) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    const name = (guest.personName || '').trim().toLowerCase();
+    const words = name.split(/\s+/);
+    return name.startsWith(q) || words.some((w) => w.startsWith(q));
+  });
+
   const giftCategories: GiftCategory[] = [
     'gold',
     'silver',
     'cash',
-    'clothing',
     'electronics',
-    'household',
-    'jewelry',
     'other',
   ];
 
@@ -124,9 +129,6 @@ export default function PastEventDetailScreen() {
     'friend',
     'business_partner',
     'client',
-    'colleague',
-    'neighbor',
-    'acquaintance',
     'other',
   ];
 
@@ -153,7 +155,7 @@ export default function PastEventDetailScreen() {
     setGuestRelationship(guest.relationship || linkedPerson?.relationship || 'friend');
     setGuestAttendance(guest.attendance);
     setGuestGift(guest.gift || '');
-    setGuestCategory(guest.giftCategory || 'other');
+    setGuestCategory(guest.giftCategory || 'cash');
     setGuestValue(guest.estimatedValue);
     setGuestNotes(guest.notes || '');
     setSelectedGuestIndex(index);
@@ -161,14 +163,15 @@ export default function PastEventDetailScreen() {
     setModalType('editGuest');
   };
 
-  // Autocomplete matching contacts
+  // Autocomplete matching contacts (checks name only from starting letter)
   const matchingContacts =
     guestName.trim().length > 0 && !guestPersonId
-      ? people.filter(
-          (p) =>
-            p.name.toLowerCase().includes(guestName.trim().toLowerCase()) ||
-            p.nickname.toLowerCase().includes(guestName.trim().toLowerCase())
-        )
+      ? people.filter((p) => {
+        const name = (p.name || '').trim().toLowerCase();
+        const q = guestName.trim().toLowerCase();
+        const words = name.split(/\s+/);
+        return name.startsWith(q) || words.some((w) => w.startsWith(q));
+      })
       : [];
 
   const handleSelectPerson = (person: typeof people[0]) => {
@@ -274,7 +277,7 @@ export default function PastEventDetailScreen() {
             </button>
             <div>
               <h2 className="font-heading font-semibold text-white tracking-tight" style={{ fontSize: '17px', margin: 0 }}>
-                Event Dossier
+                Event Details
               </h2>
             </div>
           </div>
@@ -306,303 +309,360 @@ export default function PastEventDetailScreen() {
         </div>
       </div>
 
-      {/* ── Scrollable Event Dossier Content ────────────────────────────────── */}
+      {/* ── Scrollable Event Details Content ────────────────────────────────── */}
       <div className="screen-scroll-body">
         {/* ── Executive Hero Banner ─────────────────────────────────────────── */}
         <div className="glass-panel-luxury p-5 md:p-6 mb-5 relative overflow-hidden animate-slide-up">
-        {/* Subtle Ambient Background Gradient */}
-        <div
-          style={{
-            position: 'absolute',
-            top: '-40px',
-            right: '-40px',
-            width: '200px',
-            height: '200px',
-            background: 'radial-gradient(circle, rgba(212, 168, 83, 0.15) 0%, transparent 70%)',
-            pointerEvents: 'none',
-          }}
-        />
+          {/* Subtle Ambient Background Gradient */}
+          <div
+            style={{
+              position: 'absolute',
+              top: '-40px',
+              right: '-40px',
+              width: '200px',
+              height: '200px',
+              background: 'radial-gradient(circle, rgba(212, 168, 83, 0.15) 0%, transparent 70%)',
+              pointerEvents: 'none',
+            }}
+          />
 
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <EventBadgeIcon type={event.eventType} size="hero" showGlow />
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Completed Function
-                </span>
-                <span className="text-[11px] font-mono text-muted uppercase">
-                  {event.eventType}
-                </span>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <EventBadgeIcon type={event.eventType} size="hero" showGlow />
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Completed Function
+                  </span>
+                  <span className="text-[11px] font-mono text-muted uppercase">
+                    {event.eventType}
+                  </span>
+                </div>
+                <h1 className="font-heading font-bold text-xl md:text-2xl text-white tracking-tight leading-tight">
+                  {event.name}
+                </h1>
+                {event.familyMember && (
+                  <p className="text-xs text-secondary mt-1 font-medium">
+                    Host / Principal: <span className="text-white">{event.familyMember}</span>
+                  </p>
+                )}
               </div>
-              <h1 className="font-heading font-bold text-xl md:text-2xl text-white tracking-tight leading-tight">
-                {event.name}
-              </h1>
-              <p className="text-xs text-secondary mt-1 font-medium">
-                Host / Principal: <span className="text-white">{event.familyMember}</span>
-              </p>
             </div>
           </div>
-        </div>
 
-        {/* Date & Venue Tags */}
-        <div className="flex flex-wrap gap-2.5 mt-4 pt-3.5" style={{ borderTop: '1px solid rgba(212, 168, 83, 0.12)' }}>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-300">
-            <Calendar size={13} strokeWidth={2} style={{ color: 'var(--color-gold)' }} />
-            <span className="font-medium">{formatFullDate(event.date)}</span>
-          </div>
-
-          {event.venue && (
+          {/* Date & Venue Tags */}
+          <div className="flex flex-wrap gap-2.5 mt-4 pt-3.5" style={{ borderTop: '1px solid rgba(212, 168, 83, 0.12)' }}>
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-300">
-              <MapPin size={13} strokeWidth={2} style={{ color: 'var(--color-gold)' }} />
-              <span className="truncate max-w-[220px]">{event.venue}</span>
+              <Calendar size={13} strokeWidth={2} style={{ color: 'var(--color-gold)' }} />
+              <span className="font-medium">{formatFullDate(event.date)}</span>
             </div>
-          )}
-        </div>
 
-        {/* Action Buttons inside Hero */}
-        {canEdit && (
-          <div className="flex items-center gap-2.5 mt-4">
-            <button
-              type="button"
-              className="btn btn-sm btn-gold flex items-center gap-2 text-xs"
-              onClick={handleOpenAddGuest}
-            >
-              <UserPlus size={14} strokeWidth={2.4} />
-              <span>Record Missed Guest</span>
-            </button>
-            <button
-              type="button"
-              className="btn btn-sm btn-outline flex items-center gap-2 text-xs"
-              onClick={() => navigate(`/edit-event/${event.id}`)}
-            >
-              <Edit3 size={13} strokeWidth={2} />
-              <span>Edit Details</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Executive Stats Grid ───────────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3 mb-6 animate-slide-up delay-1">
-        {/* Total Guests */}
-        <div className="stat-card-luxury">
-          <div className="flex justify-center mb-1.5">
-            <IconBadge icon={Users} variant="cyan" size="xs" />
-          </div>
-          <div className="stat-value">{event.guests.length}</div>
-          <div className="stat-label">Total Guests</div>
-        </div>
-
-        {/* Attended & Attendance Rate */}
-        <div className="stat-card-luxury">
-          <div className="flex justify-center mb-1.5">
-            <IconBadge icon={UserCheck} variant="emerald" size="xs" />
-          </div>
-          <div className="stat-value" style={{ color: '#34d399' }}>
-            {attended.length}
-          </div>
-          <div className="stat-label">
-            Attended {event.guests.length > 0 && `(${attendanceRate}%)`}
-          </div>
-        </div>
-
-        {/* Gift Ledger Total */}
-        <div className="stat-card-luxury">
-          <div className="flex justify-center mb-1.5">
-            <IconBadge icon={Coins} variant="gold" size="xs" glow />
-          </div>
-          <div className="stat-value text-gradient-gold" style={{ fontSize: totalGiftValue > 99999 ? '18px' : '22px' }}>
-            {totalGiftValue > 0 ? formatCurrency(totalGiftValue) : '—'}
-          </div>
-          <div className="stat-label">Gift Total</div>
-        </div>
-      </div>
-
-      {/* ── Guest Ledger Section ────────────────────────────────────────────── */}
-      <div className="animate-slide-up delay-2">
-        <div className="flex items-center justify-between mb-3 px-1">
-          <div className="flex items-center gap-2">
-            <IconBadge icon={Users} variant="gold" size="xs" />
-            <h3 className="font-heading font-semibold text-white tracking-tight" style={{ fontSize: '16px', margin: 0 }}>
-              Guest & Gift Ledger ({event.guests.length})
-            </h3>
+            {event.venue && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-xs text-slate-300">
+                <MapPin size={13} strokeWidth={2} style={{ color: 'var(--color-gold)' }} />
+                <span className="truncate max-w-[220px]">{event.venue}</span>
+              </div>
+            )}
           </div>
 
+          {/* Action Buttons inside Hero */}
           {canEdit && (
-            <button
-              type="button"
-              className="btn btn-sm btn-gold flex items-center gap-1.5"
-              style={{ fontSize: '11px', padding: '5px 10px' }}
-              onClick={handleOpenAddGuest}
-            >
-              <Plus size={13} strokeWidth={2.4} />
-              <span>Add Guest</span>
-            </button>
+            <div className="flex items-center gap-2.5 mt-4">
+              <button
+                type="button"
+                className="btn btn-sm btn-gold flex items-center gap-2 text-xs"
+                onClick={handleOpenAddGuest}
+              >
+                <UserPlus size={14} strokeWidth={2.4} />
+                <span>Record Missed Guest</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline flex items-center gap-2 text-xs"
+                onClick={() => navigate(`/edit-event/${event.id}`)}
+              >
+                <Edit3 size={13} strokeWidth={2} />
+                <span>Edit Details</span>
+              </button>
+            </div>
           )}
         </div>
 
-        {event.guests.length === 0 ? (
-          <div className="glass-panel-luxury text-center p-8 mb-4">
-            <div className="flex justify-center mb-3">
-              <IconBadge icon={Users} variant="slate" size="md" />
+        {/* ── Executive Stats Grid ───────────────────────────────────────────── */}
+        <div className="grid grid-cols-3 gap-3 mb-6 animate-slide-up delay-1">
+          {/* Total Guests */}
+          <div className="stat-card-luxury">
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={Users} variant="cyan" size="xs" />
             </div>
-            <p className="text-sm font-medium text-white mb-1">No Guests Recorded Yet</p>
-            <p className="text-xs text-muted mb-4 max-w-xs mx-auto">
-              Record past attendees and gifts received to preserve executive relationship memory.
-            </p>
+            <div className="stat-value">{event.guests.length}</div>
+            <div className="stat-label">Total Guests</div>
+          </div>
+
+          {/* Attended & Attendance Rate */}
+          <div className="stat-card-luxury">
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={UserCheck} variant="emerald" size="xs" />
+            </div>
+            <div className="stat-value" style={{ color: '#34d399' }}>
+              {attended.length}
+            </div>
+            <div className="stat-label">
+              Attended {event.guests.length > 0 && `(${attendanceRate}%)`}
+            </div>
+          </div>
+
+          {/* Gift Ledger Total */}
+          <div className="stat-card-luxury">
+            <div className="flex justify-center mb-1.5">
+              <IconBadge icon={Coins} variant="gold" size="xs" glow />
+            </div>
+            <div className="stat-value text-gradient-gold" style={{ fontSize: totalGiftValue > 99999 ? '18px' : '22px' }}>
+              {totalGiftValue > 0 ? formatCurrency(totalGiftValue) : '—'}
+            </div>
+            <div className="stat-label">Gift Total</div>
+          </div>
+        </div>
+
+        {/* ── Guest & Gift Section ────────────────────────────────────────────── */}
+        <div className="animate-slide-up delay-2">
+          {/* Search bar above Add Guest */}
+          {event.guests.length > 0 && (
+            <div className="search-bar mb-3">
+              <Search size={16} className="search-bar-icon" />
+              <input
+                type="text"
+                placeholder="Search guests by name..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingRight: searchQuery ? '32px' : '12px' }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                  title="Clear search"
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--color-text-muted)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '4px',
+                  }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-3 px-1">
+            <div className="flex items-center gap-2">
+              <IconBadge icon={Users} variant="gold" size="xs" />
+              <h3 className="font-heading font-semibold text-white tracking-tight" style={{ fontSize: '16px', margin: 0 }}>
+                Guest & Gift ({searchQuery.trim() ? `${filteredGuests.length} of ${event.guests.length}` : event.guests.length})
+              </h3>
+            </div>
+
             {canEdit && (
               <button
                 type="button"
-                className="btn btn-sm btn-gold inline-flex items-center gap-2"
+                className="btn btn-sm btn-gold flex items-center gap-1.5"
+                style={{ fontSize: '11px', padding: '5px 10px' }}
                 onClick={handleOpenAddGuest}
               >
-                <Plus size={14} strokeWidth={2.2} />
-                <span>Add First Attendee</span>
+                <Plus size={13} strokeWidth={2.4} />
+                <span>Add Guest</span>
               </button>
             )}
           </div>
-        ) : (
-          <div className="flex flex-col gap-2.5">
-            {event.guests.map((guest, i) => {
-              const linkedPerson = people.find((p) => p.id === guest.personId);
-              const relationship = guest.relationship || linkedPerson?.relationship;
 
-              return (
-                <div
-                  key={guest.id}
-                  className="glass-panel-luxury p-3.5 flex flex-col gap-2 transition-all cursor-pointer"
-                  onClick={() => {
-                    if (canEdit) {
-                      handleOpenEditGuest(guest, i);
-                    } else if (guest.personId) {
-                      navigate(`/person/${guest.personId}`);
-                    }
-                  }}
+          {event.guests.length === 0 ? (
+            <div className="glass-panel-luxury text-center p-8 mb-4">
+              <div className="flex justify-center mb-3">
+                <IconBadge icon={Users} variant="slate" size="md" />
+              </div>
+              <p className="text-sm font-medium text-white mb-1">No Guests Recorded Yet</p>
+              <p className="text-xs text-muted mb-4 max-w-xs mx-auto">
+                Record past attendees and gifts received to preserve executive relationship memory.
+              </p>
+              {canEdit && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-gold inline-flex items-center gap-2"
+                  onClick={handleOpenAddGuest}
                 >
-                  <div className="flex items-center gap-3">
-                    {/* High-Level Avatar */}
-                    <div
-                      className="avatar avatar-sm cursor-pointer"
-                      style={{
-                        border: linkedPerson ? '1.5px solid var(--color-gold)' : '1px solid rgba(255, 255, 255, 0.15)',
-                        boxShadow: linkedPerson ? '0 0 10px rgba(212, 168, 83, 0.25)' : 'none',
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (guest.personId) navigate(`/person/${guest.personId}`);
-                      }}
-                    >
-                      {getInitials(guest.personName)}
-                    </div>
+                  <Plus size={14} strokeWidth={2.2} />
+                  <span>Add First Attendee</span>
+                </button>
+              )}
+            </div>
+          ) : filteredGuests.length === 0 ? (
+            <div className="glass-panel-luxury text-center p-6 mb-4">
+              <div className="flex justify-center mb-2">
+                <IconBadge icon={Users} variant="slate" size="xs" />
+              </div>
+              <p className="text-sm font-medium text-white mb-1">No Matching Guests</p>
+              <p className="text-xs text-muted mb-3">
+                No guests found matching &ldquo;{searchQuery}&rdquo;.
+              </p>
+              <button
+                type="button"
+                className="btn btn-sm btn-ghost inline-flex items-center gap-1.5 text-xs"
+                onClick={() => setSearchQuery('')}
+              >
+                <X size={12} />
+                <span>Clear Search</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {filteredGuests.map((guest) => {
+                const actualIndex = event.guests.findIndex((g) => g.id === guest.id);
+                const linkedPerson = people.find((p) => p.id === guest.personId);
+                const relationship = guest.relationship || linkedPerson?.relationship;
 
-                    {/* Guest Details */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-white truncate">
-                          {guest.personName}
-                        </span>
-                        {relationship && (
-                          <span className="badge badge-gold-luxury" style={{ fontSize: '9px', padding: '1px 6px' }}>
-                            {getRelationshipLabel(relationship)}
-                          </span>
-                        )}
-                        {guest.personId && (
-                          <span className="inline-flex items-center gap-1 text-[9px] text-gold font-medium">
-                            <Link2 size={10} /> Linked VIP
-                          </span>
-                        )}
+                return (
+                  <div
+                    key={guest.id}
+                    className="glass-panel-luxury p-3.5 flex flex-col gap-2 transition-all cursor-pointer"
+                    onClick={() => {
+                      if (canEdit) {
+                        handleOpenEditGuest(guest, actualIndex !== -1 ? actualIndex : 0);
+                      } else if (guest.personId) {
+                        navigate(`/person/${guest.personId}`);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      {/* High-Level Avatar */}
+                      <div
+                        className="avatar avatar-sm cursor-pointer"
+                        style={{
+                          border: linkedPerson ? '1.5px solid var(--color-gold)' : '1px solid rgba(255, 255, 255, 0.15)',
+                          boxShadow: linkedPerson ? '0 0 10px rgba(212, 168, 83, 0.25)' : 'none',
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (guest.personId) navigate(`/person/${guest.personId}`);
+                        }}
+                      >
+                        {getInitials(guest.personName)}
                       </div>
 
-                      <div className="flex items-center gap-2 mt-1">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider ${
-                            guest.attendance === 'attended'
+                      {/* Guest Details */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold text-white truncate">
+                            {guest.personName}
+                          </span>
+                          {relationship && (
+                            <span className="badge badge-gold-luxury" style={{ fontSize: '9px', padding: '1px 6px' }}>
+                              {getRelationshipLabel(relationship)}
+                            </span>
+                          )}
+                          {guest.personId && (
+                            <span className="inline-flex items-center gap-1 text-[9px] text-gold font-medium">
+                              <Link2 size={10} /> Linked VIP
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wider ${guest.attendance === 'attended'
                               ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                               : guest.attendance === 'invited_not_attended'
-                              ? 'bg-slate-500/15 text-slate-400 border border-slate-500/25'
-                              : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
-                          }`}
-                        >
-                          <span
-                            className={`w-1 h-1 rounded-full ${
-                              guest.attendance === 'attended'
+                                ? 'bg-slate-500/15 text-slate-400 border border-slate-500/25'
+                                : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                              }`}
+                          >
+                            <span
+                              className={`w-1 h-1 rounded-full ${guest.attendance === 'attended'
                                 ? 'bg-emerald-400'
                                 : guest.attendance === 'invited_not_attended'
-                                ? 'bg-slate-400'
-                                : 'bg-amber-400'
-                            }`}
-                          />
-                          {guest.attendance === 'attended'
-                            ? 'Attended'
-                            : guest.attendance === 'invited_not_attended'
-                            ? 'Not Attended'
-                            : 'Unknown'}
-                        </span>
+                                  ? 'bg-slate-400'
+                                  : 'bg-amber-400'
+                                }`}
+                            />
+                            {guest.attendance === 'attended'
+                              ? 'Attended'
+                              : guest.attendance === 'invited_not_attended'
+                                ? 'Not Attended'
+                                : 'Unknown'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Gift & Value High-Level Pill */}
+                      <div className="text-right flex items-center gap-2 flex-shrink-0">
+                        {guest.gift && (
+                          <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
+                            <GiftBadgeIcon category={guest.giftCategory || 'other'} size="xs" />
+                            <div className="text-left">
+                              <div className="text-xs font-semibold text-white truncate max-w-[120px]">
+                                {guest.gift}
+                              </div>
+                              {guest.estimatedValue && (
+                                <div className="text-[10px] text-gradient-gold font-mono font-medium">
+                                  {formatCurrency(guest.estimatedValue)}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {canEdit && (
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            title="Edit guest & gift details"
+                            style={{ width: '30px', height: '30px' }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditGuest(guest, actualIndex !== -1 ? actualIndex : 0);
+                            }}
+                          >
+                            <Edit3 size={13} strokeWidth={1.8} />
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* Gift & Value High-Level Pill */}
-                    <div className="text-right flex items-center gap-2 flex-shrink-0">
-                      {guest.gift && (
-                        <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
-                          <GiftBadgeIcon category={guest.giftCategory || 'other'} size="xs" />
-                          <div className="text-left">
-                            <div className="text-xs font-semibold text-white truncate max-w-[120px]">
-                              {guest.gift}
-                            </div>
-                            {guest.estimatedValue && (
-                              <div className="text-[10px] text-gradient-gold font-mono font-medium">
-                                {formatCurrency(guest.estimatedValue)}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {canEdit && (
-                        <button
-                          type="button"
-                          className="btn-icon"
-                          title="Edit guest & gift details"
-                          style={{ width: '30px', height: '30px' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditGuest(guest, i);
-                          }}
-                        >
-                          <Edit3 size={13} strokeWidth={1.8} />
-                        </button>
-                      )}
-                    </div>
+                    {guest.notes && (
+                      <div
+                        className="text-xs text-secondary mt-1 pt-2 px-2 rounded bg-black/20"
+                        style={{ borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}
+                      >
+                        <span className="text-muted mr-1">Note:</span> {guest.notes}
+                      </div>
+                    )}
                   </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
-                  {guest.notes && (
-                    <div
-                      className="text-xs text-secondary mt-1 pt-2 px-2 rounded bg-black/20"
-                      style={{ borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}
-                    >
-                      <span className="text-muted mr-1">Note:</span> {guest.notes}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+        {/* ── Notes Section ─────────────────────────────────────────────────── */}
+        {event.notes && (
+          <div className="glass-panel-luxury p-4 mt-5 animate-slide-up delay-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-gold mb-1.5 uppercase tracking-wider">
+              <Sparkles size={13} />
+              <span>Event Protocol Notes</span>
+            </div>
+            <p className="text-xs text-slate-300 leading-relaxed">{event.notes}</p>
           </div>
         )}
-      </div>
-
-      {/* ── Notes Section ─────────────────────────────────────────────────── */}
-      {event.notes && (
-        <div className="glass-panel-luxury p-4 mt-5 animate-slide-up delay-3">
-          <div className="flex items-center gap-2 text-xs font-semibold text-gold mb-1.5 uppercase tracking-wider">
-            <Sparkles size={13} />
-            <span>Event Protocol Notes</span>
-          </div>
-          <p className="text-xs text-slate-300 leading-relaxed">{event.notes}</p>
-        </div>
-      )}
       </div>
 
       {/* ─── MODAL: ADD / EDIT GUEST ─────────────────────────────────────────── */}
@@ -635,8 +695,8 @@ export default function PastEventDetailScreen() {
 
             <p className="text-xs text-secondary mb-4">
               {modalType === 'editGuest'
-                ? 'Update attendee status, relationship ties, and gift ledger reciprocity.'
-                : 'Add a past attendee and save their relationship profile to the executive contact ledger.'}
+                ? 'Update attendee status, relationship and gift.'
+                : 'Add a past attendee and save their relationship profile.'}
             </p>
 
             <form onSubmit={handleSaveGuestModal} className="flex flex-col gap-3.5">
@@ -655,7 +715,7 @@ export default function PastEventDetailScreen() {
                       setShowSuggestions(true);
                     }}
                     onFocus={() => setShowSuggestions(true)}
-                    placeholder="Enter full name (e.g. Ramesh Chandra, Priya Sharma)..."
+                    placeholder="Enter full name (type to search in contacts)"
                     required
                   />
                   {guestPersonId && (
@@ -784,7 +844,7 @@ export default function PastEventDetailScreen() {
               {/* Relationship */}
               <div>
                 <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                  Relationship Tie
+                  Relationship
                 </label>
                 <select
                   className="select"
@@ -802,13 +862,13 @@ export default function PastEventDetailScreen() {
               {/* Gift description */}
               <div>
                 <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                  Gift Given / Received
+                  Gift Received
                 </label>
                 <input
                   className="input"
                   value={guestGift}
                   onChange={(e) => setGuestGift(e.target.value)}
-                  placeholder="e.g. Gold Coin 10g, Cash Envelope ₹5,000, Luxury Hamper"
+                  placeholder="Enter gift"
                 />
               </div>
 
@@ -828,6 +888,9 @@ export default function PastEventDetailScreen() {
                         {getGiftCategoryLabel(c)}
                       </option>
                     ))}
+                    {!giftCategories.includes(guestCategory) && (
+                      <option value={guestCategory}>{getGiftCategoryLabel(guestCategory)}</option>
+                    )}
                   </select>
                 </div>
 
@@ -840,7 +903,7 @@ export default function PastEventDetailScreen() {
                     type="number"
                     value={guestValue ?? ''}
                     onChange={(e) => setGuestValue(e.target.value ? Number(e.target.value) : undefined)}
-                    placeholder="e.g. 10000"
+                    placeholder="Enter gift value"
                   />
                 </div>
               </div>
@@ -848,13 +911,13 @@ export default function PastEventDetailScreen() {
               {/* Notes */}
               <div>
                 <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                  Protocol Notes & Seating
+                  Notes
                 </label>
                 <textarea
                   className="textarea"
                   value={guestNotes}
                   onChange={(e) => setGuestNotes(e.target.value)}
-                  placeholder="Table seating, accompanying family members, conversational notes..."
+                  placeholder="Enter notes here..."
                   rows={2}
                 />
               </div>

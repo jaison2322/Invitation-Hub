@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
-  ArrowLeft, AlertTriangle, Calendar, Clock, MapPin, Sparkles,
-  CheckCircle2, XCircle, ArrowRightLeft, ShieldAlert
+  ArrowLeft, AlertTriangle, Clock, MapPin, Sparkles,
+  CheckCircle2, XCircle, ShieldAlert
 } from 'lucide-react';
 import { formatDate, formatTime } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
@@ -14,7 +14,7 @@ export default function ScheduleConflictScreen() {
   const [searchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
 
-  const { invitations, schedule, updateInvitationStatus, updateScheduleItem, isVIP, currentPrivilegedUser } = useAppStore();
+  const { invitations, schedule, updateInvitationStatus, isVIP, currentPrivilegedUser } = useAppStore();
   const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
   // Find conflicting date or default to first date with conflict

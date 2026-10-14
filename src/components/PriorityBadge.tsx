@@ -8,24 +8,24 @@ interface PriorityBadgeProps {
 
 const CONFIGS: Record<Priority, { label: string; tier: string; dot: string; bg: string; border: string; text: string }> = {
   high: {
-    label: 'Tier 1 · Critical',
-    tier: 'T1',
+    label: 'High Priority',
+    tier: 'High',
     dot: '#ef4444',
     bg: 'rgba(239, 68, 68, 0.12)',
     border: 'rgba(239, 68, 68, 0.28)',
     text: '#fca5a5',
   },
   medium: {
-    label: 'Tier 2 · Priority',
-    tier: 'T2',
+    label: 'Medium Priority',
+    tier: 'Medium',
     dot: '#f59e0b',
     bg: 'rgba(245, 158, 11, 0.12)',
     border: 'rgba(245, 158, 11, 0.28)',
     text: '#fde68a',
   },
   low: {
-    label: 'Tier 3 · Routine',
-    tier: 'T3',
+    label: 'Low Priority',
+    tier: 'Low',
     dot: '#64748b',
     bg: 'rgba(100, 116, 139, 0.12)',
     border: 'rgba(100, 116, 139, 0.25)',

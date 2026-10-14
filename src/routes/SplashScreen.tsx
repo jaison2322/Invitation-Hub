@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import appLogo from '../assets/icon.png';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
@@ -36,35 +36,31 @@ export default function SplashScreen() {
       <div
         className="splash-logo"
         style={{
-          width: '64px',
-          height: '64px',
+          width: '72px',
+          height: '72px',
           borderRadius: '18px',
-          background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(15, 23, 42, 0.6) 100%)',
+          overflow: 'hidden',
+          marginBottom: '20px',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(212, 175, 55, 0.25)',
           border: '1px solid rgba(212, 175, 55, 0.4)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'var(--color-gold-light)',
-          marginBottom: '20px',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6), 0 0 24px rgba(212, 175, 55, 0.2), inset 0 1px 0 0 rgba(255, 255, 255, 0.2)',
         }}
       >
-        <Shield size={30} strokeWidth={2} />
+        <img
+          src={appLogo}
+          alt="Invitation Hub"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
       </div>
 
       <div
-        className="font-heading font-extrabold text-white text-center"
-        style={{ fontSize: '24px', letterSpacing: '0.04em', textTransform: 'uppercase' }}
+        className="splash-title font-heading font-extrabold text-white text-center"
+        style={{ fontSize: '24px', letterSpacing: '0.04em', textTransform: 'uppercase', color: '#ffffff' }}
       >
         Invitation Hub
       </div>
-      <div
-        className="text-center"
-        style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '6px', letterSpacing: '0.06em', textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}
-      >
-        Executive Protocol & Relationship Ledger
-      </div>
-
       {/* Apple Minimalist Progress Indicator */}
       <div
         style={{

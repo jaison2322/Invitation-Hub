@@ -3,20 +3,22 @@ import { useAppStore } from '../store/useAppStore';
 import {
   Bell, Calendar, Clock, MapPin, AlertTriangle,
   ChevronRight, Sparkles, Users, Gift, Plus,
-  CheckCircle2, TrendingUp, Compass,
+  CheckCircle2,
 } from 'lucide-react';
-import { formatDate, formatTime, daysUntil, getInitials, formatTimeAgo } from '../utils/formatters';
+import {
+  formatDate, formatTime, daysUntil, getInitials, formatTimeAgo,
+  getLocalTodayDateString, isInvitationPastByDate,
+} from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
 import IconBadge from '../components/IconBadge';
-import type { Invitation } from '../types';
 import { useTranslation } from '../i18n/useTranslation';
 
 export default function DashboardScreen() {
   const navigate = useNavigate();
   const {
     currentUser, currentPrivilegedUser, isVIP, invitations, schedule, notifications,
-    activityLogs, people, familyEvents, updateInvitationStatus,
+    activityLogs, people, updateInvitationStatus,
   } = useAppStore();
   const { t } = useTranslation();
 
@@ -25,37 +27,21 @@ export default function DashboardScreen() {
   const activeUserRole = isVIP ? t('dashboard.vipPrincipal') : (currentPrivilegedUser?.role || t('dashboard.privilegedStaff'));
   const canConfirmIgnore = isVIP || currentPrivilegedUser?.permissions?.canConfirmIgnoreInvitations === true;
 
-  const pendingInvitations = invitations.filter((i) => i.status === 'pending');
-  const confirmedInvitations = invitations.filter((i) => i.status === 'confirmed');
-  const unreadNotifications = notifications.filter((n) => !n.read).length;
-
-  // Today's events
-  const today = new Date().toISOString().split('T')[0];
+  // Calendar date synchronization (only events whose calendar date has not ended are upcoming)
+  const todayStr = getLocalTodayDateString();
+  const today = todayStr;
   const todaySchedule = schedule.filter((s) => s.date === today);
   const todayInvitations = invitations.filter((i) => i.date === today && i.status === 'confirmed');
 
-  // Next important event (first pending sorted by date)
+  const upcomingInvitations = invitations.filter((i) => !isInvitationPastByDate(i, todayStr));
+  const pendingInvitations = upcomingInvitations.filter((i) => i.status === 'pending');
+  const confirmedInvitations = upcomingInvitations.filter((i) => i.status === 'confirmed');
+  const unreadNotifications = notifications.filter((n) => !n.read).length;
+
+  // Next important upcoming event (first upcoming pending sorted by date)
   const nextPending = [...pendingInvitations].sort(
     (a, b) => a.date.localeCompare(b.date)
   )[0];
-
-  // Upcoming confirmed (next 7 days)
-  const upcomingConfirmed = confirmedInvitations
-    .filter((i) => daysUntil(i.date) >= 0 && daysUntil(i.date) <= 7)
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  // Conflicts detection
-  const dateConflicts = new Map<string, Invitation[]>();
-  invitations
-    .filter((i) => i.status !== 'ignored')
-    .forEach((inv) => {
-      const existing = dateConflicts.get(inv.date) || [];
-      existing.push(inv);
-      dateConflicts.set(inv.date, existing);
-    });
-  const conflictDates = [...dateConflicts.entries()].filter(
-    ([date, invs]) => invs.length > 1 || schedule.some((s) => s.date === date)
-  );
 
   const handleConfirm = (id: string) => {
     updateInvitationStatus(id, 'confirmed');
@@ -92,7 +78,7 @@ export default function DashboardScreen() {
                   letterSpacing: '-0.01em',
                 }}
               >
-                {isVIP ? 'Executive Principal' : activeUserRole}
+                {isVIP ? 'Admin' : activeUserRole}
               </div>
               <div
                 className="font-heading font-semibold text-white truncate"
@@ -215,7 +201,7 @@ export default function DashboardScreen() {
                     <EventBadgeIcon type={nextPending.eventType} size="hero" showGlow />
                     <div className="flex items-center gap-2">
                       <PriorityBadge priority={nextPending.priority} />
-                      {daysUntil(nextPending.date) <= 3 && (
+                      {daysUntil(nextPending.date) >= 0 && daysUntil(nextPending.date) <= 3 && (
                         <span
                           style={{
                             fontSize: '10px',
@@ -338,7 +324,7 @@ export default function DashboardScreen() {
                       }}
                     >
                       <span style={{ fontSize: '12.5px', color: '#ffb340', fontWeight: 500 }}>
-                        Pending VIP Principal Review
+                        Pending Admin Review
                       </span>
                       <span
                         style={{
@@ -359,7 +345,7 @@ export default function DashboardScreen() {
 
             {/* ── Upcoming Queue (Apple Horizontal Carousel) ─────────────────────── */}
             {pendingInvitations.length > 1 && (
-              <section style={{ marginBottom: '24px' }}>
+              <section>
                 <div className="section-header">
                   <span className="section-title">Pending Queue</span>
                   <span
@@ -465,6 +451,20 @@ export default function DashboardScreen() {
                   <div className="flex-1">
                     <div style={{ fontSize: '14px', fontWeight: 500 }}>Event Calendar</div>
                     <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Monthly timeline & schedules</div>
+                  </div>
+                  <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
+                </div>
+
+                <div
+                  className="ios-grouped-item"
+                  onClick={() => navigate('/record-gift')}
+                >
+                  <div className="ios-icon-squircle" style={{ background: 'rgba(212, 175, 55, 0.18)', color: 'var(--color-gold)' }}>
+                    <Gift size={16} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1">
+                    <div style={{ fontSize: '14px', fontWeight: 500 }}>Add Gift Given</div>
+                    <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>Record gifts given for functions</div>
                   </div>
                   <ChevronRight size={16} strokeWidth={2} style={{ color: 'var(--color-text-muted)' }} />
                 </div>

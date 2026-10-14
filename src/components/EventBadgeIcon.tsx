@@ -145,6 +145,7 @@ export default function EventBadgeIcon({
         borderRadius: sizeConfig.radius,
         backgroundColor: config.bgColor,
         color: config.accentColor,
+        boxShadow: showGlow ? `0 0 12px ${config.accentColor}40` : undefined,
       }}
       aria-hidden="true"
     >

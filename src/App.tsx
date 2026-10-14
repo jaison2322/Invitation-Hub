@@ -14,7 +14,6 @@ import DashboardScreen from './routes/DashboardScreen';
 import ScanInvitationScreen from './routes/ScanInvitationScreen';
 import AIProcessingScreen from './routes/AIProcessingScreen';
 import ExtractedDetailsScreen from './routes/ExtractedDetailsScreen';
-import ConfirmIgnoreScreen from './routes/ConfirmIgnoreScreen';
 import UpcomingInvitationsScreen from './routes/UpcomingInvitationsScreen';
 import CalendarScreen from './routes/CalendarScreen';
 import EventDetailScreen from './routes/EventDetailScreen';
@@ -22,6 +21,7 @@ import PersonProfileScreen from './routes/PersonProfileScreen';
 import PastFamilyFunctionsScreen from './routes/PastFamilyFunctionsScreen';
 import PastEventDetailScreen from './routes/PastEventDetailScreen';
 import GiftHistoryScreen from './routes/GiftHistoryScreen';
+import RecordGiftScreen from './routes/RecordGiftScreen';
 import AddEditEventScreen from './routes/AddEditEventScreen';
 import AddInvitationScreen from './routes/AddInvitationScreen';
 import ReminderCenterScreen from './routes/ReminderCenterScreen';
@@ -80,7 +80,7 @@ function BottomNavigation() {
   // Pages that should NOT show bottom nav
   const hideNavPages = [
     '/', '/login', '/waiting-approval', '/approval-rejected',
-    '/ai-processing', '/extracted-details', '/confirm-ignore', '/add-invitation',
+    '/ai-processing', '/extracted-details', '/add-invitation',
   ];
 
   // Also hide on detail pages
@@ -96,7 +96,9 @@ function BottomNavigation() {
     location.pathname === '/conflicts' ||
     location.pathname === '/add-event' ||
     location.pathname.startsWith('/edit-event/') ||
-    location.pathname === '/add-invitation';
+    location.pathname === '/add-invitation' ||
+    location.pathname === '/record-gift' ||
+    location.pathname.startsWith('/edit-gift/');
 
   if (hideNavPages.includes(location.pathname) || isDetailPage) return null;
 
@@ -180,6 +182,27 @@ function AndroidBackButtonHandler() {
     let removeListener: (() => void) | undefined;
 
     CapApp.addListener('backButton', ({ canGoBack }) => {
+      // 1. Dispatch custom event so active modals/overlays can intercept and dismiss first
+      const customBackEvent = new CustomEvent('hardwareBackButton', { cancelable: true });
+      const wasPrevented = !window.dispatchEvent(customBackEvent);
+      if (wasPrevented) {
+        return;
+      }
+
+      // 2. Fallback check: if any modal overlay is open in the DOM, close it instead of leaving the screen
+      const modalOverlay = document.querySelector<HTMLElement>('.modal-overlay');
+      if (modalOverlay) {
+        const closeBtn = modalOverlay.querySelector<HTMLElement>(
+          '.btn-ghost, .btn-outline, [aria-label="Close"], [aria-label="Cancel"]'
+        );
+        if (closeBtn) {
+          closeBtn.click();
+        } else {
+          modalOverlay.click();
+        }
+        return;
+      }
+
       const currentPath = locationRef.current.pathname;
       const rootPaths = ['/dashboard', '/login', '/', '/waiting-approval', '/approval-rejected'];
       const isRootScreen = rootPaths.includes(currentPath);
@@ -213,7 +236,17 @@ function AndroidBackButtonHandler() {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const { isAuthenticated, currentUser, currentPrivilegedUser, activeVipId } = useAppStore();
+  const { theme } = useAppStore();
+
+  useEffect(() => {
+    const activeTheme = theme === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', activeTheme);
+    document.documentElement.style.colorScheme = activeTheme === 'light' ? 'light' : 'dark';
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', activeTheme === 'light' ? '#f2f2f7' : '#000000');
+    }
+  }, [theme]);
 
   useEffect(() => {
     // Initialize PWA / mobile notification service worker and channel
@@ -251,6 +284,7 @@ export default function App() {
       const currentVipId = latestStore.activeVipId || latestStore.currentUser?.vipId || latestStore.currentPrivilegedUser?.vipId;
       if (currentVipId) {
         latestStore.syncWithSupabase(currentVipId);
+        latestStore.checkAndTriggerUpcomingReminders(currentVipId).catch(console.warn);
         const currentActive = latestStore.currentUser?.username || latestStore.currentPrivilegedUser?.username;
         if (currentActive) {
           mobileNotificationService.checkRecentUnreadNotifications(currentActive, currentVipId).catch(console.warn);
@@ -264,6 +298,15 @@ export default function App() {
       }
     };
 
+    // Periodic reminder check every 5 minutes while active
+    const reminderInterval = setInterval(() => {
+      const currentStore = useAppStore.getState();
+      const currentVipId = currentStore.activeVipId || currentStore.currentUser?.vipId || currentStore.currentPrivilegedUser?.vipId;
+      if (currentStore.isAuthenticated && currentVipId) {
+        currentStore.checkAndTriggerUpcomingReminders(currentVipId).catch(console.warn);
+      }
+    }, 5 * 60 * 1000);
+
     window.addEventListener('online', handleReactivation);
     window.addEventListener('focus', handleReactivation);
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -271,6 +314,7 @@ export default function App() {
 
     return () => {
       unsubscribe();
+      clearInterval(reminderInterval);
       window.removeEventListener('online', handleReactivation);
       window.removeEventListener('focus', handleReactivation);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -298,7 +342,6 @@ export default function App() {
             <Route path="/scan" element={<ProtectedRoute><ScanInvitationScreen /></ProtectedRoute>} />
             <Route path="/ai-processing" element={<ProtectedRoute><AIProcessingScreen /></ProtectedRoute>} />
             <Route path="/extracted-details" element={<ProtectedRoute><ExtractedDetailsScreen /></ProtectedRoute>} />
-            <Route path="/confirm-ignore" element={<ProtectedRoute><ConfirmIgnoreScreen /></ProtectedRoute>} />
 
             {/* Protected — Event & People */}
             <Route path="/upcoming" element={<ProtectedRoute><UpcomingInvitationsScreen /></ProtectedRoute>} />
@@ -311,6 +354,8 @@ export default function App() {
             <Route path="/past-events" element={<ProtectedRoute><PastFamilyFunctionsScreen /></ProtectedRoute>} />
             <Route path="/past-event/:id" element={<ProtectedRoute><PastEventDetailScreen /></ProtectedRoute>} />
             <Route path="/gifts" element={<ProtectedRoute><GiftHistoryScreen /></ProtectedRoute>} />
+            <Route path="/record-gift" element={<ProtectedRoute><RecordGiftScreen /></ProtectedRoute>} />
+            <Route path="/edit-gift/:id" element={<ProtectedRoute><RecordGiftScreen /></ProtectedRoute>} />
             <Route path="/add-event" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
             <Route path="/edit-event/:id" element={<ProtectedRoute><AddEditEventScreen /></ProtectedRoute>} />
             <Route path="/add-invitation" element={<ProtectedRoute><AddInvitationScreen /></ProtectedRoute>} />

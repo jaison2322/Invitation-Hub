@@ -4,11 +4,12 @@ import { useAppStore } from '../store/useAppStore';
 import {
   ArrowLeft, Calendar, Clock, MapPin, Sparkles, AlertTriangle,
   History, Gift, User, CheckCircle2, Trash2, ChevronRight,
-  Edit3, X, Building2, Tag, FileText, Maximize2, Upload, Loader2, Camera,
+  Edit3, X, FileText, Maximize2, Upload, Loader2, Camera, Plus,
 } from 'lucide-react';
 import {
   formatFullDate, formatTime, formatDate,
-  getInitials, formatCurrency, getRelationshipLabel, getEventTypeLabel,
+  getInitials, formatCurrency, getRelationshipLabel, getGiftCategoryLabel,
+  isInvitationPastByDate, getLocalTodayDateString,
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
@@ -25,6 +26,7 @@ export default function EventDetailScreen() {
     people,
     familyEvents,
     schedule,
+    giftRecords,
     updateInvitation,
     updateInvitationStatus,
     removeInvitation,
@@ -36,6 +38,25 @@ export default function EventDetailScreen() {
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  const handleOpenRecordGift = (giftToEdit?: any) => {
+    if (!invitation) return;
+    const today = getLocalTodayDateString();
+    navigate('/record-gift', {
+      state: {
+        giftRecord: giftToEdit,
+        event: {
+          id: invitation.id,
+          title: invitation.title,
+          date: invitation.date,
+          hostName: invitation.hostName || invitation.mainPerson,
+          venue: invitation.venue || invitation.location,
+          eventType: invitation.eventType,
+          isPast: isInvitationPastByDate(invitation, today),
+        },
+      },
+    });
+  };
 
   // Photo display & lightbox state
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -51,7 +72,6 @@ export default function EventDetailScreen() {
 
   // Edit state
   const [editTitle, setEditTitle] = useState('');
-  const [editNickname, setEditNickname] = useState('');
   const [editEventType, setEditEventType] = useState<EventType>('wedding');
   const [editDate, setEditDate] = useState('');
   const [editTime, setEditTime] = useState('');
@@ -60,7 +80,6 @@ export default function EventDetailScreen() {
   const [editVenue, setEditVenue] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editHostName, setEditHostName] = useState('');
-  const [editMainPerson, setEditMainPerson] = useState('');
   const [editPersonId, setEditPersonId] = useState('');
   const [editDescription, setEditDescription] = useState('');
 
@@ -82,6 +101,9 @@ export default function EventDetailScreen() {
   const person = invitation.personId ? people.find((p) => p.id === invitation.personId) : null;
   const relHistory = person ? getRelationshipHistory(person.id, familyEvents) : [];
   const giftHist = person ? getGiftHistory(person.id, familyEvents) : [];
+  const eventGiftsGiven = giftRecords.filter(
+    (g) => g.eventId === invitation.id && g.direction === 'given'
+  );
   const conflicts = detectScheduleConflicts(invitation.date, invitation.time, schedule, invitations.filter((i) => i.id !== invitation.id));
 
   // Resolve photo URL from storage or direct URL
@@ -105,8 +127,7 @@ export default function EventDetailScreen() {
 
   const handleOpenEditModal = () => {
     if (!invitation) return;
-    setEditTitle(invitation.title || '');
-    setEditNickname(invitation.nickname || '');
+    setEditTitle(invitation.nickname || invitation.title || '');
     setEditEventType(invitation.eventType || 'wedding');
     setEditDate(invitation.date || '');
     setEditTime(invitation.time || '');
@@ -115,7 +136,6 @@ export default function EventDetailScreen() {
     setEditVenue(invitation.venue || '');
     setEditLocation(invitation.location || '');
     setEditHostName(invitation.hostName || '');
-    setEditMainPerson(invitation.mainPerson || '');
     setEditPersonId(invitation.personId || '');
     setEditDescription(invitation.description || '');
     setEditPhotoPreview(photoUrl);
@@ -248,7 +268,7 @@ export default function EventDetailScreen() {
 
     updateInvitation(invitation.id, {
       title: editTitle.trim(),
-      nickname: editNickname.trim() || undefined,
+      nickname: undefined,
       eventType: editEventType,
       date: editDate,
       time: editTime || undefined,
@@ -257,7 +277,7 @@ export default function EventDetailScreen() {
       venue: editVenue.trim() || undefined,
       location: editLocation.trim() || undefined,
       hostName: editHostName.trim() || undefined,
-      mainPerson: editMainPerson.trim() || undefined,
+      mainPerson: invitation.mainPerson,
       personId: editPersonId || undefined,
       description: editDescription.trim() || undefined,
       imageId: finalImageId,
@@ -363,7 +383,7 @@ export default function EventDetailScreen() {
           >
             {invitation.nickname || invitation.title}
           </h1>
-          {invitation.nickname && (
+          {invitation.nickname && invitation.nickname !== invitation.title && (
             <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
               {invitation.title}
             </p>
@@ -554,6 +574,88 @@ export default function EventDetailScreen() {
             </div>
           </section>
         )}
+
+        {/* ── Gifts Given for this Event ──────────────────────────────────────── */}
+        <section className="mb-4">
+          <div className="section-header flex items-center justify-between">
+            <span className="section-title">Gifts Given for this Event</span>
+            {canManage && (
+              <button
+                type="button"
+                className="btn btn-xs btn-gold flex items-center gap-1 shadow-sm"
+                onClick={() => handleOpenRecordGift()}
+              >
+                <Plus size={12} strokeWidth={2.4} />
+                <span>Record Gift</span>
+              </button>
+            )}
+          </div>
+
+          {eventGiftsGiven.length > 0 ? (
+            <div className="ios-grouped-list">
+              {eventGiftsGiven.map((g) => (
+                <div
+                  key={g.id}
+                  className="ios-grouped-item cursor-pointer hover:bg-white/5 transition-all"
+                  onClick={() => handleOpenRecordGift(g)}
+                  title="Click to edit gift details"
+                >
+                  <div
+                    className="ios-icon-squircle"
+                    style={{ background: 'rgba(255, 159, 10, 0.15)', color: '#ff9f0a' }}
+                  >
+                    <Gift size={16} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+                      {g.giftName}
+                    </div>
+                    <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
+                      {g.recipientName ? `Given to ${g.recipientName}` : getGiftCategoryLabel(g.giftCategory)}
+                    </div>
+                    {g.notes && (
+                      <div
+                        style={{
+                          fontSize: '11px',
+                          color: 'var(--color-text-muted)',
+                          marginTop: '2px',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        "{g.notes}"
+                      </div>
+                    )}
+                  </div>
+                  {g.estimatedValue !== undefined && g.estimatedValue > 0 && (
+                    <span className="badge badge-gold" style={{ flexShrink: 0 }}>
+                      {formatCurrency(g.estimatedValue)}
+                    </span>
+                  )}
+                  <ChevronRight size={14} className="text-muted flex-shrink-0 ml-1" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="p-3.5 rounded-lg border border-glass-border text-center"
+              style={{ background: 'rgba(255, 255, 255, 0.02)' }}
+            >
+              <div style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                No gifts recorded as given for this function yet.
+              </div>
+              {canManage && (
+                <button
+                  type="button"
+                  className="btn btn-xs btn-gold mt-2 inline-flex items-center gap-1"
+                  onClick={() => handleOpenRecordGift()}
+                >
+                  <Plus size={12} strokeWidth={2.4} />
+                  <span>Record Gift Given</span>
+                </button>
+              )}
+            </div>
+          )}
+        </section>
       </div>
 
       {/* ── Decision Bar for Pending Events ────────────────────────────────── */}
@@ -635,32 +737,19 @@ export default function EventDetailScreen() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="flex flex-col gap-3">
-              {/* Title / Event Name */}
+              {/* 1. Host Name */}
               <div>
-                <label className="label">Event Title *</label>
+                <label className="label">Host Name</label>
                 <input
                   type="text"
                   className="input"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  placeholder="e.g. Wedding Reception"
-                  required
+                  value={editHostName}
+                  onChange={(e) => setEditHostName(e.target.value)}
+                  placeholder="e.g. Rajesh Kumar"
                 />
               </div>
 
-              {/* Display Nickname */}
-              <div>
-                <label className="label">Display Nickname</label>
-                <input
-                  type="text"
-                  className="input"
-                  value={editNickname}
-                  onChange={(e) => setEditNickname(e.target.value)}
-                  placeholder="e.g. Arun Prakash — Wedding"
-                />
-              </div>
-
-              {/* Event Type / Category */}
+              {/* 2. Event Category */}
               <div>
                 <label className="label">Event Category</label>
                 <select
@@ -685,7 +774,20 @@ export default function EventDetailScreen() {
                 </select>
               </div>
 
-              {/* Date & Time */}
+              {/* 3. Event Title */}
+              <div>
+                <label className="label">Event Title *</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  placeholder="e.g. Wedding Reception"
+                  required
+                />
+              </div>
+
+              {/* 4. Date & Time */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
                   <label className="label">Date *</label>
@@ -708,7 +810,7 @@ export default function EventDetailScreen() {
                 </div>
               </div>
 
-              {/* Priority Selector */}
+              {/* 4. Priority Level */}
               <div>
                 <label className="label">Priority Level</label>
                 <div className="flex gap-2">
@@ -727,7 +829,7 @@ export default function EventDetailScreen() {
                 </div>
               </div>
 
-              {/* Status Selector (Authorized users can change status before or after confirm) */}
+              {/* 5. Event Status (Authorized users can change status before or after confirm) */}
               {canConfirmIgnore && (
                 <div>
                   <label className="label">Event Status</label>
@@ -737,12 +839,12 @@ export default function EventDetailScreen() {
                         key={s}
                         type="button"
                         className={`btn flex-1 text-xs capitalize ${editStatus === s
-                            ? s === 'confirmed'
-                              ? 'btn-confirm'
-                              : s === 'ignored'
-                                ? 'btn-ignore'
-                                : 'btn-gold'
-                            : 'btn-outline'
+                          ? s === 'confirmed'
+                            ? 'btn-confirm'
+                            : s === 'ignored'
+                              ? 'btn-ignore'
+                              : 'btn-gold'
+                          : 'btn-outline'
                           }`}
                         style={{ padding: '8px 6px' }}
                         onClick={() => setEditStatus(s)}
@@ -754,7 +856,7 @@ export default function EventDetailScreen() {
                 </div>
               )}
 
-              {/* Venue & Location / Address */}
+              {/* 6. Venue Name */}
               <div>
                 <label className="label">Venue Name</label>
                 <input
@@ -766,8 +868,9 @@ export default function EventDetailScreen() {
                 />
               </div>
 
+              {/* 7. City / Area */}
               <div>
-                <label className="label">City / Area</label>
+                <label className="label">Location</label>
                 <input
                   type="text"
                   className="input"
@@ -777,31 +880,7 @@ export default function EventDetailScreen() {
                 />
               </div>
 
-              {/* Host & Principal Couple */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div>
-                  <label className="label">Host Name</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={editHostName}
-                    onChange={(e) => setEditHostName(e.target.value)}
-                    placeholder="e.g. Rajesh Kumar"
-                  />
-                </div>
-                <div>
-                  <label className="label">Couple / Principal</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={editMainPerson}
-                    onChange={(e) => setEditMainPerson(e.target.value)}
-                    placeholder="e.g. Sneha & Rajesh"
-                  />
-                </div>
-              </div>
-
-              {/* Link to Contact */}
+              {/* 8. Link Contact */}
               <div>
                 <label className="label">Link Contact</label>
                 <select
@@ -818,7 +897,7 @@ export default function EventDetailScreen() {
                 </select>
               </div>
 
-              {/* Notes / Description */}
+              {/* 9. Notes / Description */}
               <div>
                 <label className="label">Notes / Description</label>
                 <textarea

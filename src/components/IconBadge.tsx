@@ -57,6 +57,7 @@ export default function IconBadge({
         borderRadius: finalRadius,
         backgroundColor: v.bg,
         color: v.color,
+        boxShadow: glow ? `0 0 12px ${v.color}40` : undefined,
         ...style,
       }}
     >

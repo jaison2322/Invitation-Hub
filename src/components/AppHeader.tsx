@@ -1,6 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  Shield,
   Home,
   Calendar,
   ScanLine,
@@ -12,8 +11,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { getInitials } from '../utils/formatters';
-import IconBadge from './IconBadge';
 import { useTranslation } from '../i18n/useTranslation';
+import appLogo from '../assets/icon.png';
 
 export default function AppHeader() {
   const navigate = useNavigate();
@@ -22,7 +21,6 @@ export default function AppHeader() {
     currentUser,
     currentPrivilegedUser,
     isVIP,
-    notifications,
     getUnreadCount,
   } = useAppStore();
 
@@ -58,7 +56,17 @@ export default function AppHeader() {
       <div className="desktop-header-inner">
         {/* Brand Crest */}
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/dashboard')}>
-          <Shield className="text-apple-blue" size={24} strokeWidth={2} />
+          <img
+            src={appLogo}
+            alt="Invitation Hub"
+            style={{
+              width: '28px',
+              height: '28px',
+              borderRadius: '7px',
+              border: '1px solid rgba(212, 175, 55, 0.3)',
+              objectFit: 'cover',
+            }}
+          />
           <div>
             <div className="font-bold text-[15px] tracking-tight" style={{ color: 'var(--color-text-primary)' }}>INVITATION HUB</div>
             <div className="text-[12px] font-medium tracking-tight" style={{ color: 'var(--color-text-secondary)' }}>{t('dashboard.protocolLedger')}</div>

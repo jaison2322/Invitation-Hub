@@ -95,4 +95,10 @@
 
     <!-- Notifications: Required on Android 13+ (API 33+) for schedule conflict alerts and reminders -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Contacts: Read-only access to search and link phone contacts to invitations -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Storage: For saving exported Excel files on older Android devices -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 </manifest>

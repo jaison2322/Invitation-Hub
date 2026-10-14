@@ -11,10 +11,9 @@ import {
   Link2,
   X,
   ShieldAlert,
-  Edit3,
 } from 'lucide-react';
 import type { EventType, GuestRecord, GiftCategory, RelationshipType } from '../types';
-import { getEventTypeLabel, getRelationshipLabel, getInitials } from '../utils/formatters';
+import { getEventTypeLabel, getRelationshipLabel, getInitials, getGiftCategoryLabel } from '../utils/formatters';
 import { generateId } from '../utils/id';
 
 export default function AddEditEventScreen() {
@@ -40,7 +39,6 @@ export default function AddEditEventScreen() {
   const [name, setName] = useState('');
   const [eventType, setEventType] = useState<EventType>('wedding');
   const [date, setDate] = useState('');
-  const [familyMember, setFamilyMember] = useState('');
   const [venue, setVenue] = useState('');
   const [notes, setNotes] = useState('');
   const [guests, setGuests] = useState<GuestRecord[]>([]);
@@ -56,7 +54,6 @@ export default function AddEditEventScreen() {
         setName(existing.name);
         setEventType(existing.eventType);
         setDate(existing.date);
-        setFamilyMember(existing.familyMember || '');
         setVenue(existing.venue || '');
         setNotes(existing.notes || '');
         setGuests(existing.guests || []);
@@ -84,9 +81,6 @@ export default function AddEditEventScreen() {
     'friend',
     'business_partner',
     'client',
-    'colleague',
-    'neighbor',
-    'acquaintance',
     'other',
   ];
 
@@ -94,10 +88,7 @@ export default function AddEditEventScreen() {
     'gold',
     'silver',
     'cash',
-    'clothing',
     'electronics',
-    'household',
-    'jewelry',
     'other',
   ];
 
@@ -110,7 +101,7 @@ export default function AddEditEventScreen() {
       attendance: 'attended',
       gift: '',
       giftDescription: '',
-      giftCategory: 'other',
+      giftCategory: 'cash',
       estimatedValue: undefined,
       notes: '',
     };
@@ -187,7 +178,6 @@ export default function AddEditEventScreen() {
         name: name.trim(),
         eventType,
         date,
-        familyMember: familyMember.trim(),
         venue: venue.trim() || undefined,
         guests: finalizedGuests,
         notes: notes.trim() || undefined,
@@ -206,7 +196,7 @@ export default function AddEditEventScreen() {
         name: name.trim(),
         eventType,
         date,
-        familyMember: familyMember.trim(),
+        familyMember: '',
         description: '',
         venue: venue.trim() || undefined,
         guests: finalizedGuests,
@@ -288,397 +278,391 @@ export default function AddEditEventScreen() {
       {/* ── Scrollable Event Form Body ──────────────────────────────────────── */}
       <div className="screen-scroll-body" style={{ paddingBottom: '120px' }}>
         <div className="flex flex-col gap-4 animate-slide-up">
-        {/* Event Name */}
-        <div>
-          <label className="label">Event Name *</label>
-          <input
-            className="input"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g., Daughter's Wedding"
-            required
-          />
-        </div>
-
-        {/* Event Type */}
-        <div>
-          <label className="label">Event Type</label>
-          <select
-            className="select"
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value as EventType)}
-          >
-            {eventTypes.map((t) => (
-              <option key={t} value={t}>
-                {getEventTypeLabel(t)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Date */}
-        <div>
-          <label className="label">Date *</label>
-          <input
-            className="input"
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-          />
-        </div>
-
-        {/* Family Member */}
-        <div>
-          <label className="label">Family Member</label>
-          <input
-            className="input"
-            value={familyMember}
-            onChange={(e) => setFamilyMember(e.target.value)}
-            placeholder="e.g., Daughter - Meera"
-          />
-        </div>
-
-        {/* Venue */}
-        <div>
-          <label className="label">Venue / Location</label>
-          <input
-            className="input"
-            value={venue}
-            onChange={(e) => setVenue(e.target.value)}
-            placeholder="e.g., ITC Grand Chola, Chennai"
-          />
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="label">Notes</label>
-          <textarea
-            className="textarea"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="Additional details, VIP attendees, notes..."
-            rows={2}
-          />
-        </div>
-
-        {/* ── Guest List ─────────────────────────────────────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <label className="label" style={{ margin: 0 }}>
-                Guest List ({guests.length})
-              </label>
-              <div className="text-xs text-muted">
-                Add missed guests, modify attendance, edit gifts, or search contacts
-              </div>
-            </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-gold"
-              onClick={addGuest}
-              style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
-            >
-              <Plus size={14} /> Add Guest
-            </button>
+          {/* Event Name */}
+          <div>
+            <label className="label">Event Name *</label>
+            <input
+              className="input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter the event name"
+              required
+            />
           </div>
 
-          {guests.length === 0 ? (
-            <div
-              className="glass-card text-center p-5"
-              style={{
-                border: '1px dashed var(--glass-border)',
-                borderRadius: 'var(--radius-lg)',
-              }}
+          {/* Event Type */}
+          <div>
+            <label className="label">Event Type</label>
+            <select
+              className="select"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as EventType)}
             >
-              <Users size={28} className="text-muted mb-2" style={{ margin: '0 auto 8px' }} />
-              <div className="text-sm font-semibold text-primary">No Guests Recorded Yet</div>
-              <p className="text-xs text-muted mb-3">
-                Track attendees, reciprocal gifts, and link or auto-add them to your People contacts.
-              </p>
+              {eventTypes.map((t) => (
+                <option key={t} value={t}>
+                  {getEventTypeLabel(t)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date */}
+          <div>
+            <label className="label">Date *</label>
+            <input
+              className="input"
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
+          </div>
+
+          {/* Venue */}
+          <div>
+            <label className="label">Venue / Location</label>
+            <input
+              className="input"
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+              placeholder="Enter venue or location details"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="label">Notes</label>
+            <textarea
+              className="textarea"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Enter notes on the function"
+              rows={2}
+            />
+          </div>
+
+          {/* ── Guest List ─────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <label className="label" style={{ margin: 0 }}>
+                  Guest List ({guests.length})
+                </label>
+                <div className="text-xs text-muted">
+                  Add or edit guests, attendance, gifts and search contacts
+                </div>
+              </div>
               <button
                 type="button"
-                className="btn btn-sm btn-outline"
+                className="btn btn-sm btn-gold"
                 onClick={addGuest}
+                style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
               >
-                <UserPlus size={14} /> + Add First Guest
+                <Plus size={14} /> Add Guest
               </button>
             </div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {guests.map((guest, i) => {
-                const isLinked = !!guest.personId;
-                const typedQuery = guest.personName.trim().toLowerCase();
 
-                // Suggestions from People contacts matching typed letters
-                const matchingContacts =
-                  typedQuery.length > 0 && !isLinked
-                    ? people.filter(
-                        (p) =>
-                          p.name.toLowerCase().includes(typedQuery) ||
-                          p.nickname.toLowerCase().includes(typedQuery)
-                      )
-                    : [];
+            {guests.length === 0 ? (
+              <div
+                className="glass-card text-center p-5"
+                style={{
+                  border: '1px dashed var(--glass-border)',
+                  borderRadius: 'var(--radius-lg)',
+                }}
+              >
+                <Users size={28} className="text-muted mb-2" style={{ margin: '0 auto 8px' }} />
+                <div className="text-sm font-semibold text-primary">No Guests Recorded Yet</div>
+                <p className="text-xs text-muted mb-3">
+                  Add guests, attendance, gifts, gift value, gift category, notes and link to contacts.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-outline"
+                  onClick={addGuest}
+                >
+                  <UserPlus size={14} /> + Add First Guest
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                {guests.map((guest, i) => {
+                  const isLinked = !!guest.personId;
+                  const typedQuery = guest.personName.trim().toLowerCase();
 
-                const showSuggestions =
-                  activeSuggestionIndex === i &&
-                  typedQuery.length > 0 &&
-                  !isLinked &&
-                  matchingContacts.length > 0;
+                  // Suggestions from People contacts (checks name only from starting letter)
+                  const matchingContacts =
+                    typedQuery.length > 0 && !isLinked
+                      ? people.filter((p) => {
+                        const name = (p.name || '').trim().toLowerCase();
+                        const words = name.split(/\s+/);
+                        return name.startsWith(typedQuery) || words.some((w) => w.startsWith(typedQuery));
+                      })
+                      : [];
 
-                return (
-                  <div
-                    key={guest.id}
-                    className="glass-card animate-slide-up"
-                    style={{ padding: 'var(--space-3)', position: 'relative' }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-gold uppercase tracking-wider">
-                          Guest #{i + 1}
-                        </span>
-                        {isLinked && (
-                          <span
-                            className="badge badge-success"
-                            style={{ fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '3px' }}
-                          >
-                            <Link2 size={10} /> Linked Contact
-                          </span>
-                        )}
-                        {!isLinked && guest.personName.trim().length > 0 && (
-                          <span
-                            className="badge badge-info"
-                            style={{ fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '3px' }}
-                          >
-                            <Sparkles size={10} /> Auto-saves to People
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost text-muted"
-                        style={{ padding: '4px', height: 'auto' }}
-                        onClick={() => removeGuest(i)}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                  const showSuggestions =
+                    activeSuggestionIndex === i &&
+                    typedQuery.length > 0 &&
+                    !isLinked &&
+                    matchingContacts.length > 0;
 
-                    <div className="flex flex-col gap-2">
-                      {/* 1. Smart Name / Auto-Suggest Input */}
-                      <div style={{ position: 'relative' }}>
+                  return (
+                    <div
+                      key={guest.id}
+                      className="glass-card animate-slide-up"
+                      style={{ padding: 'var(--space-3)', position: 'relative' }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                          <div style={{ position: 'relative', flex: 1 }}>
-                            <input
-                              className="input"
-                              value={guest.personName}
-                              onChange={(e) => {
-                                updateGuest(i, 'personName', e.target.value);
-                                if (guest.personId) {
-                                  updateGuest(i, 'personId', '');
-                                }
-                                setActiveSuggestionIndex(i);
-                              }}
-                              onFocus={() => setActiveSuggestionIndex(i)}
-                              placeholder="Type guest name (e.g. Ramesh, Priya)..."
-                              style={{ paddingRight: isLinked ? '30px' : undefined }}
-                              required
-                            />
-                            {isLinked && (
-                              <button
-                                type="button"
-                                onClick={() => unlinkPerson(i)}
-                                title="Unlink contact"
-                                style={{
-                                  position: 'absolute',
-                                  right: '8px',
-                                  top: '50%',
-                                  transform: 'translateY(-50%)',
-                                  background: 'none',
-                                  border: 'none',
-                                  color: 'var(--color-text-muted)',
-                                  cursor: 'pointer',
-                                  padding: '4px',
-                                }}
-                              >
-                                <X size={14} />
-                              </button>
-                            )}
-                          </div>
+                          <span className="text-xs font-bold text-gold uppercase tracking-wider">
+                            Guest #{i + 1}
+                          </span>
+                          {isLinked && (
+                            <span
+                              className="badge badge-success"
+                              style={{ fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <Link2 size={10} /> Linked Contact
+                            </span>
+                          )}
+                          {!isLinked && guest.personName.trim().length > 0 && (
+                            <span
+                              className="badge badge-info"
+                              style={{ fontSize: '0.65rem', display: 'flex', alignItems: 'center', gap: '3px' }}
+                            >
+                              <Sparkles size={10} /> Auto-saves to People
+                            </span>
+                          )}
                         </div>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost text-muted"
+                          style={{ padding: '4px', height: 'auto' }}
+                          onClick={() => removeGuest(i)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
 
-                        {/* Autocomplete Suggestions Dropdown */}
-                        {showSuggestions && (
-                          <div
-                            className="glass-card animate-scale-in"
-                            style={{
-                              position: 'absolute',
-                              top: '100%',
-                              left: 0,
-                              right: 0,
-                              zIndex: 50,
-                              marginTop: '4px',
-                              maxHeight: '200px',
-                              overflowY: 'auto',
-                              padding: '4px',
-                              boxShadow: 'var(--shadow-xl)',
-                              border: '1px solid var(--color-gold)',
-                              background: 'var(--color-bg-elevated)',
-                            }}
-                          >
+                      <div className="flex flex-col gap-2">
+                        {/* 1. Smart Name / Auto-Suggest Input */}
+                        <div style={{ position: 'relative' }}>
+                          <div className="flex items-center gap-2">
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <input
+                                className="input"
+                                value={guest.personName}
+                                onChange={(e) => {
+                                  updateGuest(i, 'personName', e.target.value);
+                                  if (guest.personId) {
+                                    updateGuest(i, 'personId', '');
+                                  }
+                                  setActiveSuggestionIndex(i);
+                                }}
+                                onFocus={() => setActiveSuggestionIndex(i)}
+                                placeholder="Type guest name (e.g. Ramesh, Priya)..."
+                                style={{ paddingRight: isLinked ? '30px' : undefined }}
+                                required
+                              />
+                              {isLinked && (
+                                <button
+                                  type="button"
+                                  onClick={() => unlinkPerson(i)}
+                                  title="Unlink contact"
+                                  style={{
+                                    position: 'absolute',
+                                    right: '8px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--color-text-muted)',
+                                    cursor: 'pointer',
+                                    padding: '4px',
+                                  }}
+                                >
+                                  <X size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Autocomplete Suggestions Dropdown */}
+                          {showSuggestions && (
                             <div
+                              className="glass-card animate-scale-in"
                               style={{
-                                padding: '4px 8px',
-                                fontSize: '0.65rem',
-                                color: 'var(--color-gold)',
-                                textTransform: 'uppercase',
-                                letterSpacing: '0.5px',
-                                fontWeight: 600,
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                zIndex: 50,
+                                marginTop: '4px',
+                                maxHeight: '200px',
+                                overflowY: 'auto',
+                                padding: '4px',
+                                boxShadow: 'var(--shadow-xl)',
+                                border: '1px solid var(--color-gold)',
+                                background: 'var(--color-bg-elevated)',
                               }}
                             >
-                              Matching People Contacts
-                            </div>
-                            {matchingContacts.map((person) => (
                               <div
-                                key={person.id}
-                                className="flex items-center justify-between p-2 rounded cursor-pointer"
                                 style={{
-                                  borderBottom: '1px solid var(--glass-border)',
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  selectExistingPerson(i, person);
+                                  padding: '4px 8px',
+                                  fontSize: '0.65rem',
+                                  color: 'var(--color-gold)',
+                                  textTransform: 'uppercase',
+                                  letterSpacing: '0.5px',
+                                  fontWeight: 600,
                                 }}
                               >
-                                <div className="flex items-center gap-2">
-                                  <div className="avatar avatar-sm">
-                                    {getInitials(person.name)}
-                                  </div>
-                                  <div>
-                                    <div className="text-xs font-semibold text-primary">
-                                      {person.name}
-                                    </div>
-                                    <div className="text-xs text-muted">
-                                      {getRelationshipLabel(person.relationship)}
-                                    </div>
-                                  </div>
-                                </div>
-                                <span className="badge badge-gold" style={{ fontSize: '0.6rem' }}>
-                                  Select
-                                </span>
+                                Matching People Contacts
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                              {matchingContacts.map((person) => (
+                                <div
+                                  key={person.id}
+                                  className="flex items-center justify-between p-2 rounded cursor-pointer"
+                                  style={{
+                                    borderBottom: '1px solid var(--glass-border)',
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    selectExistingPerson(i, person);
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className="avatar avatar-sm">
+                                      {getInitials(person.name)}
+                                    </div>
+                                    <div>
+                                      <div className="text-xs font-semibold text-primary">
+                                        {person.name}
+                                      </div>
+                                      <div className="text-xs text-muted">
+                                        {getRelationshipLabel(person.relationship)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="badge badge-gold" style={{ fontSize: '0.6rem' }}>
+                                    Select
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
 
-                      {/* 2. Relationship Selector */}
-                      <div>
-                        <label className="text-xs text-muted mb-1 block">Relationship</label>
-                        <select
-                          className="select"
-                          value={guest.relationship || 'friend'}
-                          onChange={(e) =>
-                            updateGuest(i, 'relationship', e.target.value as RelationshipType)
-                          }
-                        >
-                          {relationships.map((r) => (
-                            <option key={r} value={r}>
-                              {getRelationshipLabel(r)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* 3. Attendance Status */}
-                      <div>
-                        <label className="text-xs text-muted mb-1 block">Attendance Status</label>
-                        <select
-                          className="select"
-                          value={guest.attendance}
-                          onChange={(e) => updateGuest(i, 'attendance', e.target.value)}
-                        >
-                          <option value="attended">Attended</option>
-                          <option value="invited_not_attended">Invited (didn&apos;t attend)</option>
-                          <option value="unknown">Unknown</option>
-                        </select>
-                      </div>
-
-                      {/* 4. Gift Description */}
-                      <div>
-                        <label className="text-xs text-muted mb-1 block">Gift Received / Given</label>
-                        <input
-                          className="input"
-                          value={guest.gift || ''}
-                          onChange={(e) => updateGuest(i, 'gift', e.target.value)}
-                          placeholder="Gift (e.g., Gold Coin, Cash Envelope, Watch)"
-                        />
-                      </div>
-
-                      {/* 5. Gift Category & Estimated Value */}
-                      <div className="grid-2">
+                        {/* 2. Relationship Selector */}
                         <div>
-                          <label className="text-xs text-muted mb-1 block">Category</label>
+                          <label className="text-xs text-muted mb-1 block">Relationship</label>
                           <select
                             className="select"
-                            value={guest.giftCategory || 'other'}
-                            onChange={(e) => updateGuest(i, 'giftCategory', e.target.value)}
+                            value={guest.relationship || 'friend'}
+                            onChange={(e) =>
+                              updateGuest(i, 'relationship', e.target.value as RelationshipType)
+                            }
                           >
-                            {giftCategories.map((c) => (
-                              <option key={c} value={c}>
-                                {c.charAt(0).toUpperCase() + c.slice(1)}
+                            {relationships.map((r) => (
+                              <option key={r} value={r}>
+                                {getRelationshipLabel(r)}
                               </option>
                             ))}
                           </select>
                         </div>
 
+                        {/* 3. Attendance Status */}
                         <div>
-                          <label className="text-xs text-muted mb-1 block">Estimated Value (₹)</label>
+                          <label className="text-xs text-muted mb-1 block">Attendance Status</label>
+                          <select
+                            className="select"
+                            value={guest.attendance}
+                            onChange={(e) => updateGuest(i, 'attendance', e.target.value)}
+                          >
+                            <option value="attended">Attended</option>
+                            <option value="invited_not_attended">Invited (didn&apos;t attend)</option>
+                            <option value="unknown">Unknown</option>
+                          </select>
+                        </div>
+
+                        {/* 4. Gift Description */}
+                        <div>
+                          <label className="text-xs text-muted mb-1 block">Gift Received / Given</label>
                           <input
                             className="input"
-                            type="number"
-                            value={guest.estimatedValue || ''}
-                            onChange={(e) =>
-                              updateGuest(
-                                i,
-                                'estimatedValue',
-                                parseInt(e.target.value) || undefined
-                              )
-                            }
-                            placeholder="Value ₹"
+                            value={guest.gift || ''}
+                            onChange={(e) => updateGuest(i, 'gift', e.target.value)}
+                            placeholder="Gift (e.g., Gold Coin, Cash Envelope, Watch)"
+                          />
+                        </div>
+
+                        {/* 5. Gift Category & Estimated Value */}
+                        <div className="grid-2">
+                          <div>
+                            <label className="text-xs text-muted mb-1 block">Category</label>
+                            <select
+                              className="select"
+                              value={guest.giftCategory || 'cash'}
+                              onChange={(e) => updateGuest(i, 'giftCategory', e.target.value)}
+                            >
+                              {giftCategories.map((c) => (
+                                <option key={c} value={c}>
+                                  {getGiftCategoryLabel(c)}
+                                </option>
+                              ))}
+                              {guest.giftCategory && !giftCategories.includes(guest.giftCategory) && (
+                                <option value={guest.giftCategory}>
+                                  {getGiftCategoryLabel(guest.giftCategory)}
+                                </option>
+                              )}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="text-xs text-muted mb-1 block">Estimated Value (₹)</label>
+                            <input
+                              className="input"
+                              type="number"
+                              value={guest.estimatedValue || ''}
+                              onChange={(e) =>
+                                updateGuest(
+                                  i,
+                                  'estimatedValue',
+                                  parseInt(e.target.value) || undefined
+                                )
+                              }
+                              placeholder="Value ₹"
+                            />
+                          </div>
+                        </div>
+
+                        {/* 6. Notes */}
+                        <div>
+                          <label className="text-xs text-muted mb-1 block">Guest Notes</label>
+                          <input
+                            className="input"
+                            value={guest.notes || ''}
+                            onChange={(e) => updateGuest(i, 'notes', e.target.value)}
+                            placeholder="Special seating, memory notes, etc."
                           />
                         </div>
                       </div>
-
-                      {/* 6. Notes */}
-                      <div>
-                        <label className="text-xs text-muted mb-1 block">Guest Notes</label>
-                        <input
-                          className="input"
-                          value={guest.notes || ''}
-                          onChange={(e) => updateGuest(i, 'notes', e.target.value)}
-                          placeholder="Special seating, memory notes, etc."
-                        />
-                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
 
-              {guests.length > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-outline w-full mt-2"
-                  onClick={addGuest}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                >
-                  <Plus size={16} /> Add Another Guest
-                </button>
-              )}
-            </div>
-          )}
+                {guests.length > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-outline w-full mt-2"
+                    onClick={addGuest}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    <Plus size={16} /> Add Another Guest
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
       </div>
 
       {/* Save Button */}

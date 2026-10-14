@@ -1,4 +1,8 @@
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { format, parseISO } from 'date-fns';
+import { Capacitor } from '@capacitor/core';
 import type {
   Invitation,
   Person,
@@ -15,7 +19,525 @@ import {
   getGiftCategoryLabel,
   formatDate,
   formatTime,
+  getLocalTodayDateString,
 } from '../utils/formatters';
+import { NativeAppPermissions } from './permissionService';
+
+export interface ExportUpcomingParams {
+  invitations: Invitation[];
+  people: Person[];
+}
+
+export interface ExportUpcomingResult {
+  success: boolean;
+  filename?: string;
+  count?: number;
+  reason?: 'NO_UPCOMING_EVENTS' | 'ERROR';
+  summary?: string;
+  error?: string;
+}
+
+/**
+ * Checks whether an event is in the future based on date and time.
+ */
+export function isEventInFuture(inv: { date?: string; time?: string }, now: Date = new Date()): boolean {
+  if (!inv || !inv.date) return false;
+
+  const todayStr = getLocalTodayDateString();
+  const datePart = inv.date.includes('T') ? inv.date.split('T')[0] : inv.date.trim();
+
+  // Strictly in the past calendar day
+  if (datePart < todayStr) {
+    return false;
+  }
+
+  // Strictly future calendar day
+  if (datePart > todayStr) {
+    return true;
+  }
+
+  // Event is today: check time if available
+  if (!inv.time) {
+    return true;
+  }
+
+  try {
+    const timeStr = inv.time.trim();
+    let hours = 0;
+    let minutes = 0;
+    const isPM = /pm/i.test(timeStr);
+    const isAM = /am/i.test(timeStr);
+    const cleanTime = timeStr.replace(/(am|pm)/i, '').trim();
+    const parts = cleanTime.split(':').map((p) => parseInt(p, 10));
+
+    if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+      hours = parts[0];
+      minutes = parts[1];
+      if (isPM && hours < 12) hours += 12;
+      if (isAM && hours === 12) hours = 0;
+
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
+
+      if (hours < currentHours || (hours === currentHours && minutes < currentMinutes)) {
+        return false;
+      }
+    }
+  } catch {
+    return true;
+  }
+
+  return true;
+}
+
+/**
+ * Formats event time into a clean 12-hour AM/PM string.
+ */
+function formatEventTime(timeStr?: string): string {
+  if (!timeStr) return '';
+  const trimmed = timeStr.trim();
+  if (/am|pm/i.test(trimmed)) return trimmed;
+  return formatTime(trimmed);
+}
+
+export interface UpcomingExportRow {
+  'Host Name': string;
+  'Contact Details': string;
+  'Event Category': string;
+  'Event Details': string;
+  'Event Date': string;
+  'Event Time': string;
+  'Venue': string;
+  'Location': string;
+}
+
+export const UPCOMING_EXPORT_HEADERS = [
+  'Host Name',
+  'Contact Details',
+  'Event Category',
+  'Event Details',
+  'Event Date',
+  'Event Time',
+  'Venue',
+  'Location',
+] as const;
+
+/**
+ * Extracts and maps the canonical upcoming events export rows.
+ * Shared as the single source of truth for both Excel and PDF exports.
+ */
+export function getUpcomingExportRows({
+  invitations = [],
+  people = [],
+}: ExportUpcomingParams): UpcomingExportRow[] {
+  // 1. Filter only future upcoming events and exclude ignored events
+  const upcomingInvitations = invitations
+    .filter((inv) => inv.status !== 'ignored' && isEventInFuture(inv))
+    .sort((a, b) => {
+      const dateCmp = (a.date || '').localeCompare(b.date || '');
+      if (dateCmp !== 0) return dateCmp;
+      return (a.time || '').localeCompare(b.time || '');
+    });
+
+  if (upcomingInvitations.length === 0) {
+    return [];
+  }
+
+  // 2. Map to required exact columns
+  return upcomingInvitations.map((inv) => {
+    const person = inv.personId
+      ? people.find((p) => p.id === inv.personId)
+      : (inv.hostName ? people.find((p) => p.name.toLowerCase() === inv.hostName!.toLowerCase()) : null);
+
+    const hostName = inv.hostName?.trim() || person?.name?.trim() || '';
+    const contactDetails = person?.phone?.trim() || person?.email?.trim() || '';
+    const eventCategory = getEventTypeLabel(inv.eventType);
+
+    // Resolve event title accurately: prioritize descriptive nickname/title over generic eventType
+    let eventDetails = '';
+    if (inv.nickname && inv.nickname.trim() && inv.nickname.trim().toLowerCase() !== inv.eventType?.toLowerCase()) {
+      eventDetails = inv.nickname.trim();
+    } else if (inv.title && inv.title.trim() && inv.title.trim().toLowerCase() !== inv.eventType?.toLowerCase()) {
+      eventDetails = inv.title.trim();
+    } else if (inv.nickname && inv.nickname.trim()) {
+      eventDetails = inv.nickname.trim();
+    } else if (inv.title && inv.title.trim()) {
+      eventDetails = inv.title.trim();
+    } else if ((inv as any).eventTitle) {
+      eventDetails = String((inv as any).eventTitle).trim();
+    } else if ((inv as any).name) {
+      eventDetails = String((inv as any).name).trim();
+    } else if (inv.hostName?.trim()) {
+      eventDetails = `${inv.hostName.trim()}'s ${eventCategory}`;
+    } else {
+      eventDetails = eventCategory;
+    }
+
+    let formattedDate = '';
+    try {
+      if (inv.date) {
+        formattedDate = format(parseISO(inv.date), 'd MMM yyyy');
+      }
+    } catch {
+      formattedDate = inv.date || '';
+    }
+
+    const formattedTimeStr = formatEventTime(inv.time);
+    const venue = inv.venue?.trim() || '';
+    const location = inv.location?.trim() || '';
+
+    return {
+      'Host Name': hostName,
+      'Contact Details': contactDetails,
+      'Event Category': eventCategory,
+      'Event Details': eventDetails,
+      'Event Date': formattedDate,
+      'Event Time': formattedTimeStr,
+      'Venue': venue,
+      'Location': location,
+    };
+  });
+}
+
+/**
+ * Exports ONLY upcoming events into a clean, formatted .xlsx file.
+ */
+export async function exportUpcomingEventsToExcel({
+  invitations = [],
+  people = [],
+}: ExportUpcomingParams): Promise<ExportUpcomingResult> {
+  try {
+    const rows = getUpcomingExportRows({ invitations, people });
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        reason: 'NO_UPCOMING_EVENTS',
+        summary: 'No upcoming events available to export.',
+      };
+    }
+
+    // Create workbook with the single sheet of upcoming events
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows, {
+      header: [...UPCOMING_EXPORT_HEADERS],
+    });
+
+    // 5. Calculate column widths
+    ws['!cols'] = [
+      { wch: Math.max(16, ...rows.map((r) => String(r['Host Name'] || '').length + 3)) },
+      { wch: Math.max(18, ...rows.map((r) => String(r['Contact Details'] || '').length + 3)) },
+      { wch: Math.max(18, ...rows.map((r) => String(r['Event Category'] || '').length + 3)) },
+      { wch: Math.max(24, ...rows.map((r) => String(r['Event Details'] || '').length + 3)) },
+      { wch: Math.max(16, ...rows.map((r) => String(r['Event Date'] || '').length + 3)) },
+      { wch: Math.max(14, ...rows.map((r) => String(r['Event Time'] || '').length + 3)) },
+      { wch: Math.max(18, ...rows.map((r) => String(r['Venue'] || '').length + 3)) },
+      { wch: Math.max(22, ...rows.map((r) => String(r['Location'] || '').length + 3)) },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, 'Upcoming Events');
+
+    // 6. Deliver file
+    const filename = 'Invitation_Hub_Upcoming_Events.xlsx';
+    const mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    // A. Native Android / Mobile via AppPermissionsPlugin
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64Data = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+        const nativeRes = await NativeAppPermissions.saveFileToDownloads({
+          filename,
+          base64Data,
+          mimeType,
+        });
+
+        if (nativeRes && nativeRes.success) {
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported successfully.',
+          };
+        }
+      } catch (nativeErr: any) {
+        console.warn('Native download failed, trying browser fallback:', nativeErr);
+      }
+    }
+
+    // B. Browser Blob / Web Share fallback
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: mimeType });
+
+    // Try Web Share API on mobile browsers
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+      try {
+        const file = new File([blob], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Upcoming Events',
+            text: 'Invitation Hub Upcoming Events Export',
+            files: [file],
+          });
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported successfully.',
+          };
+        }
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported successfully.',
+          };
+        }
+        console.warn('Share API fallback to direct download:', shareErr);
+      }
+    }
+
+    // Direct Browser Download via anchor
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    return {
+      success: true,
+      filename,
+      count: rows.length,
+      summary: 'Upcoming events exported successfully.',
+    };
+  } catch (error: any) {
+    console.error('Error exporting upcoming events to Excel:', error);
+    return {
+      success: false,
+      reason: 'ERROR',
+      error: error?.message || 'Failed to export upcoming events',
+      summary: 'Export failed: ' + (error?.message || 'Unknown error'),
+    };
+  }
+}
+
+/**
+ * Exports ONLY upcoming events into a clean, formatted .pdf document.
+ * Consumes the exact same dataset, columns, ordering, and values as the Excel export.
+ */
+export async function exportUpcomingEventsToPdf({
+  invitations = [],
+  people = [],
+}: ExportUpcomingParams): Promise<ExportUpcomingResult> {
+  try {
+    const rows = getUpcomingExportRows({ invitations, people });
+
+    if (rows.length === 0) {
+      return {
+        success: false,
+        reason: 'NO_UPCOMING_EVENTS',
+        summary: 'No upcoming events available to export.',
+      };
+    }
+
+    // Initialize landscape A4 document
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'mm',
+      format: 'a4',
+    });
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+
+    // 1. Document Title
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(24, 24, 28);
+    doc.text('Invitation Hub — Upcoming Events Registry', 14, 15);
+
+    // 2. Subtitle & Metadata
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(110, 110, 120);
+    const exportTimeStr = new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    doc.text(`Generated on: ${exportTimeStr}   |   Total Events: ${rows.length}`, 14, 21);
+
+    // 3. Gold Accent Rule
+    doc.setDrawColor(212, 175, 55); // VIP Gold
+    doc.setLineWidth(0.6);
+    doc.line(14, 24, pageWidth - 14, 24);
+
+    // 4. Table Columns & Body (Identical columns and ordering to Excel)
+    const headers = [...UPCOMING_EXPORT_HEADERS];
+    const bodyData = rows.map((r) => [
+      r['Host Name'] || '—',
+      r['Contact Details'] || '—',
+      r['Event Category'] || '—',
+      r['Event Details'] || '—',
+      r['Event Date'] || '—',
+      r['Event Time'] || '—',
+      r['Venue'] || '—',
+      r['Location'] || '—',
+    ]);
+
+    autoTable(doc, {
+      head: [headers],
+      body: bodyData,
+      startY: 28,
+      margin: { left: 14, right: 14, bottom: 16 },
+      showHead: 'everyPage', // Repeat table header on every page
+      theme: 'grid',
+      styles: {
+        font: 'helvetica',
+        fontSize: 8.5,
+        cellPadding: 3.5,
+        overflow: 'linebreak',
+        valign: 'middle',
+        textColor: [35, 35, 40],
+        lineColor: [225, 225, 230],
+        lineWidth: 0.2,
+      },
+      headStyles: {
+        fillColor: [24, 24, 28], // Dark Executive Header
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 9,
+        halign: 'left',
+        lineWidth: 0.2,
+        lineColor: [40, 40, 45],
+      },
+      alternateRowStyles: {
+        fillColor: [249, 250, 252],
+      },
+      columnStyles: {
+        0: { cellWidth: 32 }, // Host Name
+        1: { cellWidth: 28 }, // Contact Details
+        2: { cellWidth: 26 }, // Event Category
+        3: { cellWidth: 48 }, // Event Details
+        4: { cellWidth: 25 }, // Event Date
+        5: { cellWidth: 22 }, // Event Time
+        6: { cellWidth: 42 }, // Venue
+        7: { cellWidth: 46 }, // Location
+      },
+    });
+
+    // 5. Running Footer with Page Numbers on all pages
+    const totalPages = doc.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(140, 140, 150);
+      doc.text(
+        `Page ${i} of ${totalPages}`,
+        pageWidth - 14,
+        pageHeight - 8,
+        { align: 'right' }
+      );
+      doc.text(
+        'Confidential Protocol Registry — Invitation Hub',
+        14,
+        pageHeight - 8
+      );
+    }
+
+    // 6. Deliver file
+    const filename = 'Invitation_Hub_Upcoming_Events.pdf';
+    const mimeType = 'application/pdf';
+
+    // A. Native Android / Mobile via AppPermissionsPlugin
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const base64Data = doc.output('datauristring').split(',')[1];
+        const nativeRes = await NativeAppPermissions.saveFileToDownloads({
+          filename,
+          base64Data,
+          mimeType,
+        });
+
+        if (nativeRes && nativeRes.success) {
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported to PDF successfully.',
+          };
+        }
+      } catch (nativeErr: any) {
+        console.warn('Native PDF download failed, trying browser fallback:', nativeErr);
+      }
+    }
+
+    // B. Browser Blob / Web Share fallback
+    const pdfBlob = doc.output('blob');
+
+    // Try Web Share API on mobile browsers
+    if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare) {
+      try {
+        const file = new File([pdfBlob], filename, { type: mimeType });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Upcoming Events',
+            text: 'Invitation Hub Upcoming Events Export',
+            files: [file],
+          });
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported to PDF successfully.',
+          };
+        }
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return {
+            success: true,
+            filename,
+            count: rows.length,
+            summary: 'Upcoming events exported to PDF successfully.',
+          };
+        }
+        console.warn('Share API fallback to direct download:', shareErr);
+      }
+    }
+
+    // Direct Browser Download via anchor
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+    return {
+      success: true,
+      filename,
+      count: rows.length,
+      summary: 'Upcoming events exported to PDF successfully.',
+    };
+  } catch (error: any) {
+    console.error('Error exporting upcoming events to PDF:', error);
+    return {
+      success: false,
+      reason: 'ERROR',
+      error: error?.message || 'Failed to export upcoming events to PDF',
+      summary: 'Export failed: ' + (error?.message || 'Unknown error'),
+    };
+  }
+}
 
 interface ExportDataParams {
   invitations: Invitation[];
@@ -112,7 +634,7 @@ export async function exportToExcel({
     // ── 2. Invitations & Protocols Sheet ────────────────────────────────────
     if (invitations.length > 0) {
       const invitationRows = invitations.map((inv) => ({
-        'Event Title': inv.title || 'Untitled Event',
+        'Event Title': inv.nickname || inv.title || 'Untitled Event',
         'Event Type': getEventTypeLabel(inv.eventType),
         'Host / Organizer': inv.hostName || '—',
         'Honoree / Key Person': inv.mainPerson || '—',
@@ -182,8 +704,8 @@ export async function exportToExcel({
               guest.attendance === 'attended'
                 ? 'Attended'
                 : guest.attendance === 'invited_not_attended'
-                ? 'Invited (Absent)'
-                : 'Unknown',
+                  ? 'Invited (Absent)'
+                  : 'Unknown',
             'Gift Category': guest.giftCategory ? getGiftCategoryLabel(guest.giftCategory) : '—',
             'Gift Description': guest.gift || guest.giftDescription || '—',
             'Estimated Value (₹)': guest.estimatedValue ? Number(guest.estimatedValue) : 0,

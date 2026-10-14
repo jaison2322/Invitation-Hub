@@ -12,7 +12,6 @@ import {
   PhoneCall,
   RefreshCw,
   AlertCircle,
-  Users,
 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { getInitials, formatTimeAgo } from '../utils/formatters';
@@ -23,12 +22,11 @@ export default function StaffRequestsScreen() {
     privilegedUsers,
     isVIP,
     activeVipId,
-    syncWithSupabase,
     refreshStaffAccounts,
     respondToStaffRequest,
   } = useAppStore();
 
-  const [filter, setFilter] = useState<'pending' | 'all'>('pending');
+  const [filter, setFilter] = useState<'pending' | 'rejected' | 'all'>('pending');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [processingUsername, setProcessingUsername] = useState<string | null>(null);
@@ -154,12 +152,17 @@ export default function StaffRequestsScreen() {
   const pendingRequests = privilegedUsers.filter(
     (u) => u.approvalStatus === 'PENDING_APPROVAL'
   );
+  const rejectedRequests = privilegedUsers.filter(
+    (u) => u.approvalStatus === 'REJECTED'
+  );
   const activeStaff = privilegedUsers.filter(
     (u) => !u.approvalStatus || u.approvalStatus === 'APPROVED'
   );
   const displayedRequests =
     filter === 'pending'
       ? pendingRequests
+      : filter === 'rejected'
+      ? rejectedRequests
       : privilegedUsers;
 
   return (
@@ -175,7 +178,7 @@ export default function StaffRequestsScreen() {
           >
             <ArrowLeft size={18} />
           </button>
-          <span className="top-bar-title">Staff Access Requests</span>
+          <span className="top-bar-title">User Access Requests</span>
           <button
             type="button"
             className="btn-icon"
@@ -241,7 +244,7 @@ export default function StaffRequestsScreen() {
                   Authorization Control
                 </span>
                 <div className="text-xs text-secondary" style={{ marginTop: '1px' }}>
-                  Review staff requesting access to your schedule & contacts
+                  Review user requesting access to your schedule & contacts
                 </div>
               </div>
             </div>
@@ -258,7 +261,7 @@ export default function StaffRequestsScreen() {
             className="flex items-center justify-between mt-3 pt-3"
             style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', fontSize: '12px', color: 'var(--color-text-secondary)' }}
           >
-            <span>Active Privileged Staff:</span>
+            <span>Active Users:</span>
             <span className="font-semibold text-white">{activeStaff.length} / 5</span>
           </div>
         </div>
@@ -271,6 +274,13 @@ export default function StaffRequestsScreen() {
             onClick={() => setFilter('pending')}
           >
             Pending ({pendingRequests.length})
+          </button>
+          <button
+            type="button"
+            className={`segmented-item ${filter === 'rejected' ? 'active' : ''}`}
+            onClick={() => setFilter('rejected')}
+          >
+            Rejected ({rejectedRequests.length})
           </button>
           <button
             type="button"
@@ -355,11 +365,17 @@ export default function StaffRequestsScreen() {
               </div>
             </div>
             <div className="font-semibold text-white mb-1" style={{ fontSize: '15px' }}>
-              {filter === 'pending' ? 'No Pending Requests' : 'No Staff Accounts Found'}
+              {filter === 'pending'
+                ? 'No Pending Requests'
+                : filter === 'rejected'
+                ? 'No Rejected Requests'
+                : 'No Staff Accounts Found'}
             </div>
             <p className="text-xs text-secondary" style={{ maxWidth: '280px', margin: '0 auto' }}>
               {filter === 'pending'
                 ? 'All staff access requests have been reviewed. When an assistant registers to assist you, their request will appear here.'
+                : filter === 'rejected'
+                ? 'There are currently no declined or rejected staff requests.'
                 : 'You currently have no registered privileged users or pending staff requests.'}
             </p>
           </div>
@@ -549,7 +565,7 @@ export default function StaffRequestsScreen() {
                       disabled={isProcessing}
                     >
                       <CheckCircle2 size={15} strokeWidth={2} />
-                      <span>Authorize & Accept</span>
+                      <span>Accept</span>
                     </button>
                     <button
                       type="button"
@@ -567,15 +583,27 @@ export default function StaffRequestsScreen() {
                     className="flex items-center justify-between mt-2 pt-2"
                     style={{ borderTop: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '11px', color: 'var(--color-text-muted)' }}
                   >
-                    <span>Status: {isApproved ? 'Authorized Privileged User' : 'Declined Request'}</span>
-                    <button
-                      type="button"
-                      className="btn-ghost"
-                      style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--color-text-secondary)' }}
-                      onClick={() => navigate(`/privileged-users`)}
-                    >
-                      Manage Access
-                    </button>
+                    <span>Status: {isApproved ? 'Authorized user' : 'Declined Request'}</span>
+                    {isApproved ? (
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        style={{ fontSize: '11px', padding: '2px 8px', color: 'var(--color-text-secondary)' }}
+                        onClick={() => navigate(`/privileged-users`)}
+                      >
+                        Manage Access
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        style={{ fontSize: '11px', padding: '3px 8px', borderColor: 'rgba(48, 209, 88, 0.4)', color: '#30d158' }}
+                        onClick={() => handleRespond(user.username || user.name, true)}
+                        disabled={isProcessing}
+                      >
+                        Re-authorize
+                      </button>
+                    )}
                   </div>
                 )}
               </div>

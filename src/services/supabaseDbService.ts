@@ -7,9 +7,8 @@ import type {
   Reminder,
   Notification,
   ActivityLog,
-  VIPUser,
-  PrivilegedUser,
   UserAccount,
+  GiftRecord,
 } from '../types';
 
 // ─── Supabase Database Service (VIP Tenant Isolated) ─────────────────────────
@@ -224,7 +223,7 @@ export const supabaseDbService = {
       name: event.name,
       event_type: event.eventType,
       date: event.date,
-      family_member: event.familyMember,
+      family_member: event.familyMember || '',
       description: event.description,
       venue: event.venue,
       guests: event.guests,
@@ -244,6 +243,103 @@ export const supabaseDbService = {
     const { error } = await query;
     if (error) console.error('Error deleting family event:', error);
     return !error;
+  },
+
+  // ── Gift Records ───────────────────────────────────────────────────────────
+  async getGiftRecords(vipId?: string): Promise<GiftRecord[]> {
+    const targetVipId = vipId || getActiveSessionVipId();
+    if (!targetVipId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('gift_records')
+        .select('*')
+        .eq('vip_id', targetVipId)
+        .order('event_date', { ascending: false });
+
+      if (error) {
+        console.warn('Note on fetching gift records (migration may be pending):', error.message);
+        return [];
+      }
+      return (data || []).map((row) => ({
+        id: row.id,
+        vipId: row.vip_id,
+        direction: row.direction || 'given',
+        eventId: row.event_id,
+        eventTitle: row.event_title,
+        eventDate: row.event_date,
+        eventType: row.event_type,
+        eventVenue: row.event_venue,
+        recipientName: row.recipient_name,
+        recipientPersonId: row.recipient_person_id,
+        giftName: row.gift_name,
+        giftCategory: row.gift_category || 'other',
+        estimatedValue: row.estimated_value ? Number(row.estimated_value) : undefined,
+        notes: row.notes,
+        createdBy: row.created_by,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+    } catch (err) {
+      console.warn('Error fetching gift records:', err);
+      return [];
+    }
+  },
+
+  async insertGiftRecord(record: GiftRecord, vipId?: string): Promise<boolean> {
+    const targetVipId = vipId || record.vipId || getActiveSessionVipId();
+    if (!targetVipId) {
+      console.error('Cannot insert gift record without vipId');
+      return false;
+    }
+
+    try {
+      const { error } = await supabase.from('gift_records').upsert({
+        id: record.id,
+        vip_id: targetVipId,
+        direction: record.direction,
+        event_id: record.eventId,
+        event_title: record.eventTitle,
+        event_date: record.eventDate,
+        event_type: record.eventType,
+        event_venue: record.eventVenue,
+        recipient_name: record.recipientName,
+        recipient_person_id: record.recipientPersonId,
+        gift_name: record.giftName,
+        gift_category: record.giftCategory,
+        estimated_value: record.estimatedValue,
+        notes: record.notes,
+        created_by: record.createdBy || 'vip',
+        created_at: record.createdAt,
+        updated_at: record.updatedAt,
+      });
+      if (error) {
+        console.error('Error saving gift record:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception saving gift record:', err);
+      return false;
+    }
+  },
+
+  async deleteGiftRecord(id: string, vipId?: string): Promise<boolean> {
+    const targetVipId = vipId || getActiveSessionVipId();
+    try {
+      let query = supabase.from('gift_records').delete().eq('id', id);
+      if (targetVipId) query = query.eq('vip_id', targetVipId);
+
+      const { error } = await query;
+      if (error) {
+        console.error('Error deleting gift record:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception deleting gift record:', err);
+      return false;
+    }
   },
 
   // ── Schedule Items ──────────────────────────────────────────────────────────
@@ -1298,7 +1394,7 @@ export const supabaseDbService = {
   // ── Health Check / Ping ─────────────────────────────────────────────────────
   async checkConnection(): Promise<{ connected: boolean; tablesFound: boolean; error?: string }> {
     try {
-      const { data, error } = await supabase.from('people').select('id').limit(1);
+      const { error } = await supabase.from('people').select('id').limit(1);
       if (error) {
         if (error.code === 'PGRST205' || error.message.includes('schema cache')) {
           return { connected: true, tablesFound: false, error: 'Tables not yet created in Supabase.' };

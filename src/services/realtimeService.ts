@@ -9,6 +9,7 @@ import type {
   Reminder,
   Notification,
   ActivityLog,
+  GiftRecord,
 } from '../types';
 import { sanitizePermissions } from '../types';
 import { mobileNotificationService } from './mobileNotificationService';
@@ -546,6 +547,70 @@ export const realtimeService = {
               const oldRow = payload.old as any;
               useAppStore.setState((state) => ({
                 activityLogs: state.activityLogs.filter((l) => l.id !== oldRow.id),
+              }));
+            }
+          }
+        )
+        // ── 9. Listen to gift_records changes for this VIP ─────────────────
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'gift_records', filter: `vip_id=eq.${targetVipId}` },
+          (payload) => {
+            const store = useAppStore.getState();
+            if (payload.eventType === 'INSERT') {
+              const row = payload.new as any;
+              const formatted: GiftRecord = {
+                id: row.id,
+                vipId: targetVipId,
+                direction: row.direction || 'given',
+                eventId: row.event_id,
+                eventTitle: row.event_title,
+                eventDate: row.event_date,
+                eventType: row.event_type,
+                eventVenue: row.event_venue,
+                recipientName: row.recipient_name,
+                recipientPersonId: row.recipient_person_id,
+                giftName: row.gift_name,
+                giftCategory: row.gift_category || 'other',
+                estimatedValue: row.estimated_value ? Number(row.estimated_value) : undefined,
+                notes: row.notes,
+                createdBy: row.created_by,
+                createdAt: row.created_at || new Date().toISOString(),
+                updatedAt: row.updated_at || new Date().toISOString(),
+              };
+              if (!store.giftRecords.some((g) => g.id === formatted.id)) {
+                useAppStore.setState((state) => ({
+                  giftRecords: [formatted, ...state.giftRecords],
+                }));
+              }
+            } else if (payload.eventType === 'UPDATE') {
+              const row = payload.new as any;
+              useAppStore.setState((state) => ({
+                giftRecords: state.giftRecords.map((g) =>
+                  g.id === row.id
+                    ? {
+                        ...g,
+                        direction: row.direction ?? g.direction,
+                        eventId: row.event_id ?? g.eventId,
+                        eventTitle: row.event_title ?? g.eventTitle,
+                        eventDate: row.event_date ?? g.eventDate,
+                        eventType: row.event_type ?? g.eventType,
+                        eventVenue: row.event_venue ?? g.eventVenue,
+                        recipientName: row.recipient_name ?? g.recipientName,
+                        recipientPersonId: row.recipient_person_id ?? g.recipientPersonId,
+                        giftName: row.gift_name ?? g.giftName,
+                        giftCategory: row.gift_category ?? g.giftCategory,
+                        estimatedValue: row.estimated_value !== undefined ? (row.estimated_value ? Number(row.estimated_value) : undefined) : g.estimatedValue,
+                        notes: row.notes ?? g.notes,
+                        updatedAt: row.updated_at || new Date().toISOString(),
+                      }
+                    : g
+                ),
+              }));
+            } else if (payload.eventType === 'DELETE') {
+              const oldRow = payload.old as any;
+              useAppStore.setState((state) => ({
+                giftRecords: state.giftRecords.filter((g) => g.id !== oldRow.id),
               }));
             }
           }

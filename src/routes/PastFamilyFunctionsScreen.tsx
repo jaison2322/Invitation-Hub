@@ -76,9 +76,11 @@ export default function PastFamilyFunctionsScreen() {
                           {event.eventType}
                         </span>
                       </div>
-                      <div className="text-xs text-secondary mt-0.5 font-medium">
-                        Host: <span className="text-slate-300">{event.familyMember}</span>
-                      </div>
+                      {event.familyMember && (
+                        <div className="text-xs text-secondary mt-0.5 font-medium">
+                          Host: <span className="text-slate-300">{event.familyMember}</span>
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap items-center gap-2 mt-2.5">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/5 border border-white/10 text-xs text-slate-300">

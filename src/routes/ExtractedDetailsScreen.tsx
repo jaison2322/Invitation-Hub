@@ -19,7 +19,6 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
-  ChevronRight,
   Loader2,
   Maximize2,
   Camera,
@@ -30,6 +29,8 @@ import { getEventTypeLabel } from '../utils/formatters';
 import { mapScanToManualForm, saveCanonicalInvitation, VALID_EVENT_TYPES } from '../services/scanMappingService';
 import { getCachedScanImage } from '../utils/imagePreprocess';
 import { permissionService } from '../services/permissionService';
+import ContactSearchDropdown from '../components/ContactSearchDropdown';
+import type { PhoneContact } from '../services/contactService';
 
 export default function ExtractedDetailsScreen() {
   const navigate = useNavigate();
@@ -67,7 +68,7 @@ export default function ExtractedDetailsScreen() {
     if (cached) {
       try {
         return JSON.parse(cached);
-      } catch {}
+      } catch { }
     }
     if (currentScanResult?.extractedFields && currentScanResult?.analysis) {
       return mapScanToManualForm(
@@ -107,15 +108,18 @@ export default function ExtractedDetailsScreen() {
     canConfirmIgnore ? (initialCanonical.status || 'confirmed') : 'pending'
   );
   const [description, setDescription] = useState(initialCanonical.description || '');
-  const [mainPerson, setMainPerson] = useState(initialCanonical.mainPerson || '');
-  const [confidence, setConfidence] = useState<Record<string, number>>(initialCanonical.confidence || {});
+  const [mainPerson] = useState(initialCanonical.mainPerson || '');
+  const [confidence] = useState<Record<string, number>>(initialCanonical.confidence || {});
 
   const [isSaving, setIsSaving] = useState(false);
+
+  // Live Contact Search State
+  const [isContactDropdownOpen, setIsContactDropdownOpen] = useState(false);
+  const hostInputRef = useRef<HTMLInputElement>(null);
 
   // Quick Add Person inline modal state
   const [showAddPersonModal, setShowAddPersonModal] = useState(false);
   const [newPersonName, setNewPersonName] = useState('');
-  const [newPersonNickname, setNewPersonNickname] = useState('');
   const [newPersonPhone, setNewPersonPhone] = useState('');
   const [newPersonRel, setNewPersonRel] = useState<
     'business_partner' | 'client' | 'friend' | 'relative' | 'colleague' | 'family'
@@ -124,7 +128,7 @@ export default function ExtractedDetailsScreen() {
   // Conflict Check
   const hasDateConflict = date
     ? invitations.some((i) => i.date === date && i.status !== 'ignored') ||
-      schedule.some((s) => s.date === date)
+    schedule.some((s) => s.date === date)
     : false;
 
   useEffect(() => {
@@ -149,6 +153,39 @@ export default function ExtractedDetailsScreen() {
     if (window.history.state?.modal === 'imagePreview') {
       window.history.back();
     }
+  };
+
+  const handleSelectContact = (contact: PhoneContact, selectedPhone: string) => {
+    setHostName(contact.name);
+
+    // Match existing VIP directory contact or automatically register new Person
+    const matchedPerson = people.find(
+      (p) =>
+        (contact.vipPersonId && p.id === contact.vipPersonId) ||
+        p.name.trim().toLowerCase() === contact.name.trim().toLowerCase()
+    );
+
+    if (matchedPerson) {
+      setPersonId(matchedPerson.id);
+    } else {
+      const targetVipId =
+        activeVipId ||
+        (isVIP
+          ? currentUser?.vipId || (currentUser?.username ? `vip_${currentUser.username}` : undefined)
+          : currentPrivilegedUser?.vipId) ||
+        'vip_default';
+
+      const newPerson = addPerson({
+        name: contact.name,
+        nickname: contact.name.split(' ')[0] || contact.name,
+        relationship: 'friend',
+        phone: selectedPhone || undefined,
+        vipId: targetVipId,
+      });
+      setPersonId(newPerson.id);
+    }
+
+    setIsContactDropdownOpen(false);
   };
 
   const handleFile = (file: File) => {
@@ -242,7 +279,6 @@ export default function ExtractedDetailsScreen() {
   const closeAddPersonModal = () => {
     setShowAddPersonModal(false);
     setNewPersonName('');
-    setNewPersonNickname('');
     setNewPersonPhone('');
     if (window.history.state?.modal === 'quickAddContact') {
       window.history.back();
@@ -264,7 +300,7 @@ export default function ExtractedDetailsScreen() {
     if (!newPersonName.trim()) return;
     const created = addPerson({
       name: newPersonName.trim(),
-      nickname: newPersonNickname.trim() || newPersonName.trim(),
+      nickname: newPersonName.trim(),
       relationship: newPersonRel,
       phone: newPersonPhone.trim() || undefined,
       notes: 'Added from scanned invitation review',
@@ -272,7 +308,6 @@ export default function ExtractedDetailsScreen() {
     setPersonId(created.id);
     if (!hostName) setHostName(created.name);
     setNewPersonName('');
-    setNewPersonNickname('');
     setNewPersonPhone('');
     closeAddPersonModal();
   };
@@ -329,17 +364,6 @@ export default function ExtractedDetailsScreen() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleContinueToReview = () => {
-    const canonicalData = buildCurrentCanonicalData();
-    sessionStorage.setItem('canonical-manual-form', JSON.stringify(canonicalData));
-    sessionStorage.setItem('edited-fields', JSON.stringify(canonicalData));
-    sessionStorage.setItem('invitation-nickname', canonicalData.title);
-    if (scannedPhoto) {
-      sessionStorage.setItem('scan-image', scannedPhoto);
-    }
-    navigate('/confirm-ignore');
   };
 
   const getConfidenceBadge = (field: string) => {
@@ -607,26 +631,36 @@ export default function ExtractedDetailsScreen() {
             </div>
           )}
 
-          {/* 1. Host Name - First to Type */}
-          <div>
+          {/* 1. Host Name - First to Type (Live Contact Search) */}
+          <div style={{ position: 'relative' }}>
             <label className="label">
               <User size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
               Host Name *
               {getConfidenceBadge('hostName')}
             </label>
             <input
+              ref={hostInputRef}
               className="input"
               type="text"
-              placeholder="e.g. Ramesh Kumar"
+              placeholder="Enter the host name (type to search contact)"
               value={hostName}
               onChange={(e) => {
                 const val = e.target.value;
                 setHostName(val);
-                if (!title || title === hostName) {
-                  setTitle(val);
+                setIsContactDropdownOpen(true);
+              }}
+              onFocus={() => {
+                if (hostName.trim()) {
+                  setIsContactDropdownOpen(true);
                 }
               }}
-              autoFocus
+            />
+            <ContactSearchDropdown
+              query={hostName}
+              isOpen={isContactDropdownOpen}
+              inputRef={hostInputRef}
+              onSelect={handleSelectContact}
+              onClose={() => setIsContactDropdownOpen(false)}
             />
           </div>
 
@@ -640,7 +674,7 @@ export default function ExtractedDetailsScreen() {
             <input
               className="input"
               type="text"
-              placeholder="e.g. Ramesh's Son Wedding Reception"
+              placeholder="Enter the invitation title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -678,9 +712,9 @@ export default function ExtractedDetailsScreen() {
                 disabled={!canChangePriority}
                 onChange={(e) => setPriority(e.target.value as Priority)}
               >
-                <option value="high">Tier 1 · Critical Priority</option>
-                <option value="medium">Tier 2 · Priority Attendance</option>
-                <option value="low">Tier 3 · Routine / Courtesy</option>
+                <option value="high">High Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="low">Low Priority</option>
               </select>
               {!canChangePriority && (
                 <span
@@ -769,7 +803,7 @@ export default function ExtractedDetailsScreen() {
                 }
               }}
             >
-              <option value="">No Contact Linked / Select Contact...</option>
+              <option value="">Select contact to link</option>
               {people.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nickname} ({p.name}) — {p.relationship}
@@ -789,7 +823,7 @@ export default function ExtractedDetailsScreen() {
               <input
                 className="input"
                 type="text"
-                placeholder="e.g. ITC Grand Chola"
+                placeholder="Enter the venue name"
                 value={venue}
                 onChange={(e) => setVenue(e.target.value)}
               />
@@ -804,7 +838,7 @@ export default function ExtractedDetailsScreen() {
               <input
                 className="input"
                 type="text"
-                placeholder="e.g. Guindy, Chennai"
+                placeholder="Enter city / area"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               />
@@ -836,27 +870,14 @@ export default function ExtractedDetailsScreen() {
 
           {/* 8. Description / Notes */}
           <div>
-            <label className="label">Notes / Dress Code / Gift Context</label>
+            <label className="label">Notes</label>
             <textarea
               className="textarea"
               rows={3}
-              placeholder="e.g. Traditional attire requested. Close family function, gift recommended."
+              placeholder="Notes"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
-          </div>
-
-          {/* Secondary Link to AI Protocol Screen */}
-          <div className="text-center pt-2">
-            <button
-              type="button"
-              className="btn btn-ghost text-secondary"
-              style={{ fontSize: 'var(--text-xs)', gap: '6px' }}
-              onClick={handleContinueToReview}
-            >
-              <span>View AI Protocol Analysis & Conflict Deep-Dive</span>
-              <ChevronRight size={14} />
-            </button>
           </div>
 
           {/* Bottom Floating Save Bar */}
@@ -939,20 +960,9 @@ export default function ExtractedDetailsScreen() {
                 <label className="label">Full Name *</label>
                 <input
                   className="input"
-                  placeholder="e.g. Rajesh Sharma"
+                  placeholder="Enter full name"
                   value={newPersonName}
                   onChange={(e) => setNewPersonName(e.target.value)}
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="label">Nickname / Short Name</label>
-                <input
-                  className="input"
-                  placeholder="e.g. Rajeshji"
-                  value={newPersonNickname}
-                  onChange={(e) => setNewPersonNickname(e.target.value)}
                 />
               </div>
 
@@ -977,7 +987,7 @@ export default function ExtractedDetailsScreen() {
                 <input
                   className="input"
                   type="tel"
-                  placeholder="+91 98765 43210"
+                  placeholder="Enter phone number"
                   value={newPersonPhone}
                   onChange={(e) => setNewPersonPhone(e.target.value)}
                 />

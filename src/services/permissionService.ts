@@ -3,15 +3,30 @@ import { mobileNotificationService, type PermissionResult } from './mobileNotifi
 
 export type { PermissionResult };
 
+export interface PhoneContactRaw {
+  id: string;
+  name: string;
+  phone: string;
+  phones: string[];
+}
+
 export interface AppPermissionsPluginInterface {
   checkCameraPermission(): Promise<PermissionResult>;
   requestCameraPermission(): Promise<PermissionResult>;
   checkNotificationPermission(): Promise<PermissionResult>;
   requestNotificationPermission(): Promise<PermissionResult>;
+  checkContactsPermission(): Promise<PermissionResult>;
+  requestContactsPermission(): Promise<PermissionResult>;
+  getPhoneContacts(): Promise<{ contacts: PhoneContactRaw[] }>;
   openAppSettings(): Promise<{ opened: boolean }>;
+  saveFileToDownloads(options: {
+    filename: string;
+    base64Data: string;
+    mimeType: string;
+  }): Promise<{ success: boolean; filename: string; path?: string; savedToDownloads?: boolean }>;
 }
 
-const NativeAppPermissions = registerPlugin<AppPermissionsPluginInterface>('AppPermissions');
+export const NativeAppPermissions = registerPlugin<AppPermissionsPluginInterface>('AppPermissions');
 
 export const permissionService = {
   isNative(): boolean {
@@ -52,6 +67,43 @@ export const permissionService = {
 
   async requestFirstLaunchNotifications(): Promise<PermissionResult | null> {
     return await mobileNotificationService.requestFirstLaunchPermission();
+  },
+
+  async checkContacts(): Promise<PermissionResult> {
+    if (!this.isNative()) {
+      return { granted: true, status: 'granted', canAskAgain: true };
+    }
+    try {
+      return await NativeAppPermissions.checkContactsPermission();
+    } catch (e) {
+      console.warn('Error checking contacts permission:', e);
+      return { granted: false, status: 'denied', canAskAgain: true };
+    }
+  },
+
+  async requestContacts(): Promise<PermissionResult> {
+    if (!this.isNative()) {
+      return { granted: true, status: 'granted', canAskAgain: true };
+    }
+    try {
+      return await NativeAppPermissions.requestContactsPermission();
+    } catch (e) {
+      console.warn('Error requesting contacts permission:', e);
+      return { granted: false, status: 'denied', canAskAgain: true };
+    }
+  },
+
+  async getNativeContacts(): Promise<PhoneContactRaw[]> {
+    if (!this.isNative()) {
+      return [];
+    }
+    try {
+      const res = await NativeAppPermissions.getPhoneContacts();
+      return res?.contacts || [];
+    } catch (e) {
+      console.warn('Error fetching native contacts:', e);
+      return [];
+    }
   },
 
   async openSettings(): Promise<boolean> {
