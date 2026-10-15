@@ -7,7 +7,7 @@
 
 ---
 
-## 1. Executive Summary & Objective
+## 1. Executive Summary and Objective
 
 The objective is to upgrade the existing **Gift History** screen in the Invitation Hub application into a dual-mode **Gift Received / Gift Given** ledger without altering the core visual identity, navigation, color scheme, or existing features.
 
