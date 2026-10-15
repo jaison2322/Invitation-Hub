@@ -71,6 +71,7 @@ export default function ScanInvitationScreen() {
   const handleFileInput = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
+    e.target.value = '';
   };
 
   const handleAnalyze = () => {
@@ -156,7 +157,7 @@ export default function ScanInvitationScreen() {
           >
             {/* Apple Viewfinder Frame */}
             <div
-              className="ios-card text-center cursor-pointer transition-transform"
+              className="ios-card text-center cursor-pointer transition-transform active:scale-[0.98]"
               style={{
                 width: '100%',
                 maxWidth: '320px',
@@ -167,7 +168,16 @@ export default function ScanInvitationScreen() {
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={handleOpenCamera}
+              role="button"
+              tabIndex={0}
+              aria-label="Capture Invitation Card - Open Camera to scan"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  handleOpenCamera();
+                }
+              }}
             >
               {/* Corner Reticles */}
               <div
@@ -333,6 +343,7 @@ export default function ScanInvitationScreen() {
         type="file"
         accept="image/*"
         onChange={handleFileInput}
+        onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ''; }}
         style={{ display: 'none' }}
       />
       <input
@@ -341,6 +352,7 @@ export default function ScanInvitationScreen() {
         accept="image/*"
         capture="environment"
         onChange={handleFileInput}
+        onClick={(e) => { (e.currentTarget as HTMLInputElement).value = ''; }}
         style={{ display: 'none' }}
       />
     </div>

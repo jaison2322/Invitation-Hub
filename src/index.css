@@ -41,6 +41,20 @@
   --color-accent: #D4AF37;
   --color-accent-muted: rgba(212, 175, 55, 0.15);
 
+  /* Mobile-first Form Controls Design Tokens */
+  --form-input-height: 46px;
+  --form-input-pad-x: 14px;
+  --form-input-pad-y: 11px;
+  --form-input-radius: 12px;
+  --form-input-font-size: 16px;
+  --form-input-border: 1px solid rgba(255, 255, 255, 0.12);
+  --form-input-bg: rgba(118, 118, 128, 0.15);
+  --form-input-bg-focus: rgba(118, 118, 128, 0.24);
+  --form-input-border-focus: var(--color-gold);
+  --form-input-focus-ring: 0 0 0 3px rgba(212, 175, 55, 0.22);
+  --form-input-placeholder: #8e8e93;
+  --form-label-spacing: 6px;
+
   /* Typography Colors */
   --color-text-primary: #ffffff;
   --color-text-secondary: #98989d;
@@ -160,6 +174,14 @@
   --color-accent: #B8941F;
   --color-accent-muted: rgba(184, 148, 31, 0.12);
 
+  /* Light Theme Form Controls Tokens */
+  --form-input-border: 1px solid rgba(15, 23, 42, 0.16);
+  --form-input-bg: #ffffff;
+  --form-input-bg-focus: #ffffff;
+  --form-input-border-focus: var(--color-gold);
+  --form-input-focus-ring: 0 0 0 3px rgba(184, 148, 31, 0.22);
+  --form-input-placeholder: #94a3b8;
+
   --color-text-primary: #000000;
   --color-text-secondary: #8e8e93;
   --color-text-muted: #aeaeb2;
@@ -237,13 +259,25 @@
 [data-theme="light"] .select,
 [data-theme="light"] .textarea {
   background: #ffffff !important;
-  border-color: rgba(15, 23, 42, 0.15) !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
   color: #0a1120 !important;
+}
+
+[data-theme="light"] .input:focus,
+[data-theme="light"] .select:focus,
+[data-theme="light"] .textarea:focus {
+  background: #ffffff !important;
+  border-color: var(--color-gold) !important;
+  box-shadow: 0 0 0 3px rgba(184, 148, 31, 0.22) !important;
 }
 
 [data-theme="light"] .input::placeholder,
 [data-theme="light"] .textarea::placeholder {
-  color: #94a3b8 !important;
+  color: #8e8e93 !important;
+}
+
+[data-theme="light"] .select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23B8941F' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
 }
 
 [data-theme="light"] .search-bar {
@@ -254,23 +288,23 @@
 
 [data-theme="light"] .search-bar input {
   background: #ffffff !important;
-  color: #000000 !important;
-  border: 1px solid rgba(0, 0, 0, 0.12) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
+  color: #0a1120 !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
 }
 
 [data-theme="light"] .search-bar input:focus {
   background: #ffffff !important;
-  border-color: var(--color-accent) !important;
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15) !important;
+  border-color: var(--color-gold) !important;
+  box-shadow: 0 0 0 3px rgba(184, 148, 31, 0.22) !important;
 }
 
 [data-theme="light"] .search-bar input::placeholder {
-  color: #636366 !important;
+  color: #8e8e93 !important;
 }
 
 [data-theme="light"] .search-bar-icon {
-  color: #636366 !important;
+  color: #64748b !important;
 }
 
 [data-theme="light"] .segmented-control,
@@ -1037,7 +1071,8 @@ h4 { font-size: var(--text-lg); }
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  padding: 12px 20px;
+  min-height: 44px;
+  padding: 11px 20px;
   border-radius: var(--radius-md);
   font-family: var(--font-heading);
   font-weight: 600;
@@ -1046,10 +1081,16 @@ h4 { font-size: var(--text-lg); }
   cursor: pointer;
   border: none;
   outline: none;
-  transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast);
+  box-sizing: border-box;
+  transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
   white-space: nowrap;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 .btn:active {
@@ -1057,9 +1098,10 @@ h4 { font-size: var(--text-lg); }
 }
 
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
   transform: none;
+  box-shadow: none;
 }
 
 /* Primary Executive Action Button (Metallic Champagne Gold) */
@@ -1183,13 +1225,23 @@ h4 { font-size: var(--text-lg); }
 }
 
 .btn-sm {
-  padding: 7px 14px;
+  min-height: 36px;
+  padding: 6px 14px;
   font-size: var(--text-sm);
   border-radius: var(--radius-sm);
 }
 
+.btn-xs {
+  min-height: 28px;
+  padding: 3px 10px;
+  font-size: 11px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
 .btn-lg {
-  padding: 15px 28px;
+  min-height: 48px;
+  padding: 14px 28px;
   font-size: var(--text-lg);
   border-radius: var(--radius-lg);
 }
@@ -1303,72 +1355,162 @@ h4 { font-size: var(--text-lg); }
 .priority-dot-medium { background: var(--color-priority-medium); }
 .priority-dot-low { background: var(--color-priority-low); }
 
-/* ─── Apple Form Inputs ─────────────────────────────────────────────────────── */
+/* ─── Apple Form Inputs & Controls ─────────────────────────────────────────── */
 .input {
   width: 100%;
-  padding: 12px 14px;
-  background: rgba(118, 118, 128, 0.18);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
+  min-width: 0;
+  min-height: var(--form-input-height, 46px);
+  padding: var(--form-input-pad-y, 11px) var(--form-input-pad-x, 14px);
+  background: var(--form-input-bg, rgba(118, 118, 128, 0.15));
+  border: var(--form-input-border, 1px solid rgba(255, 255, 255, 0.12));
+  border-radius: var(--form-input-radius, 12px);
   color: var(--color-text-primary);
-  font-size: var(--text-base);
+  font-size: var(--form-input-font-size, 16px);
+  font-family: inherit;
+  line-height: 1.4;
+  box-sizing: border-box;
   transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
   outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .input:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
-  background: rgba(118, 118, 128, 0.26);
+  border-color: var(--form-input-border-focus, var(--color-accent));
+  box-shadow: var(--form-input-focus-ring, 0 0 0 3px rgba(212, 175, 55, 0.22));
+  background: var(--form-input-bg-focus, rgba(118, 118, 128, 0.24));
 }
 
 .input::placeholder {
+  color: var(--form-input-placeholder, var(--color-text-muted));
+  opacity: 0.85;
+}
+
+.input:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background: rgba(118, 118, 128, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
   color: var(--color-text-muted);
+  -webkit-text-fill-color: var(--color-text-muted);
+}
+
+.input:read-only:not(:disabled) {
+  background: rgba(118, 118, 128, 0.1);
+  border-color: rgba(255, 255, 255, 0.08);
+  cursor: default;
+}
+
+.input.input-error,
+.input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.22);
 }
 
 .input-uncertain {
-  border-color: rgba(255, 159, 10, 0.4);
+  border-color: rgba(255, 159, 10, 0.45);
   background: rgba(255, 159, 10, 0.08);
 }
 
 .input-uncertain:focus {
-  border-color: rgba(255, 159, 10, 0.6);
-  box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.15);
+  border-color: rgba(255, 159, 10, 0.7);
+  box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.2);
 }
 
+/* Date and Time Native Controls */
+input[type="date"].input,
+input[type="time"].input,
+input[type="datetime-local"].input {
+  min-height: var(--form-input-height, 46px);
+  display: inline-flex;
+  align-items: center;
+  line-height: normal;
+  padding: 10px 14px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.85) sepia(0.8) saturate(5) hue-rotate(5deg);
+  cursor: pointer;
+  opacity: 0.85;
+  padding: 4px;
+  margin-right: -2px;
+  border-radius: 4px;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.2) sepia(0.8) saturate(5) hue-rotate(5deg);
+}
+
+/* Form Labels */
 .label {
-  display: block;
-  font-size: var(--text-sm);
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-1);
+  margin-bottom: var(--form-label-spacing, 6px);
   text-align: left;
+  letter-spacing: -0.01em;
+  user-select: none;
 }
 
+/* Selects and Dropdowns */
 .select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
   width: 100%;
-  padding: 12px 14px;
-  padding-right: var(--space-10);
-  background: rgba(118, 118, 128, 0.18);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
+  min-width: 0;
+  min-height: var(--form-input-height, 46px);
+  padding: var(--form-input-pad-y, 11px) var(--form-input-pad-x, 14px);
+  padding-right: 42px;
+  background: var(--form-input-bg, rgba(118, 118, 128, 0.15));
+  border: var(--form-input-border, 1px solid rgba(255, 255, 255, 0.12));
+  border-radius: var(--form-input-radius, 12px);
   color: var(--color-text-primary);
-  font-size: var(--text-base);
+  font-size: var(--form-input-font-size, 16px);
+  font-family: inherit;
+  line-height: 1.4;
   cursor: pointer;
   outline: none;
-  transition: all var(--transition-base);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23D4AF37' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 14px center;
   color-scheme: dark;
 }
 
 .select:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+  border-color: var(--form-input-border-focus, var(--color-accent));
+  box-shadow: var(--form-input-focus-ring, 0 0 0 3px rgba(212, 175, 55, 0.22));
+  background-color: var(--form-input-bg-focus, rgba(118, 118, 128, 0.24));
+}
+
+.select:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background-color: rgba(118, 118, 128, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+  -webkit-text-fill-color: var(--color-text-muted);
+}
+
+.select.select-error,
+.select[aria-invalid="true"] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.22);
 }
 
 /* Ensure native select and its dropdown options follow the app's appearance */
@@ -1381,15 +1523,16 @@ select option,
 .select option {
   background-color: #1c1c1e !important;
   color: #f5f5f7 !important;
-  padding: 10px 14px;
-  font-size: 14px;
+  padding: 12px 14px;
+  font-size: 15px;
 }
 
 select optgroup,
 .select optgroup {
   background-color: #1c1c1e !important;
-  color: #8e8e93 !important;
+  color: var(--color-gold) !important;
   font-weight: 600;
+  padding: 8px 14px;
 }
 
 select option:checked,
@@ -1404,7 +1547,6 @@ select option:hover,
   color: #ffffff !important;
 }
 
-
 /* Light theme dropdown appearance */
 :root[data-theme="light"] select,
 :root[data-theme="light"] .select,
@@ -1412,9 +1554,9 @@ select option:hover,
 [data-theme="light"] .select {
   color-scheme: light;
   background: #ffffff !important;
-  border-color: rgba(15, 23, 42, 0.15) !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
   color: #0a1120 !important;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23B8941F' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 :root[data-theme="light"] select option,
@@ -1453,23 +1595,73 @@ textarea {
   color-scheme: light;
 }
 
+/* Textareas */
 .textarea {
   width: 100%;
+  min-width: 0;
+  min-height: 88px;
   padding: 12px 14px;
-  background: rgba(118, 118, 128, 0.18);
-  border: 0.5px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius-md);
+  background: var(--form-input-bg, rgba(118, 118, 128, 0.15));
+  border: var(--form-input-border, 1px solid rgba(255, 255, 255, 0.12));
+  border-radius: var(--form-input-radius, 12px);
   color: var(--color-text-primary);
-  font-size: var(--text-base);
-  min-height: 100px;
+  font-size: var(--form-input-font-size, 16px);
+  font-family: inherit;
+  line-height: 1.5;
   resize: vertical;
   outline: none;
-  transition: all var(--transition-base);
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), background var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .textarea:focus {
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
+  border-color: var(--form-input-border-focus, var(--color-accent));
+  box-shadow: var(--form-input-focus-ring, 0 0 0 3px rgba(212, 175, 55, 0.22));
+  background: var(--form-input-bg-focus, rgba(118, 118, 128, 0.24));
+}
+
+.textarea::placeholder {
+  color: var(--form-input-placeholder, var(--color-text-muted));
+  opacity: 0.85;
+}
+
+.textarea:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  background: rgba(118, 118, 128, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+  -webkit-text-fill-color: var(--color-text-muted);
+}
+
+.textarea.textarea-error,
+.textarea[aria-invalid="true"] {
+  border-color: var(--color-danger);
+  box-shadow: 0 0 0 3px rgba(255, 69, 58, 0.22);
+}
+
+/* Checkboxes and Radios */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-gold);
+  cursor: pointer;
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  transition: transform var(--transition-fast);
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:active,
+input[type="radio"]:active {
+  transform: scale(0.92);
+}
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
 }
 
 /* ─── Apple Avatar ─────────────────────────────────────────────────────────── */
@@ -1833,36 +2025,48 @@ textarea {
 /* ─── Apple iOS Search Field ────────────────────────────────────────────────── */
 .search-bar {
   position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
 }
 
 .search-bar input {
   width: 100%;
-  padding: 9px 12px 9px 36px;
-  background: rgba(118, 118, 128, 0.2);
-  border: 0.5px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  min-height: 44px;
+  padding: 10px 14px 10px 42px;
+  background: rgba(118, 118, 128, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--form-input-radius, 12px);
   color: var(--color-text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--form-input-font-size, 16px);
+  line-height: normal;
   outline: none;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  box-sizing: border-box;
+  transition: background var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .search-bar input:focus {
-  background: rgba(118, 118, 128, 0.28);
+  background: rgba(118, 118, 128, 0.24);
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.22);
 }
 
 .search-bar input::placeholder {
-  color: var(--color-text-muted);
+  color: var(--form-input-placeholder, var(--color-text-muted));
+  opacity: 0.85;
+  font-size: 15px;
 }
 
 .search-bar-icon {
   position: absolute;
-  left: 11px;
+  left: 14px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--color-text-muted);
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ─── Apple Segmented Control (Tabs) ────────────────────────────────────────── */

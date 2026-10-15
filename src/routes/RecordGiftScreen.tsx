@@ -484,12 +484,11 @@ export default function RecordGiftScreen() {
                   </div>
 
                   <div>
-                    <label className="label" style={{ fontSize: '11px', marginBottom: '2px' }}>
+                    <label className="label">
                       Event / Function Name *
                     </label>
                     <input
                       className="input"
-                      style={{ fontSize: '13px', padding: '7px 10px' }}
                       placeholder="enter the event or function name"
                       value={manualTitle}
                       onChange={(e) => setManualTitle(e.target.value)}
@@ -497,27 +496,25 @@ export default function RecordGiftScreen() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2.5">
                     <div>
-                      <label className="label" style={{ fontSize: '11px', marginBottom: '2px' }}>
+                      <label className="label">
                         Host Name
                       </label>
                       <input
                         className="input"
-                        style={{ fontSize: '13px', padding: '7px 10px' }}
                         placeholder="enter the host name"
                         value={manualHost}
                         onChange={(e) => setManualHost(e.target.value)}
                       />
                     </div>
                     <div>
-                      <label className="label" style={{ fontSize: '11px', marginBottom: '2px' }}>
+                      <label className="label">
                         Function Date
                       </label>
                       <input
                         type="date"
                         className="input"
-                        style={{ fontSize: '13px', padding: '7px 10px' }}
                         value={manualDate}
                         onChange={(e) => setManualDate(e.target.value)}
                       />
@@ -525,12 +522,11 @@ export default function RecordGiftScreen() {
                   </div>
 
                   <div>
-                    <label className="label" style={{ fontSize: '11px', marginBottom: '2px' }}>
+                    <label className="label">
                       Venue / Place
                     </label>
                     <input
                       className="input"
-                      style={{ fontSize: '13px', padding: '7px 10px' }}
                       placeholder="enter the venue or place"
                       value={manualVenue}
                       onChange={(e) => setManualVenue(e.target.value)}
@@ -746,12 +742,11 @@ export default function RecordGiftScreen() {
 
             {/* 1. Gift Given */}
             <div>
-              <label className="label" style={{ fontSize: '13px', marginBottom: '6px' }}>
+              <label className="label">
                 Gift Given <span className="text-gold">*</span>
               </label>
               <input
                 className="input"
-                style={{ fontSize: '14px', padding: '10px 12px' }}
                 value={giftName}
                 onChange={(e) => setGiftName(e.target.value)}
                 placeholder="Enter gift"
@@ -761,12 +756,11 @@ export default function RecordGiftScreen() {
 
             {/* 2. Gift Category Dropdown */}
             <div>
-              <label className="label" style={{ fontSize: '13px', marginBottom: '6px' }}>
+              <label className="label">
                 Gift Category
               </label>
               <select
                 className="select"
-                style={{ fontSize: '14px', padding: '10px 12px' }}
                 value={giftCategory}
                 onChange={(e) => setGiftCategory(e.target.value as GiftCategory)}
               >
@@ -780,12 +774,11 @@ export default function RecordGiftScreen() {
 
             {/* 3. Gift Value */}
             <div>
-              <label className="label" style={{ fontSize: '13px', marginBottom: '6px' }}>
+              <label className="label">
                 Gift Value
               </label>
               <input
                 className="input"
-                style={{ fontSize: '14px', padding: '10px 12px' }}
                 type="number"
                 min="0"
                 step="1"
@@ -797,12 +790,11 @@ export default function RecordGiftScreen() {
 
             {/* 4. Given To */}
             <div>
-              <label className="label" style={{ fontSize: '13px', marginBottom: '6px' }}>
+              <label className="label">
                 Given To
               </label>
               <input
                 className="input"
-                style={{ fontSize: '14px', padding: '10px 12px' }}
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
                 placeholder="Given to..."
@@ -811,13 +803,12 @@ export default function RecordGiftScreen() {
 
             {/* 5. Notes */}
             <div>
-              <label className="label" style={{ fontSize: '13px', marginBottom: '6px' }}>
+              <label className="label">
                 Notes
               </label>
               <textarea
                 className="textarea"
                 rows={3}
-                style={{ fontSize: '14px', padding: '10px 12px' }}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Write a notes"

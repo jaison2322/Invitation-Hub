@@ -477,7 +477,7 @@ export default function LoginScreen() {
                 <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                   <input
                     className="input"
-                    style={{ paddingRight: '28px' }}
+                    style={{ paddingRight: '40px' }}
                     type={showRegPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     value={regPassword}
@@ -494,10 +494,16 @@ export default function LoginScreen() {
                       border: 'none',
                       color: 'var(--color-text-muted)',
                       cursor: 'pointer',
-                      padding: '2px',
+                      padding: '6px',
+                      minWidth: '34px',
+                      minHeight: '34px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }}
+                    aria-label={showRegPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showRegPassword ? <EyeOff size={14} strokeWidth={2} /> : <Eye size={14} strokeWidth={2} />}
+                    {showRegPassword ? <EyeOff size={15} strokeWidth={2} /> : <Eye size={15} strokeWidth={2} />}
                   </button>
                 </div>
               </div>

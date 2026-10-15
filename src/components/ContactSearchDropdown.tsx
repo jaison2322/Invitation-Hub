@@ -202,7 +202,9 @@ export default function ContactSearchDropdown({
                   key={c.id}
                   onClick={() => handleContactClick(c)}
                   style={{
-                    padding: '10px 14px',
+                    padding: '12px 14px',
+                    minHeight: '48px',
+                    boxSizing: 'border-box',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
