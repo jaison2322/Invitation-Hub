@@ -1,6 +1,7 @@
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import type { Notification } from '../types';
 import { supabaseDbService } from './supabaseDbService';
+import { supabase } from '../utils/supabase';
 
 export interface PermissionResult {
   granted: boolean;
@@ -21,7 +22,18 @@ export interface NativeAppPermissionsInterface {
     priority?: string;
   }): Promise<{ delivered: boolean; id?: number; error?: string }>;
   cancelNotification(options: { id?: number }): Promise<{ cancelled: boolean }>;
-  getDevicePushToken(): Promise<{ token: string; platform: string }>;
+  getDevicePushToken(): Promise<{
+    token: string;
+    platform: string;
+    tokenType?: string;
+    deviceId?: string;
+    needsSync?: boolean;
+  }>;
+  acknowledgeTokenSync(options: { token: string }): Promise<{
+    acknowledged: boolean;
+    cleared: boolean;
+    reason?: string;
+  }>;
   openAppSettings(): Promise<{ opened: boolean }>;
   configureBackgroundSync(options: {
     username: string;
@@ -270,11 +282,15 @@ export const mobileNotificationService = {
   async registerDevice(username?: string, vipId?: string): Promise<DeviceRegistration | null> {
     try {
       let token = '';
+      let nativeDeviceId: string | undefined = undefined;
+      let needsSync = false;
       const platform = this.getPlatform();
 
       if (this.isNative()) {
         const nativeRes = await NativeAppPermissions.getDevicePushToken();
         token = nativeRes.token;
+        nativeDeviceId = nativeRes.deviceId || undefined;
+        needsSync = nativeRes.needsSync ?? false;
       } else {
         // Web Push or persistent client identifier
         let localToken = localStorage.getItem('vip_web_push_token');
@@ -291,6 +307,11 @@ export const mobileNotificationService = {
 
       const activeUser = username || null;
       const targetVipId = vipId || undefined;
+      const existingReg = this.getDeviceRegistration();
+      const registrationChanged =
+        !existingReg || existingReg.username !== activeUser || existingReg.token !== token;
+      const shouldSync = needsSync || registrationChanged;
+
       const registration: DeviceRegistration = {
         token,
         platform,
@@ -313,13 +334,23 @@ export const mobileNotificationService = {
       }
 
       // Sync device registration & push token to user account in Supabase
-      if (activeUser) {
+      if (activeUser && shouldSync) {
         supabaseDbService.saveDevicePushToken(activeUser, token, platform, registration, targetVipId).catch(console.warn);
 
         // Also save FCM token to the device_tokens table scoped to this VIP account
-        supabaseDbService.saveDeviceTokenFCM(activeUser, token, platform, undefined, targetVipId).catch((e) =>
-          console.warn('[VIP Notification] saveDeviceTokenFCM error:', e)
+        const syncSuccess = await supabaseDbService.saveDeviceTokenFCM(
+          activeUser,
+          token,
+          platform,
+          nativeDeviceId,
+          targetVipId
         );
+
+        if (syncSuccess && this.isNative()) {
+          await NativeAppPermissions.acknowledgeTokenSync({ token }).catch((ackErr) =>
+            console.warn('[VIP Notification] acknowledgeTokenSync warning:', ackErr)
+          );
+        }
       }
 
       console.log('[VIP Notification] Device registered with FCM token for VIP:', targetVipId, token.substring(0, 20) + '...');
@@ -345,24 +376,36 @@ export const mobileNotificationService = {
   /**
    * Clears user association on logout so the device is decoupled from the account.
    */
-  clearUserAssociation(): void {
+  async clearUserAssociation(): Promise<boolean> {
+    let serverDeactivationSuccessful = false;
     try {
       const reg = this.getDeviceRegistration();
-      if (reg) {
+      if (reg && reg.token) {
         // Deactivate FCM token in cloud so this device stops receiving pushes for this user
-        if (reg.token) {
-          supabaseDbService.deactivateDeviceToken(reg.token).catch((e) =>
-            console.warn('[VIP Notification] deactivateDeviceToken error:', e)
-          );
+        serverDeactivationSuccessful = await supabaseDbService.deactivateDeviceToken(reg.token);
+        if (!serverDeactivationSuccessful) {
+          console.warn('[VIP Notification] Remote device token deactivation failed or was rejected');
         }
-
-        reg.username = null;
-        reg.lastActive = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEY_REGISTRATION, JSON.stringify(reg));
+      } else {
+        serverDeactivationSuccessful = true;
       }
-    } catch (e) {
-      console.warn('clearUserAssociation error:', e);
+    } catch (err) {
+      console.warn('[VIP Notification] Error during clearUserAssociation server call:', err);
+      serverDeactivationSuccessful = false;
+    } finally {
+      // Always decouple local device registration so notifications stop echoing locally
+      try {
+        const reg = this.getDeviceRegistration();
+        if (reg) {
+          reg.username = null;
+          reg.lastActive = new Date().toISOString();
+          localStorage.setItem(STORAGE_KEY_REGISTRATION, JSON.stringify(reg));
+        }
+      } catch (localErr) {
+        console.warn('[VIP Notification] Error clearing local device registration:', localErr);
+      }
     }
+    return serverDeactivationSuccessful;
   },
 
   /**
@@ -517,6 +560,44 @@ export const mobileNotificationService = {
       actionUrl: '/notifications',
     };
     return await this.deliverNotification(testNotif);
+  },
+
+  /**
+   * Dispatches a live cloud push notification via Supabase Edge Function + Firebase Cloud Messaging (FCM)
+   * directly to all registered devices for the active VIP account.
+   */
+  async sendLiveCloudPushTest(vipId?: string): Promise<{ success: boolean; sent?: number; error?: string; reason?: string }> {
+    try {
+      const targetVipId = vipId || localStorage.getItem('vip_active_id') || 'vip_jaison';
+      const record = {
+        id: 'test-cloud-' + Date.now(),
+        vip_id: targetVipId,
+        type: 'system',
+        title: 'Invitation Hub Live Cloud Alert',
+        message: 'Live Firebase Cloud Push delivered successfully to your phone!',
+        read: false,
+        timestamp: new Date().toISOString(),
+        action_url: `/notifications?sender=system&live_test=1&t=${Date.now()}`,
+      };
+
+      const res = await supabase.functions.invoke('send-push-notification', {
+        body: { record },
+      });
+
+      if (res.error) {
+        return { success: false, error: res.error.message || 'Push function invocation failed' };
+      }
+
+      const data = res.data || {};
+      return {
+        success: (data.sent || 0) > 0,
+        sent: data.sent || 0,
+        reason: data.reason,
+      };
+    } catch (err: any) {
+      console.warn('[VIP Notification] sendLiveCloudPushTest error:', err);
+      return { success: false, error: err?.message || 'Failed to dispatch cloud push' };
+    }
   },
 };
 

@@ -222,7 +222,11 @@ CREATE INDEX IF NOT EXISTS idx_device_tokens_active ON public.device_tokens(is_a
 
 -- 4. SECURITY FUNCTION
 CREATE OR REPLACE FUNCTION public.get_auth_vip_id()
-RETURNS text AS $$
+RETURNS text
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
 DECLARE
   v_headers json;
   v_vip_id text;
@@ -239,34 +243,35 @@ BEGIN
     RETURN NULL;
   END IF;
 
-  v_vip_id := NULLIF(v_headers->>'x-vip-id', '');
-  v_token := NULLIF(v_headers->>'x-user-token', '');
+  v_vip_id := NULLIF(trim(v_headers->>'x-vip-id'), '');
+  v_token := NULLIF(trim(v_headers->>'x-user-token'), '');
 
-  IF v_vip_id IS NULL THEN
+  -- Insecure fallback based on x-vip-id alone is completely removed.
+  -- Both x-vip-id and x-user-token are strictly required.
+  IF v_vip_id IS NULL OR v_token IS NULL THEN
     RETURN NULL;
   END IF;
 
-  IF v_token IS NOT NULL THEN
-    SELECT vip_id INTO v_verified_vip
-    FROM public.user_accounts
-    WHERE vip_id = v_vip_id AND auth_token = v_token
-    LIMIT 1;
-
-    IF v_verified_vip IS NOT NULL THEN
-      RETURN v_verified_vip;
-    END IF;
-  END IF;
-
+  -- Verify token against user_accounts:
+  -- - Must match the requested tenant's vip_id
+  -- - Must match the user's active auth_token
+  -- - Must be a VIP account (role = 'vip') OR an approved staff account (role = 'staff' AND approval_status = 'APPROVED')
+  -- - Pending or rejected staff, mismatched tokens, or invalid tokens return NULL
   SELECT vip_id INTO v_verified_vip
   FROM public.user_accounts
   WHERE vip_id = v_vip_id
+    AND auth_token = v_token
+    AND (
+      role = 'vip'
+      OR (role = 'staff' AND approval_status = 'APPROVED')
+    )
   LIMIT 1;
 
   RETURN v_verified_vip;
 EXCEPTION WHEN OTHERS THEN
   RETURN NULL;
 END;
-$$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
+$function$;
 
 -- 5. ROW LEVEL SECURITY (RLS) & ISOLATION POLICIES
 ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
@@ -315,6 +320,197 @@ END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 
 GRANT EXECUTE ON FUNCTION public.lookup_user_account(text) TO anon, authenticated;
+
+-- Helper to verify and retrieve the authenticated caller's username
+CREATE OR REPLACE FUNCTION public.get_auth_username()
+RETURNS text
+LANGUAGE plpgsql
+STABLE SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_headers json;
+  v_vip_id text;
+  v_token text;
+  v_verified_user text;
+BEGIN
+  BEGIN
+    v_headers := current_setting('request.headers', true)::json;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN NULL;
+  END;
+
+  IF v_headers IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  v_vip_id := NULLIF(trim(v_headers->>'x-vip-id'), '');
+  v_token := NULLIF(trim(v_headers->>'x-user-token'), '');
+
+  IF v_vip_id IS NULL OR v_token IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT username INTO v_verified_user
+  FROM public.user_accounts
+  WHERE vip_id = v_vip_id
+    AND auth_token = v_token
+    AND (
+      role = 'vip'
+      OR (role = 'staff' AND approval_status = 'APPROVED')
+    )
+  LIMIT 1;
+
+  RETURN v_verified_user;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.get_auth_username() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_auth_username() TO anon, authenticated, service_role;
+
+-- Secure RPCs for device token management
+CREATE OR REPLACE FUNCTION public.register_device_token(
+  p_fcm_token text,
+  p_platform text DEFAULT 'android',
+  p_device_id text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_vip_id text;
+  v_username text;
+  v_clean_token text;
+BEGIN
+  v_clean_token := NULLIF(trim(p_fcm_token), '');
+  IF v_clean_token IS NULL OR length(v_clean_token) < 20 THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid FCM token format');
+  END IF;
+
+  v_vip_id := public.get_auth_vip_id();
+  v_username := public.get_auth_username();
+
+  IF v_vip_id IS NULL OR v_username IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  INSERT INTO public.device_tokens (
+    vip_id,
+    username,
+    fcm_token,
+    platform,
+    device_id,
+    is_active,
+    updated_at
+  ) VALUES (
+    v_vip_id,
+    v_username,
+    v_clean_token,
+    COALESCE(NULLIF(trim(p_platform), ''), 'android'),
+    p_device_id,
+    true,
+    NOW()
+  )
+  ON CONFLICT (fcm_token) DO UPDATE SET
+    vip_id = EXCLUDED.vip_id,
+    username = EXCLUDED.username,
+    platform = EXCLUDED.platform,
+    device_id = COALESCE(EXCLUDED.device_id, public.device_tokens.device_id),
+    is_active = true,
+    updated_at = NOW();
+
+  RETURN jsonb_build_object('success', true, 'username', v_username, 'vip_id', v_vip_id);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.register_device_token(text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.register_device_token(text, text, text) TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.deactivate_device_token(
+  p_fcm_token text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_vip_id text;
+  v_username text;
+  v_clean_token text;
+  v_affected integer;
+BEGIN
+  v_clean_token := NULLIF(trim(p_fcm_token), '');
+  IF v_clean_token IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid token');
+  END IF;
+
+  v_vip_id := public.get_auth_vip_id();
+  v_username := public.get_auth_username();
+
+  IF v_vip_id IS NULL OR v_username IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  UPDATE public.device_tokens
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE fcm_token = v_clean_token
+    AND username = v_username
+    AND vip_id = v_vip_id;
+
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+
+  RETURN jsonb_build_object('success', true, 'deactivated', v_affected);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.deactivate_device_token(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.deactivate_device_token(text) TO anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.deactivate_all_user_tokens()
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_vip_id text;
+  v_username text;
+  v_affected integer;
+BEGIN
+  v_vip_id := public.get_auth_vip_id();
+  v_username := public.get_auth_username();
+
+  IF v_vip_id IS NULL OR v_username IS NULL THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Unauthorized');
+  END IF;
+
+  UPDATE public.device_tokens
+  SET is_active = false,
+      updated_at = NOW()
+  WHERE username = v_username
+    AND vip_id = v_vip_id;
+
+  GET DIAGNOSTICS v_affected = ROW_COUNT;
+
+  RETURN jsonb_build_object('success', true, 'deactivated', v_affected);
+EXCEPTION WHEN OTHERS THEN
+  RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.deactivate_all_user_tokens() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.deactivate_all_user_tokens() TO anon, authenticated, service_role;
+
 
 -- Policies
 CREATE POLICY "user_accounts_isolated_select" ON public.user_accounts FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
@@ -367,7 +563,18 @@ CREATE POLICY "notifications_isolated_insert" ON public.notifications FOR INSERT
 CREATE POLICY "notifications_isolated_update" ON public.notifications FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id()) WITH CHECK (vip_id = public.get_auth_vip_id());
 CREATE POLICY "notifications_isolated_delete" ON public.notifications FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
 
-CREATE POLICY "device_tokens_isolated_select" ON public.device_tokens FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id() OR true);
-CREATE POLICY "device_tokens_isolated_insert" ON public.device_tokens FOR INSERT TO anon, authenticated WITH CHECK (true);
-CREATE POLICY "device_tokens_isolated_update" ON public.device_tokens FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id() OR true) WITH CHECK (true);
-CREATE POLICY "device_tokens_isolated_delete" ON public.device_tokens FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id());
+-- ── device_tokens (Strict User & VIP Isolation) ──────────────────────────────
+DROP POLICY IF EXISTS "device_tokens_isolated_select" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_isolated_insert" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_isolated_update" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_isolated_delete" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_select_own" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_insert_own" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_update_own" ON public.device_tokens;
+DROP POLICY IF EXISTS "device_tokens_delete_own" ON public.device_tokens;
+
+CREATE POLICY "device_tokens_select_own" ON public.device_tokens FOR SELECT TO anon, authenticated USING (vip_id = public.get_auth_vip_id() AND username = public.get_auth_username());
+CREATE POLICY "device_tokens_insert_own" ON public.device_tokens FOR INSERT TO anon, authenticated WITH CHECK (vip_id = public.get_auth_vip_id() AND username = public.get_auth_username());
+CREATE POLICY "device_tokens_update_own" ON public.device_tokens FOR UPDATE TO anon, authenticated USING (vip_id = public.get_auth_vip_id() AND username = public.get_auth_username()) WITH CHECK (vip_id = public.get_auth_vip_id() AND username = public.get_auth_username());
+CREATE POLICY "device_tokens_delete_own" ON public.device_tokens FOR DELETE TO anon, authenticated USING (vip_id = public.get_auth_vip_id() AND username = public.get_auth_username());
+

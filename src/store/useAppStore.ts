@@ -215,9 +215,13 @@ export const useAppStore = create<AppState>()(
           await supabaseDbService.clearAllTables(activeVipId).catch(console.warn);
         }
 
-        clearSupabaseAuthSession();
+        try {
+          mobileNotificationService.clearUserAssociation();
+        } catch (e) {
+          console.warn('[Reset] clearUserAssociation error:', e);
+        }
         realtimeService.unsubscribe();
-        mobileNotificationService.clearUserAssociation();
+        clearSupabaseAuthSession();
 
         // Clear local storage
         localStorage.removeItem('vip-event-intelligence-store-v2');
@@ -1121,20 +1125,24 @@ export const useAppStore = create<AppState>()(
         return { success: true };
       },
 
-      logout: () => {
-        realtimeService.unsubscribe();
-        clearSupabaseAuthSession();
-        mobileNotificationService.clearUserAssociation();
-        set({
-          isAuthenticated: false,
-          isVIP: false,
-          currentUser: null,
-          currentPrivilegedUser: null,
-          activeVipId: null,
-          authToken: null,
-          people: [],
-          invitations: [],
-          familyEvents: [],
+      logout: async () => {
+        try {
+          await mobileNotificationService.clearUserAssociation();
+        } catch (e) {
+          console.warn('[Logout] clearUserAssociation error:', e);
+        } finally {
+          realtimeService.unsubscribe();
+          clearSupabaseAuthSession();
+          set({
+            isAuthenticated: false,
+            isVIP: false,
+            currentUser: null,
+            currentPrivilegedUser: null,
+            activeVipId: null,
+            authToken: null,
+            people: [],
+            invitations: [],
+            familyEvents: [],
           schedule: [],
           reminders: [],
           privilegedUsers: [],
@@ -1142,7 +1150,8 @@ export const useAppStore = create<AppState>()(
           notifications: [],
           currentScanResult: null,
         });
-      },
+      }
+    },
 
       // ── People Actions ───────────────────────────────────────────────────
       addPerson: (personData) => {

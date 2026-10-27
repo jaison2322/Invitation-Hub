@@ -36,19 +36,23 @@ ALTER TABLE public.gift_records ENABLE ROW LEVEL SECURITY;
 GRANT ALL ON TABLE public.gift_records TO anon, authenticated, service_role;
 
 -- Row Level Security (RLS) Policies scoped by VIP tenant isolation
+DROP POLICY IF EXISTS "gift_records_isolated_select" ON public.gift_records;
 CREATE POLICY "gift_records_isolated_select"
     ON public.gift_records FOR SELECT TO anon, authenticated
     USING (vip_id = public.get_auth_vip_id());
 
+DROP POLICY IF EXISTS "gift_records_isolated_insert" ON public.gift_records;
 CREATE POLICY "gift_records_isolated_insert"
     ON public.gift_records FOR INSERT TO anon, authenticated
     WITH CHECK (vip_id = public.get_auth_vip_id());
 
+DROP POLICY IF EXISTS "gift_records_isolated_update" ON public.gift_records;
 CREATE POLICY "gift_records_isolated_update"
     ON public.gift_records FOR UPDATE TO anon, authenticated
     USING (vip_id = public.get_auth_vip_id())
     WITH CHECK (vip_id = public.get_auth_vip_id());
 
+DROP POLICY IF EXISTS "gift_records_isolated_delete" ON public.gift_records;
 CREATE POLICY "gift_records_isolated_delete"
     ON public.gift_records FOR DELETE TO anon, authenticated
     USING (vip_id = public.get_auth_vip_id());

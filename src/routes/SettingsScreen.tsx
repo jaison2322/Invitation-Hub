@@ -22,6 +22,8 @@ import {
   UserCheck,
   AlertCircle,
   FileText,
+  Smartphone,
+  Send,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
 import { exportUpcomingEventsToExcel, exportUpcomingEventsToPdf } from '../services/exportService';
@@ -142,6 +144,7 @@ export default function SettingsScreen() {
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   const [testNotifFeedback, setTestNotifFeedback] = useState<string | null>(null);
   const [isSyncingReminders, setIsSyncingReminders] = useState(false);
+  const [isSendingCloudPush, setIsSendingCloudPush] = useState(false);
 
   useEffect(() => {
     mobileNotificationService.checkPermission().then((res) => {
@@ -1063,7 +1066,26 @@ export default function SettingsScreen() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3" style={{ marginBottom: '24px' }}>
+            {/* Live FCM Cloud Engine Status */}
+            <div
+              className="glass-card mb-3 p-3 flex items-center justify-between"
+              style={{
+                border: '1px solid rgba(212, 175, 55, 0.3)',
+                background: 'rgba(212, 175, 55, 0.06)',
+                borderRadius: '12px',
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e', flexShrink: 0 }} />
+                <div>
+                  <div className="text-xs font-semibold" style={{ color: 'var(--color-gold)' }}>Live Cloud Push (Firebase FCM)</div>
+                  <div className="text-[11px] text-muted">Heads-up banner alerts active for registered phones</div>
+                </div>
+              </div>
+              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', fontWeight: 600 }}>Active</span>
+            </div>
+
+            <div className="flex flex-col gap-3" style={{ marginBottom: '20px' }}>
               <div className="glass-card flex items-center justify-between p-3">
                 <div>
                   <div className="text-sm font-semibold">More Events Overlaps alerts</div>
@@ -1117,29 +1139,68 @@ export default function SettingsScreen() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-2.5">
               {testNotifFeedback && (
                 <div
                   className="text-xs text-center p-2 rounded"
                   style={{
-                    background: testNotifFeedback.includes('sent') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                    color: testNotifFeedback.includes('sent') ? '#22c55e' : '#ef4444',
+                    background: testNotifFeedback.includes('sent') || testNotifFeedback.includes('dispatched') || testNotifFeedback.includes('displayed') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                    color: testNotifFeedback.includes('sent') || testNotifFeedback.includes('dispatched') || testNotifFeedback.includes('displayed') ? '#22c55e' : '#ef4444',
                   }}
                 >
                   {testNotifFeedback}
                 </div>
               )}
+
+              {/* Cloud FCM Test Trigger */}
+              <button
+                type="button"
+                className="btn w-full"
+                style={{
+                  height: '42px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.22), rgba(212, 175, 55, 0.08))',
+                  border: '1px solid rgba(212, 175, 55, 0.45)',
+                  color: 'var(--color-gold)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+                disabled={isSendingCloudPush}
+                onClick={async () => {
+                  try {
+                    setIsSendingCloudPush(true);
+                    setTestNotifFeedback('Dispatched to Firebase Cloud Messaging...');
+                    const res = await mobileNotificationService.sendLiveCloudPushTest(activeVipId);
+                    if (res.success) {
+                      setTestNotifFeedback(`Live FCM push dispatched to ${res.sent || 1} registered device(s)!`);
+                    } else {
+                      setTestNotifFeedback(res.error || res.reason || 'No active device tokens found. Open app on phone once.');
+                    }
+                  } catch {
+                    setTestNotifFeedback('Failed to send cloud push');
+                  } finally {
+                    setIsSendingCloudPush(false);
+                    setTimeout(() => setTestNotifFeedback(null), 4500);
+                  }
+                }}
+              >
+                <Send size={13} /> {isSendingCloudPush ? 'Pushing to Phone...' : 'Send Live Cloud Push (FCM to Phone)'}
+              </button>
+
               <div className="flex gap-2">
                 <button
                   type="button"
                   className="btn btn-outline flex-1"
-                  style={{ height: '40px', fontSize: '12px' }}
+                  style={{ height: '38px', fontSize: '12px' }}
                   onClick={async () => {
                     try {
                       setTestNotifFeedback('Sending test alert...');
                       const delivered = await mobileNotificationService.sendTestNotification();
                       if (delivered) {
-                        setTestNotifFeedback('Test alert sent to device!');
+                        setTestNotifFeedback('Local test alert displayed!');
                       } else {
                         setTestNotifFeedback('Alert blocked: Check notification permissions');
                       }
@@ -1149,12 +1210,12 @@ export default function SettingsScreen() {
                     setTimeout(() => setTestNotifFeedback(null), 3500);
                   }}
                 >
-                  <Bell size={13} style={{ marginRight: '4px' }} /> Test Alert
+                  <Bell size={13} style={{ marginRight: '4px' }} /> Local Alert
                 </button>
                 <button
                   type="button"
                   className="btn btn-outline flex-1"
-                  style={{ height: '40px', fontSize: '12px' }}
+                  style={{ height: '38px', fontSize: '12px' }}
                   disabled={isSyncingReminders}
                   onClick={async () => {
                     try {
@@ -1174,6 +1235,19 @@ export default function SettingsScreen() {
                   Check Reminders
                 </button>
               </div>
+
+              {/* Phone background tip */}
+              <div
+                className="text-[11px] text-muted p-2.5 rounded-lg"
+                style={{
+                  background: 'rgba(118, 118, 128, 0.1)',
+                  lineHeight: '1.45',
+                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                }}
+              >
+                <strong style={{ color: 'var(--color-text-primary)' }}>Phone Setup Tip:</strong> In your phone's <em>Settings &gt; Apps &gt; Invitation Hub</em>, ensure <strong>Notifications</strong> are allowed and set Battery usage to <strong>Unrestricted</strong> so live alerts wake your phone even when locked.
+              </div>
+
               <button className="btn btn-gold w-full mt-1" onClick={() => setActiveModal(null)} style={{ height: '44px', fontWeight: 600 }}>
                 Save Preferences
               </button>

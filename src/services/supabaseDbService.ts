@@ -996,26 +996,25 @@ export const supabaseDbService = {
     try {
       const cleanUsername = username.trim().toLowerCase();
       const targetVipId = vipId || getActiveSessionVipId();
-      const { error } = await supabase
-        .from('device_tokens')
-        .upsert(
-          {
-            username: cleanUsername,
-            fcm_token: fcmToken,
-            platform: platform || 'android',
-            device_id: deviceId || null,
-            vip_id: targetVipId || null,
-            is_active: true,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'fcm_token' }
-        );
+      if (!cleanUsername || !fcmToken) return false;
 
-      if (error) {
-        console.warn('Error saving FCM device token:', error);
+      // Primary & Only Path: Server-verified atomic RPC (checks get_auth_identity)
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('register_device_token', {
+          p_fcm_token: fcmToken,
+          p_platform: platform || 'android',
+          p_device_id: deviceId || null,
+        });
+
+        if (!rpcError && rpcData?.success) {
+          return true;
+        }
+        console.warn('RPC register_device_token failed:', rpcError || rpcData?.error || rpcData?.code);
+        return false;
+      } catch (rpcErr) {
+        console.warn('Exception during register_device_token RPC:', rpcErr);
         return false;
       }
-      return true;
     } catch (err) {
       console.warn('Exception saving FCM device token:', err);
       return false;
@@ -1024,19 +1023,23 @@ export const supabaseDbService = {
 
   async deactivateDeviceToken(fcmToken: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('device_tokens')
-        .update({
-          is_active: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('fcm_token', fcmToken);
+      if (!fcmToken) return false;
 
-      if (error) {
-        console.warn('Error deactivating device token:', error);
+      // Primary & Only Path: Server-verified atomic RPC (verifies ownership before deactivating)
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('deactivate_device_token', {
+          p_fcm_token: fcmToken,
+        });
+
+        if (!rpcError && rpcData?.success) {
+          return true;
+        }
+        console.warn('RPC deactivate_device_token failed:', rpcError || rpcData?.error || rpcData?.code);
+        return false;
+      } catch (rpcErr) {
+        console.warn('Exception during deactivate_device_token RPC:', rpcErr);
         return false;
       }
-      return true;
     } catch (err) {
       console.warn('Exception deactivating device token:', err);
       return false;
@@ -1045,19 +1048,18 @@ export const supabaseDbService = {
 
   async deactivateAllUserTokens(username: string): Promise<boolean> {
     try {
-      const { error } = await supabase
-        .from('device_tokens')
-        .update({
-          is_active: false,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('username', username.trim().toLowerCase());
-
-      if (error) {
-        console.warn('Error deactivating all user tokens:', error);
+      // Primary & Only Path: Server-verified atomic RPC
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('deactivate_all_user_tokens');
+        if (!rpcError && rpcData?.success) {
+          return true;
+        }
+        console.warn('RPC deactivate_all_user_tokens failed:', rpcError || rpcData?.error || rpcData?.code);
+        return false;
+      } catch (rpcErr) {
+        console.warn('Exception during deactivate_all_user_tokens RPC:', rpcErr);
         return false;
       }
-      return true;
     } catch (err) {
       console.warn('Exception deactivating all user tokens:', err);
       return false;

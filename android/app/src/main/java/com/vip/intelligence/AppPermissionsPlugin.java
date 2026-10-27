@@ -586,13 +586,28 @@ public class AppPermissionsPlugin extends Plugin {
             android.content.SharedPreferences prefs = getContext().getSharedPreferences(
                 BackgroundNotificationSync.PREFS_NAME, android.content.Context.MODE_PRIVATE);
             String cachedFcmToken = prefs.getString("fcm_token", null);
+            String pendingToken = prefs.getString("pending_fcm_token", null);
+            boolean needsSync = prefs.getBoolean("fcm_token_needs_sync", false);
+            String rawAndroidId = Settings.Secure.getString(getContext().getContentResolver(), Settings.Secure.ANDROID_ID);
+            String deviceId = (rawAndroidId != null && !rawAndroidId.isEmpty()) ? "android-" + rawAndroidId : null;
 
             if (cachedFcmToken != null && !cachedFcmToken.isEmpty()) {
+                // If pendingToken was not initialized, initialize it to the cached token
+                if (pendingToken == null) {
+                    prefs.edit()
+                        .putString("pending_fcm_token", cachedFcmToken)
+                        .putBoolean("fcm_token_needs_sync", true)
+                        .apply();
+                    needsSync = true;
+                }
+
                 // Return cached FCM token immediately
                 JSObject ret = new JSObject();
                 ret.put("token", cachedFcmToken);
                 ret.put("platform", "android");
                 ret.put("tokenType", "fcm");
+                ret.put("deviceId", deviceId);
+                ret.put("needsSync", needsSync);
                 call.resolve(ret);
                 return;
             }
@@ -603,11 +618,17 @@ public class AppPermissionsPlugin extends Plugin {
                     // Cache the FCM token
                     prefs.edit().putString("fcm_token", token).apply();
                     prefs.edit().putString(BackgroundNotificationSync.KEY_DEVICE_TOKEN, token).apply();
+                    prefs.edit()
+                        .putString("pending_fcm_token", token)
+                        .putBoolean("fcm_token_needs_sync", true)
+                        .apply();
 
                     JSObject ret = new JSObject();
                     ret.put("token", token);
                     ret.put("platform", "android");
                     ret.put("tokenType", "fcm");
+                    ret.put("deviceId", deviceId);
+                    ret.put("needsSync", true);
                     call.resolve(ret);
                 })
                 .addOnFailureListener(e -> {
@@ -619,6 +640,8 @@ public class AppPermissionsPlugin extends Plugin {
                     ret.put("token", fallbackToken);
                     ret.put("platform", "android");
                     ret.put("tokenType", "device_id");
+                    ret.put("deviceId", deviceId);
+                    ret.put("needsSync", false);
                     call.resolve(ret);
                 });
         } catch (Exception e) {
@@ -627,7 +650,43 @@ public class AppPermissionsPlugin extends Plugin {
             ret.put("token", fallbackToken);
             ret.put("platform", "android");
             ret.put("tokenType", "fallback");
+            ret.put("deviceId", null);
+            ret.put("needsSync", false);
             call.resolve(ret);
+        }
+    }
+
+    @PluginMethod
+    public void acknowledgeTokenSync(PluginCall call) {
+        try {
+            String acknowledgedToken = call.getString("token");
+            android.content.SharedPreferences prefs = getContext().getSharedPreferences(
+                BackgroundNotificationSync.PREFS_NAME, android.content.Context.MODE_PRIVATE);
+            String cachedFcmToken = prefs.getString("fcm_token", null);
+            String pendingToken = prefs.getString("pending_fcm_token", null);
+
+            // Clear pending flag ONLY if acknowledged token matches BOTH cached token AND pending token.
+            // Prevents older in-flight requests from clearing newer rotated tokens.
+            boolean matchesBoth = acknowledgedToken != null
+                && acknowledgedToken.equals(cachedFcmToken)
+                && acknowledgedToken.equals(pendingToken);
+
+            JSObject ret = new JSObject();
+            if (matchesBoth) {
+                prefs.edit()
+                    .putBoolean("fcm_token_needs_sync", false)
+                    .remove("pending_fcm_token")
+                    .apply();
+                ret.put("acknowledged", true);
+                ret.put("cleared", true);
+            } else {
+                ret.put("acknowledged", true);
+                ret.put("cleared", false);
+                ret.put("reason", "token_mismatch_or_rotated");
+            }
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Failed to acknowledge token sync: " + e.getMessage());
         }
     }
 

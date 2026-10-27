@@ -139,77 +139,12 @@ public class VIPFirebaseMessagingService extends FirebaseMessagingService {
         // Also update the device_token key used by background sync
         prefs.edit().putString(BackgroundNotificationSync.KEY_DEVICE_TOKEN, token).apply();
 
-        // Sync FCM token to Supabase device_tokens table
-        String username = prefs.getString(BackgroundNotificationSync.KEY_USERNAME, "").trim();
-        if (!username.isEmpty()) {
-            syncTokenToSupabase(token, username);
-        }
-    }
-
-    /**
-     * Sends the FCM token to Supabase device_tokens table via REST API.
-     * This runs even when the Capacitor bridge isn't available.
-     */
-    private void syncTokenToSupabase(final String fcmToken, final String username) {
-        new Thread(() -> {
-            HttpURLConnection conn = null;
-            try {
-                SharedPreferences prefs = getSharedPreferences(BackgroundNotificationSync.PREFS_NAME, Context.MODE_PRIVATE);
-                String baseUrl = prefs.getString(BackgroundNotificationSync.KEY_SUPABASE_URL, BackgroundNotificationSync.DEFAULT_URL);
-                String apiKey = prefs.getString(BackgroundNotificationSync.KEY_SUPABASE_KEY, BackgroundNotificationSync.DEFAULT_KEY);
-                String vipId = prefs.getString(BackgroundNotificationSync.KEY_VIP_ID, "");
-
-                String androidId = android.provider.Settings.Secure.getString(
-                    getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
-
-                // Upsert FCM token into device_tokens table with vip_id
-                String payload;
-                if (!vipId.isEmpty()) {
-                    payload = String.format(
-                        "{\"username\":\"%s\",\"fcm_token\":\"%s\",\"platform\":\"android\",\"device_id\":\"%s\",\"vip_id\":\"%s\",\"is_active\":true,\"updated_at\":\"%s\"}",
-                        username.toLowerCase(),
-                        fcmToken,
-                        androidId != null ? "android-" + androidId : "",
-                        vipId,
-                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date())
-                    );
-                } else {
-                    payload = String.format(
-                        "{\"username\":\"%s\",\"fcm_token\":\"%s\",\"platform\":\"android\",\"device_id\":\"%s\",\"is_active\":true,\"updated_at\":\"%s\"}",
-                        username.toLowerCase(),
-                        fcmToken,
-                        androidId != null ? "android-" + androidId : "",
-                        new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).format(new java.util.Date())
-                    );
-                }
-
-                URL url = URI.create(baseUrl + "/rest/v1/device_tokens").toURL();
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("apikey", apiKey);
-                conn.setRequestProperty("Authorization", "Bearer " + apiKey);
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setRequestProperty("Prefer", "resolution=merge-duplicates");
-                if (vipId != null && !vipId.trim().isEmpty()) {
-                    conn.setRequestProperty("x-vip-id", vipId.trim());
-                }
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(10000);
-                conn.setReadTimeout(10000);
-
-                OutputStream os = conn.getOutputStream();
-                os.write(payload.getBytes("UTF-8"));
-                os.flush();
-                os.close();
-
-                int responseCode = conn.getResponseCode();
-                Log.i(TAG, "FCM token synced to Supabase. Response: " + responseCode);
-            } catch (Exception e) {
-                Log.w(TAG, "Failed to sync FCM token to Supabase: " + e.getMessage());
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-        }).start();
+        // Cache rotated token and mark synchronization as pending for authenticated session
+        prefs.edit()
+            .putString("pending_fcm_token", token)
+            .putBoolean("fcm_token_needs_sync", true)
+            .apply();
+        Log.i(TAG, "Cached rotated FCM token. Marked pending synchronization for authenticated app session.");
     }
 
     private static int hashStringToInt(String str) {

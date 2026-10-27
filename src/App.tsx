@@ -287,6 +287,7 @@ export default function App() {
         latestStore.checkAndTriggerUpcomingReminders(currentVipId).catch(console.warn);
         const currentActive = latestStore.currentUser?.username || latestStore.currentPrivilegedUser?.username;
         if (currentActive) {
+          mobileNotificationService.registerDevice(currentActive, currentVipId).catch(console.warn);
           mobileNotificationService.checkRecentUnreadNotifications(currentActive, currentVipId).catch(console.warn);
         }
       }
