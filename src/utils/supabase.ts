@@ -1,14 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
-  'https://lliowikzustvebudgsoy.supabase.co';
+const envSupabaseUrl = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_SUPABASE_URL : undefined;
+const envSupabaseKey = typeof import.meta !== 'undefined'
+  ? (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)
+  : undefined;
 
-const supabaseAnonKey =
-  (typeof import.meta !== 'undefined' &&
-    (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY ||
-      import.meta.env?.VITE_SUPABASE_ANON_KEY)) ||
-  'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH';
+if (!envSupabaseUrl && typeof console !== 'undefined') {
+  console.warn('[Supabase Config Warning] VITE_SUPABASE_URL is not configured in environment. Using default endpoint.');
+}
+
+const supabaseUrl = envSupabaseUrl || 'https://lliowikzustvebudgsoy.supabase.co';
+const supabaseAnonKey = envSupabaseKey || 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH';
 
 let activeVipId: string | null = null;
 let activeAuthToken: string | null = null;
@@ -31,7 +33,7 @@ export function getActiveSessionAuthToken(): string | null {
   return activeAuthToken;
 }
 
-// Custom fetch wrapper that automatically injects tenant isolation headers for Supabase PostgREST RLS
+// Custom fetch wrapper that automatically injects tenant isolation headers and enforces a safety timeout (25s)
 const authenticatedFetch: typeof fetch = (input, init) => {
   const headers = new Headers(init?.headers);
   if (activeVipId) {
@@ -40,7 +42,18 @@ const authenticatedFetch: typeof fetch = (input, init) => {
   if (activeAuthToken) {
     headers.set('x-user-token', activeAuthToken);
   }
-  return fetch(input, { ...init, headers });
+
+  // Default network timeout to prevent infinite socket hanging on poor mobile connections
+  let signal = init?.signal;
+  if (!signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as any).timeout === 'function') {
+    try {
+      signal = (AbortSignal as any).timeout(25000);
+    } catch {
+      // Fallback if environment restricts timeout constructor
+    }
+  }
+
+  return fetch(input, { ...init, headers, signal: signal || init?.signal });
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {

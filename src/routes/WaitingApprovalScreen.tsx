@@ -69,8 +69,8 @@ export default function WaitingApprovalScreen() {
     return () => clearInterval(interval);
   }, [staffUsername]);
 
-  const handleSignOut = () => {
-    logout();
+  const handleSignOut = async () => {
+    await logout();
     navigate('/login', { replace: true });
   };
 

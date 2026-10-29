@@ -327,8 +327,8 @@ export const mobileNotificationService = {
         NativeAppPermissions.configureBackgroundSync({
           username: activeUser || '',
           token,
-          supabaseUrl: 'https://lliowikzustvebudgsoy.supabase.co',
-          supabaseKey: 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH',
+          supabaseUrl: import.meta.env.VITE_SUPABASE_URL || 'https://lliowikzustvebudgsoy.supabase.co',
+          supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_HOmmQBn10vwi0eehQDX5gg_3aRXTUTH',
           vipId: targetVipId || '',
         }).catch((e) => console.warn('[VIP Notification] configureBackgroundSync error:', e));
       }

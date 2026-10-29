@@ -7,6 +7,10 @@ const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
  * Utility: Convert a base64 data URL to a binary Blob
  */
 function dataUrlToBlob(dataUrl: string): { blob: Blob; mimeType: string; extension: string } {
+  if (!dataUrl || typeof dataUrl !== 'string' || !dataUrl.includes(',')) {
+    throw new Error('Invalid or corrupted data URL string format');
+  }
+
   const [header, base64Data] = dataUrl.split(',');
   const mimeMatch = header.match(/:(.*?);/);
   const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
@@ -17,15 +21,19 @@ function dataUrlToBlob(dataUrl: string): { blob: Blob; mimeType: string; extensi
   else if (mimeType.includes('heic')) extension = 'heic';
   else if (mimeType.includes('gif')) extension = 'gif';
 
-  const binaryStr = atob(base64Data);
-  const len = binaryStr.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binaryStr.charCodeAt(i);
-  }
+  try {
+    const binaryStr = atob(base64Data);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
 
-  const blob = new Blob([bytes], { type: mimeType });
-  return { blob, mimeType, extension };
+    const blob = new Blob([bytes], { type: mimeType });
+    return { blob, mimeType, extension };
+  } catch (err: any) {
+    throw new Error(`Base64 decoding failed: ${err?.message || 'Invalid binary sequence'}`);
+  }
 }
 
 export const storageService = {

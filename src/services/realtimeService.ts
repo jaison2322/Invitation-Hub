@@ -17,6 +17,8 @@ import { mobileNotificationService } from './mobileNotificationService';
 let realtimeChannel: RealtimeChannel | null = null;
 let isSubscribed = false;
 let currentSubscribedVipId: string | null = null;
+let reconnectAttempts = 0;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const realtimeService = {
   /**
@@ -618,15 +620,24 @@ export const realtimeService = {
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
             isSubscribed = true;
+            reconnectAttempts = 0;
+            if (reconnectTimer) {
+              clearTimeout(reconnectTimer);
+              reconnectTimer = null;
+            }
             useAppStore.setState({ isRealtimeActive: true });
             console.log(`[Realtime] Subscription active for VIP on channel: ${channelName}`);
           } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
             isSubscribed = false;
             useAppStore.setState({ isRealtimeActive: false });
-            console.warn('[Realtime] Subscription interrupted (' + status + '). Scheduling reconnection...');
-            setTimeout(() => {
+            if (reconnectTimer) clearTimeout(reconnectTimer);
+            reconnectAttempts = Math.min(reconnectAttempts + 1, 6);
+            // Exponential backoff: 3s, 6s, 12s, 24s... max 30s + small jitter
+            const delayMs = Math.min(3000 * Math.pow(2, reconnectAttempts - 1), 30000) + Math.floor(Math.random() * 1000);
+            console.warn(`[Realtime] Subscription interrupted (${status}). Reconnecting in ${Math.round(delayMs / 1000)}s (attempt ${reconnectAttempts})...`);
+            reconnectTimer = setTimeout(() => {
               realtimeService.ensureConnection();
-            }, 3000);
+            }, delayMs);
           }
         });
 
@@ -657,6 +668,11 @@ export const realtimeService = {
    * Unsubscribes from active real-time channels and clears VIP subscription state.
    */
   unsubscribe() {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    reconnectAttempts = 0;
     if (realtimeChannel) {
       supabase.removeChannel(realtimeChannel);
       realtimeChannel = null;

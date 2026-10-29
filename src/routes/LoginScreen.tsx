@@ -180,8 +180,8 @@ export default function LoginScreen() {
         undefined,
         cleanUsername,
         regPassword,
-        true, // phoneVerified
-        true  // emailVerified
+        false, // phoneVerified: contact metadata only (no fake verification stamp)
+        false  // emailVerified
       );
       if (!result.success) {
         setRegError(result.error || 'VIP Account creation failed. Please try again.');

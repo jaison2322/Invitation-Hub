@@ -872,7 +872,7 @@ export const supabaseDbService = {
   },
 
   // Update auth token on user_accounts via secure RPC to eliminate RLS chicken-and-egg lockouts
-  async updateUserAuthToken(username: string, authToken: string, vipId?: string): Promise<boolean> {
+  async updateUserAuthToken(username: string, authToken: string, vipId?: string, passwordHash?: string): Promise<boolean> {
     try {
       const cleanUsername = username.trim().toLowerCase();
       const targetVipId = vipId || getActiveSessionVipId();
@@ -882,6 +882,7 @@ export const supabaseDbService = {
         p_username: cleanUsername,
         p_auth_token: authToken,
         p_vip_id: targetVipId || null,
+        p_password_hash: passwordHash || null,
       });
 
       if (!rpcError && rpcData?.success) {
@@ -889,15 +890,22 @@ export const supabaseDbService = {
       }
 
       if (rpcError) {
-        console.warn('update_user_auth_token RPC fallback to table update:', rpcError.message);
+        console.warn('update_user_auth_token RPC error:', rpcError.message);
+      } else if (rpcData && !rpcData.success) {
+        console.warn('update_user_auth_token rejected by database:', rpcData.error);
+        return false;
       }
 
-      // 2. Fallback: Direct table update
-      const { error } = await supabase
-        .from('user_accounts')
-        .update({ auth_token: authToken, updated_at: new Date().toISOString() })
-        .eq('username', cleanUsername);
-      return !error;
+      // 2. Fallback: Direct table update ONLY if caller has an active authenticated session (rotation)
+      if (!passwordHash) {
+        const { error } = await supabase
+          .from('user_accounts')
+          .update({ auth_token: authToken, updated_at: new Date().toISOString() })
+          .eq('username', cleanUsername);
+        return !error;
+      }
+
+      return false;
     } catch (err) {
       console.warn('Error updating user auth token:', err);
       return false;
@@ -1080,7 +1088,7 @@ export const supabaseDbService = {
       approvalStatus: data.approval_status || 'APPROVED',
       phone: data.phone,
       email: data.email,
-      phoneVerified: true,
+      phoneVerified: !!data.phone_verified,
       emailVerified: data.email_verified ?? (data.permissions?.emailVerified ?? false),
       phoneVerifiedAt: data.phone_verified_at ?? data.permissions?.phoneVerifiedAt,
       emailVerifiedAt: data.email_verified_at ?? data.permissions?.emailVerifiedAt,
@@ -1254,10 +1262,10 @@ export const supabaseDbService = {
       const now = new Date().toISOString();
       const enrichedPermissions = {
         ...(account.permissions || {}),
-        phoneVerified: true,
-        emailVerified: account.emailVerified ?? true,
-        phoneVerifiedAt: account.phoneVerifiedAt || now,
-        emailVerifiedAt: account.emailVerifiedAt || now,
+        phoneVerified: !!account.phoneVerified,
+        emailVerified: account.emailVerified ?? false,
+        phoneVerifiedAt: account.phoneVerified ? (account.phoneVerifiedAt || now) : undefined,
+        emailVerifiedAt: account.emailVerified ? (account.emailVerifiedAt || now) : undefined,
       };
 
       // Ensure we only pass columns that exist in public.user_accounts table
@@ -1277,8 +1285,8 @@ export const supabaseDbService = {
         pin: account.pin || null,
         avatar: account.avatar || null,
         permissions: enrichedPermissions,
-        phone_verified: true,
-        phone_verified_at: account.phoneVerifiedAt || now,
+        phone_verified: !!account.phoneVerified,
+        phone_verified_at: account.phoneVerified ? (account.phoneVerifiedAt || now) : null,
         created_at: account.createdAt || now,
         updated_at: now,
       };

@@ -187,14 +187,14 @@ export default function GiftHistoryScreen() {
             </h1>
           </div>
 
-          {/* Prominent "+" Add Button visible for authorized users when Gift Given is active */}
-          {activeTab === 'given' && canManageGifts && (
+          {/* Prominent "+" Add Button visible for authorized users across both tabs */}
+          {canManageGifts && (
             <button
               type="button"
               className="btn btn-sm btn-gold flex items-center gap-1.5 shadow-md animate-scale-in"
-              onClick={() => navigate('/record-gift')}
-              aria-label="Record Gift Given"
-              title="Record Gift Given"
+              onClick={() => navigate('/record-gift', { state: { tab: activeTab, defaultDirection: activeTab } })}
+              aria-label={activeTab === 'received' ? 'Record Gift Received' : 'Record Gift Given'}
+              title={activeTab === 'received' ? 'Record Gift Received' : 'Record Gift Given'}
             >
               <Plus size={15} strokeWidth={2.4} />
               <span>Record Gift</span>

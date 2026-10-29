@@ -151,6 +151,19 @@ export async function hashPassword(password: string): Promise<string> {
 }
 
 /**
+ * Constant-time comparison to prevent timing attacks.
+ */
+export function constantTimeCompare(a: string, b: string): boolean {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  let mismatch = a.length === b.length ? 0 : 1;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return mismatch === 0;
+}
+
+/**
  * Verifies if a plain text password matches a given hash.
  * @param password Plain text password string
  * @param hash Stored SHA-256 hash
@@ -159,5 +172,5 @@ export async function hashPassword(password: string): Promise<string> {
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   if (!password || !hash) return false;
   const computedHash = await hashPassword(password);
-  return computedHash === hash;
+  return constantTimeCompare(computedHash.toLowerCase(), hash.toLowerCase());
 }

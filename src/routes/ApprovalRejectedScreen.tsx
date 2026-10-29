@@ -38,8 +38,8 @@ export default function ApprovalRejectedScreen() {
     }
   };
 
-  const handleSignOut = () => {
-    logout();
+  const handleSignOut = async () => {
+    await logout();
     navigate('/login', { replace: true });
   };
 

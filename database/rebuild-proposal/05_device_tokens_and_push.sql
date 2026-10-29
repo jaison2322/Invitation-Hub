@@ -368,5 +368,75 @@ $function$;
 REVOKE ALL ON FUNCTION public.deactivate_all_user_tokens() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.deactivate_all_user_tokens() TO anon, authenticated, service_role;
 
+-- ------------------------------------------------------------------------------
+-- 5. Automated Cloud Push Trigger: on_notification_insert_push
+-- ------------------------------------------------------------------------------
+-- Calls Supabase Edge Function 'send-push-notification' asynchronously via pg_net
+-- when a new unread notification is inserted into public.notifications.
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_notification_push()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_url text;
+  v_service_key text;
+  v_payload jsonb;
+BEGIN
+  IF NEW.read = true THEN
+    RETURN NEW;
+  END IF;
+
+  -- Build payload matching Edge Function expectations
+  v_payload := jsonb_build_object(
+    'record', jsonb_build_object(
+      'id', NEW.id,
+      'vip_id', NEW.vip_id,
+      'type', NEW.type,
+      'title', NEW.title,
+      'message', NEW.message,
+      'read', NEW.read,
+      'timestamp', NEW.timestamp,
+      'action_url', NEW.action_url,
+      'related_entity_id', NEW.related_entity_id
+    )
+  );
+
+  v_url := current_setting('app.settings.supabase_url', true);
+  v_service_key := current_setting('app.settings.service_role_key', true);
+
+  -- Only invoke net.http_post if settings and pg_net extension are configured
+  IF v_url IS NOT NULL AND v_service_key IS NOT NULL THEN
+    BEGIN
+      PERFORM net.http_post(
+        url := v_url || '/functions/v1/send-push-notification',
+        headers := jsonb_build_object(
+          'Content-Type', 'application/json',
+          'Authorization', 'Bearer ' || v_service_key
+        ),
+        body := v_payload,
+        timeout_milliseconds := 5000
+      );
+    EXCEPTION WHEN OTHERS THEN
+      -- Fail-open: Never block notification INSERT if external network push fails
+      RAISE WARNING 'handle_new_notification_push failed to dispatch push: %', SQLERRM;
+    END;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.handle_new_notification_push() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.handle_new_notification_push() TO service_role;
+
+DROP TRIGGER IF EXISTS on_notification_insert_push ON public.notifications;
+CREATE TRIGGER on_notification_insert_push
+  AFTER INSERT ON public.notifications
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_notification_push();
+
 COMMIT;
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -42,6 +42,8 @@ export default function AddEditEventScreen() {
   const [venue, setVenue] = useState('');
   const [notes, setNotes] = useState('');
   const [guests, setGuests] = useState<GuestRecord[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
 
   // Track active autocomplete dropdown for each guest
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState<number | null>(null);
@@ -139,7 +141,9 @@ export default function AddEditEventScreen() {
 
   const handleSave = () => {
     if (!name.trim() || !date) return;
-    if (!canEditEvents) return;
+    if (!canEditEvents || isSavingRef.current) return;
+    isSavingRef.current = true;
+    setIsSaving(true);
 
     // Process guests: if a guest is not linked to an existing person, automatically add them to People directory
     const finalizedGuests: GuestRecord[] = guests.map((guest) => {
@@ -684,9 +688,9 @@ export default function AddEditEventScreen() {
           type="button"
           className="btn btn-gold w-full"
           onClick={handleSave}
-          disabled={!name.trim() || !date}
+          disabled={!name.trim() || !date || isSaving}
         >
-          {isEditing ? 'Save Changes & Update Function' : 'Save Event & Sync Contacts'}
+          {isSaving ? 'Saving...' : (isEditing ? 'Save Changes & Update Function' : 'Save Event & Sync Contacts')}
         </button>
       </div>
 

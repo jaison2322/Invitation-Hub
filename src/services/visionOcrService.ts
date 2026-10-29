@@ -95,8 +95,53 @@ export async function extractInvitationFromImage(
     console.warn('[VisionOCR] No VITE_GEMINI_API_KEY configured, using Tesseract fallback');
   }
 
-  // Fallback: Tesseract.js (existing behavior)
-  return await tesseractFallback(imageDataUrl);
+  // Fallback: Tesseract.js with safety timeout protection
+  const tesseractTimeoutMs = 15000;
+  return await Promise.race([
+    tesseractFallback(imageDataUrl),
+    new Promise<VisionOcrResult>((resolve) =>
+      setTimeout(
+        () =>
+          resolve({
+            success: false,
+            fields: emptyFields(),
+            rawText: '',
+            confidence: 0,
+            method: 'tesseract_fallback',
+            error: 'OCR processing timed out. Please try a clearer photo or enter details manually.',
+          }),
+        tesseractTimeoutMs
+      )
+    ),
+  ]);
+}
+
+/**
+ * Robustly extracts the JSON string payload from LLM responses,
+ * handling markdown code fences, preambles, and conversational text.
+ */
+export function extractJsonString(rawText: string): string {
+  const trimmed = rawText.trim();
+
+  // 1. If fenced with markdown code block
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch && codeBlockMatch[1]) {
+    return codeBlockMatch[1].trim();
+  }
+
+  // 2. Direct JSON object
+  if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+    return trimmed;
+  }
+
+  // 3. Search for outermost JSON object boundaries { ... }
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1).trim();
+  }
+
+  return trimmed;
 }
 
 /**
@@ -182,11 +227,7 @@ async function callGeminiVision(
  * Parses the raw JSON text from Gemini into a structured VisionOcrResult.
  */
 function parseGeminiResponse(jsonText: string): VisionOcrResult {
-  // Clean potential markdown fencing
-  let cleaned = jsonText.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
-  }
+  const cleaned = extractJsonString(jsonText);
 
   let parsed: any;
   try {

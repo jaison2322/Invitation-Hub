@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import {
@@ -63,6 +63,8 @@ export default function RecordGiftScreen() {
     giftRecord?: GiftRecord;
     event?: SelectedEventSummary;
     eventId?: string;
+    defaultDirection?: 'received' | 'given';
+    tab?: 'received' | 'given';
   } | null;
 
   // Identify if we are in Edit Mode
@@ -73,6 +75,13 @@ export default function RecordGiftScreen() {
   }, [locationState?.giftRecord, routeGiftId, giftRecords]);
 
   const isEditing = Boolean(existingGift);
+
+  // Direction: 'given' vs 'received'
+  const [direction, setDirection] = useState<'given' | 'received'>(
+    existingGift?.direction ||
+    locationState?.defaultDirection ||
+    (locationState?.tab === 'received' ? 'received' : 'given')
+  );
 
   // Today's ISO Date
   const todayStr = useMemo(() => getLocalTodayDateString(), []);
@@ -152,6 +161,7 @@ export default function RecordGiftScreen() {
   );
   const [notes, setNotes] = useState<string>(existingGift?.notes || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Sync recipient name if event changes and recipient wasn't manually typed
@@ -271,6 +281,7 @@ export default function RecordGiftScreen() {
   // ── Form Submission ────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current || isSubmitting) return;
     setErrorMessage(null);
 
     if (!selectedEvent) {
@@ -284,6 +295,7 @@ export default function RecordGiftScreen() {
       return;
     }
 
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
 
     try {
@@ -294,6 +306,7 @@ export default function RecordGiftScreen() {
       if (isEditing && existingGift) {
         // Update existing gift
         updateGiftRecord(existingGift.id, {
+          direction,
           giftName: giftName.trim(),
           giftCategory,
           estimatedValue: parsedValue && !isNaN(parsedValue) ? parsedValue : undefined,
@@ -305,9 +318,9 @@ export default function RecordGiftScreen() {
           eventType: selectedEvent.eventType,
         });
       } else {
-        // Add new gift given record
+        // Add new gift record (given or received)
         addGiftRecord({
-          direction: 'given',
+          direction,
           eventId: selectedEvent.id,
           eventTitle: selectedEvent.title,
           eventDate: selectedEvent.date,
@@ -321,12 +334,13 @@ export default function RecordGiftScreen() {
         });
       }
 
-      // Return to Gift History (Gift Given tab)
-      navigate('/gifts', { state: { tab: 'given' }, replace: true });
+      // Return to Gift History (matching active tab)
+      navigate('/gifts', { state: { tab: direction }, replace: true });
     } catch (err: any) {
       console.error('Error saving gift record:', err);
       setErrorMessage(err?.message || 'Failed to save gift record. Please try again.');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -370,10 +384,10 @@ export default function RecordGiftScreen() {
                 style={{ fontSize: '20px', margin: 0 }}
               >
                 {isEditing
-                  ? 'Edit Gift Given'
+                  ? (direction === 'received' ? 'Edit Gift Received' : 'Edit Gift Given')
                   : step === 'select_event'
                   ? 'Select Function'
-                  : 'Record Gift Given'}
+                  : (direction === 'received' ? 'Record Gift Received' : 'Record Gift Given')}
               </h1>
               <p className="text-xs text-muted" style={{ margin: 0 }}>
                 {isEditing
@@ -657,6 +671,26 @@ export default function RecordGiftScreen() {
         {/* ══════════════════════════════════════════════════════════════════════ */}
         {step === 'enter_gift' && selectedEvent && (
           <form onSubmit={handleSubmit} className="animate-fade-in flex flex-col gap-4">
+            {/* Direction Toggle: Gift Received vs Gift Given */}
+            <div className="segmented-control">
+              <button
+                type="button"
+                className={`segmented-item ${direction === 'received' ? 'active' : ''}`}
+                onClick={() => setDirection('received')}
+                style={{ fontWeight: 600, padding: '7px 12px', fontSize: '13px' }}
+              >
+                Gift Received
+              </button>
+              <button
+                type="button"
+                className={`segmented-item ${direction === 'given' ? 'active' : ''}`}
+                onClick={() => setDirection('given')}
+                style={{ fontWeight: 600, padding: '7px 12px', fontSize: '13px' }}
+              >
+                Gift Given
+              </button>
+            </div>
+
             {/* Selected Event Context Card */}
             <div
               className="glass-card p-3.5 rounded-xl border border-glass-border shadow-sm flex items-start justify-between gap-3"
@@ -740,16 +774,16 @@ export default function RecordGiftScreen() {
               </div>
             )}
 
-            {/* 1. Gift Given */}
+            {/* 1. Gift Item */}
             <div>
               <label className="label">
-                Gift Given <span className="text-gold">*</span>
+                {direction === 'received' ? 'Gift Received' : 'Gift Given'} <span className="text-gold">*</span>
               </label>
               <input
                 className="input"
                 value={giftName}
                 onChange={(e) => setGiftName(e.target.value)}
-                placeholder="Enter gift"
+                placeholder={direction === 'received' ? 'Enter gift received (e.g. Gold Coin, Cash, Silk Saree)' : 'Enter gift given'}
                 required
               />
             </div>
@@ -788,16 +822,16 @@ export default function RecordGiftScreen() {
               />
             </div>
 
-            {/* 4. Given To */}
+            {/* 4. Given To / Received From */}
             <div>
               <label className="label">
-                Given To
+                {direction === 'received' ? 'Received From (Guest / Giver)' : 'Given To (Recipient / Host)'}
               </label>
               <input
                 className="input"
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
-                placeholder="Given to..."
+                placeholder={direction === 'received' ? 'Received from...' : 'Given to...'}
               />
             </div>
 

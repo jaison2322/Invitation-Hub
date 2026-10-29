@@ -170,6 +170,7 @@ function AndroidBackButtonHandler() {
   const location = useLocation();
   const navigate = useNavigate();
   const locationRef = useRef(location);
+  const lastBackPressRef = useRef<number>(0);
 
   useEffect(() => {
     locationRef.current = location;
@@ -180,6 +181,35 @@ function AndroidBackButtonHandler() {
 
     let isMounted = true;
     let removeListener: (() => void) | undefined;
+
+    const showExitToast = () => {
+      let toast = document.getElementById('android-exit-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'android-exit-toast';
+        toast.textContent = 'Press back again to exit';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '80px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.backgroundColor = 'rgba(20, 25, 38, 0.94)';
+        toast.style.color = '#ffffff';
+        toast.style.padding = '8px 18px';
+        toast.style.borderRadius = '20px';
+        toast.style.fontSize = '13px';
+        toast.style.fontWeight = '500';
+        toast.style.zIndex = '99999';
+        toast.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.45)';
+        toast.style.border = '1px solid rgba(212, 175, 55, 0.35)';
+        toast.style.pointerEvents = 'none';
+        toast.style.transition = 'opacity 0.25s ease';
+        document.body.appendChild(toast);
+      }
+      toast.style.opacity = '1';
+      setTimeout(() => {
+        if (toast) toast.style.opacity = '0';
+      }, 1800);
+    };
 
     CapApp.addListener('backButton', ({ canGoBack }) => {
       // 1. Dispatch custom event so active modals/overlays can intercept and dismiss first
@@ -208,8 +238,14 @@ function AndroidBackButtonHandler() {
       const isRootScreen = rootPaths.includes(currentPath);
 
       if (isRootScreen) {
-        // User is on root/home screen: allow normal Android behavior to exit/minimize
-        CapApp.exitApp();
+        // Double-tap to exit guard: require second press within 2000ms
+        const now = Date.now();
+        if (now - lastBackPressRef.current < 2000) {
+          CapApp.exitApp();
+        } else {
+          lastBackPressRef.current = now;
+          showExitToast();
+        }
       } else if (canGoBack || (window.history.state && typeof window.history.state.idx === 'number' && window.history.state.idx > 0)) {
         // Previous screen exists in navigation stack: pop back to it
         navigate(-1);

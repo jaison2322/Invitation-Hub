@@ -17,8 +17,8 @@ import type {
   GiftRecord,
 } from '../types';
 import { sanitizePermissions } from '../types';
-import { generateId } from '../utils/id';
-import { hashPassword } from '../utils/crypto';
+import { generateId, generateSecureToken } from '../utils/id';
+import { hashPassword, verifyPassword, constantTimeCompare } from '../utils/crypto';
 import { supabaseDbService } from '../services/supabaseDbService';
 import { setSupabaseAuthSession, clearSupabaseAuthSession } from '../utils/supabase';
 import { realtimeService } from '../services/realtimeService';
@@ -91,7 +91,7 @@ interface AppState {
   verifyStaffPhoneOtp: (otp: string, phone?: string) => Promise<{ success: boolean; error?: string }>;
   refreshStaffAccounts: (explicitVipId?: string) => Promise<PrivilegedUser[]>;
   respondToStaffRequest: (staffUsername: string, accept: boolean) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
+  logout: () => Promise<void>;
 
   // People actions
   addPerson: (person: Omit<Person, 'id' | 'createdAt' | 'updatedAt'>) => Person;
@@ -256,6 +256,21 @@ export const useAppStore = create<AppState>()(
             supabaseDbService.getGiftRecords(targetVipId),
           ]);
 
+          // Guard against wiping local data if session token was invalidated/rejected by RLS
+          const hadLocalData = state.people.length > 0 || state.invitations.length > 0 || state.familyEvents.length > 0;
+          const returnedEmpty = people.length === 0 && invitations.length === 0 && familyEvents.length === 0 && schedule.length === 0;
+          if (hadLocalData && returnedEmpty) {
+            const activeUser = state.currentUser?.username || state.currentPrivilegedUser?.username;
+            if (activeUser) {
+              const account = await supabaseDbService.getUserAccountByIdentifier(activeUser);
+              if (!account) {
+                console.warn('[Sync] Session invalid or revoked by database. Preserving local cache to prevent data loss.');
+                set({ isSyncing: false });
+                return;
+              }
+            }
+          }
+
           // Privileged users scoped strictly to this VIP account
           const privUsers: PrivilegedUser[] = staffAccounts.map((acct) => ({
             id: acct.id || generateId('priv'),
@@ -290,17 +305,17 @@ export const useAppStore = create<AppState>()(
             (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
           );
 
-          // Auto-generate protocol reminders for upcoming events within 48h
-          // Handles both confirmed and pending events so 1-day-left (tomorrow) and today alerts trigger reliably
+          // Auto-generate protocol reminders for upcoming events (48h urgency window and 7-day advance milestone)
+          // Handles both confirmed and pending events so 7-day, 2-day, 1-day (tomorrow), and today alerts trigger reliably
           const upcomingEvents = invitations.filter((inv) => {
             const days = daysUntil(inv.date);
-            return (inv.status === 'confirmed' || inv.status === 'pending') && days >= 0 && days <= 2;
+            return (inv.status === 'confirmed' || inv.status === 'pending') && ((days >= 0 && days <= 2) || days === 7);
           });
 
           for (const inv of upcomingEvents) {
             const days = daysUntil(inv.date);
-            const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : '2days';
-            const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : 'in 2 days';
+            const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : days === 2 ? '2days' : days === 7 ? '7days' : `${days}days`;
+            const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : days === 2 ? 'in 2 days' : days === 7 ? 'in 7 days (1 week)' : `in ${days} days`;
             const reminderId = `notif-rem-${inv.id}-${milestoneKey}`;
 
             const reminderExists = sortedNotifs.some(
@@ -310,18 +325,32 @@ export const useAppStore = create<AppState>()(
                   n.type === 'reminder' &&
                   ((milestoneKey === 'today' && (n.message.toLowerCase().includes('today') || n.id.includes('-today'))) ||
                     (milestoneKey === '1day' && (n.message.toLowerCase().includes('tomorrow') || n.message.toLowerCase().includes('1 day') || n.id.includes('-1day'))) ||
-                    (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days')))))
+                    (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days'))) ||
+                    (milestoneKey === '7days' && (n.message.toLowerCase().includes('7 days') || n.message.toLowerCase().includes('1 week') || n.id.includes('-7days')))))
             );
 
             if (!reminderExists) {
               const isPending = inv.status === 'pending';
               const eventName = inv.nickname || inv.title;
-              const reminderTitle = isPending
-                ? (days === 0 ? `Action Required Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`)
-                : (days === 0 ? `Event Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`);
+              let reminderTitle = '';
+              if (isPending) {
+                if (days === 0) reminderTitle = `Action Required Today: ${eventName}`;
+                else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
+                else if (days === 2) reminderTitle = `Upcoming in 2 Days (Pending): ${eventName}`;
+                else if (days === 7) reminderTitle = `Upcoming in 7 Days (Pending): ${eventName}`;
+                else reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+              } else {
+                if (days === 0) reminderTitle = `Event Today: ${eventName}`;
+                else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
+                else if (days === 2) reminderTitle = `Upcoming in 2 Days: ${eventName}`;
+                else if (days === 7) reminderTitle = `Upcoming in 7 Days: ${eventName}`;
+                else reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+              }
 
               const reminderMessage = isPending
-                ? `Protocol reminder (1 day left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+                ? (days === 7
+                    ? `Protocol reminder (1 week left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+                    : `Protocol reminder (${days === 0 ? 'Today' : days === 1 ? '1 day left' : dayText}): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`)
                 : `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`;
 
               const reminderNotif: Notification = {
@@ -375,18 +404,19 @@ export const useAppStore = create<AppState>()(
       },
 
       // ── Auth Actions ─────────────────────────────────────────────────────
-      setupVIP: async (name, phone, email, username, password, phoneVerified = true, emailVerified = true): Promise<{ success: boolean; error?: string }> => {
+      setupVIP: async (name, phone, email, username, password, phoneVerified = false, emailVerified = false): Promise<{ success: boolean; error?: string }> => {
+        if (!password || !password.trim()) {
+          return { success: false, error: 'Password is required to set up VIP profile.' };
+        }
+
         const cleanUsername = (
           username ||
           name.toLowerCase().replace(/[^a-z0-9_]/g, '') ||
           'jaison'
         ).trim().toLowerCase();
         const vipId = `vip_${cleanUsername}`;
-        const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-        const passwordHash = password
-          ? await hashPassword(password)
-          : await hashPassword('admin123');
+        const authToken = generateSecureToken('token');
+        const passwordHash = await hashPassword(password);
 
         const now = new Date().toISOString();
         const user: VIPUser = {
@@ -442,9 +472,10 @@ export const useAppStore = create<AppState>()(
           people: [],
           invitations: [],
           familyEvents: [],
-          schedule: [],
-          reminders: [],
-          privilegedUsers: [],
+            schedule: [],
+            reminders: [],
+            giftRecords: [],
+            privilegedUsers: [],
           activityLogs: [],
           notifications: [],
           currentScanResult: null,
@@ -491,12 +522,11 @@ export const useAppStore = create<AppState>()(
           return { success: false, message: 'Password must be at least 4 characters.' };
         }
 
-        const oldHash = await hashPassword(oldPassword);
         const newHash = await hashPassword(newPassword);
 
         if (isVIP) {
           if (!currentUser) return { success: false, message: 'No active profile found.' };
-          if (currentUser.passwordHash && currentUser.passwordHash !== oldHash && oldPassword !== 'admin123') {
+          if (currentUser.passwordHash && !(await verifyPassword(oldPassword, currentUser.passwordHash))) {
             return { success: false, message: 'Current password is incorrect.' };
           }
           const username = currentUser.username || 'jaison';
@@ -505,7 +535,7 @@ export const useAppStore = create<AppState>()(
           return { success: true, message: 'Password updated successfully.' };
         } else {
           if (!currentPrivilegedUser) return { success: false, message: 'No active staff session.' };
-          if (currentPrivilegedUser.passwordHash && currentPrivilegedUser.passwordHash !== oldHash && oldPassword !== 'staff123') {
+          if (currentPrivilegedUser.passwordHash && !(await verifyPassword(oldPassword, currentPrivilegedUser.passwordHash))) {
             return { success: false, message: 'Current password is incorrect.' };
           }
           const username = currentPrivilegedUser.username || 'staff';
@@ -526,10 +556,15 @@ export const useAppStore = create<AppState>()(
         email,
         username,
         password,
-        phoneVerified = true,
-        emailVerified = true,
+        phoneVerified = false,
+        emailVerified = false,
         vipIdParam?: string
       ) => {
+        if (!password || !password.trim()) {
+          console.error('[registerPrivilegedUser] Password is required to register privileged user');
+          return null;
+        }
+
         const state = get();
         const activeVipId = vipIdParam || state.activeVipId || state.currentUser?.vipId || 'vip_jaison';
         const cleanUsername = (
@@ -538,12 +573,10 @@ export const useAppStore = create<AppState>()(
           'staff_user'
         ).trim().toLowerCase();
 
-        const passwordHash = password
-          ? await hashPassword(password)
-          : await hashPassword('staff123');
+        const passwordHash = await hashPassword(password);
 
         const now = new Date().toISOString();
-        const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const authToken = generateSecureToken('token');
         const user: PrivilegedUser = {
           id: generateId('priv'),
           vipId: activeVipId,
@@ -637,33 +670,32 @@ export const useAppStore = create<AppState>()(
           status?: 'APPROVED' | 'PENDING_APPROVAL' | 'REJECTED';
           staffUser?: PrivilegedUser;
         }> => {
-          const passwordMatches =
-            dbAccount.passwordHash === passwordHash ||
-            password === 'admin123' ||
-            password === 'staff123';
-
-          if (!passwordMatches) {
+          if (dbAccount.passwordHash && !constantTimeCompare(dbAccount.passwordHash, passwordHash)) {
             return { success: false, error: `Incorrect password for "${dbAccount.name}".` };
           }
 
           const targetVipId = dbAccount.vipId || (dbAccount.role === 'vip' ? `vip_${dbAccount.username}` : 'vip_jaison');
-          const authToken = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const authToken = generateSecureToken('token');
 
           if (dbAccount.role === 'vip') {
+            // Commit auth token in DB first via secure RPC verifying passwordHash, then set session headers
+            const tokenUpdated = await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId, passwordHash);
+            if (!tokenUpdated) {
+              return { success: false, error: `Incorrect password or authentication failed for "${dbAccount.name}".` };
+            }
+
             const vipUser: VIPUser = {
               id: dbAccount.id || `vip_${dbAccount.username}`,
               vipId: targetVipId,
               authToken,
               username: dbAccount.username,
-              passwordHash: dbAccount.passwordHash,
+              passwordHash: dbAccount.passwordHash || passwordHash,
               name: dbAccount.name,
               phone: dbAccount.phone,
               email: dbAccount.email,
               createdAt: dbAccount.createdAt,
             };
 
-            // Commit auth token in DB first via secure RPC, then set session headers
-            await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
             setSupabaseAuthSession(targetVipId, authToken);
 
             // Wipe local arrays to ensure NO cross-account contamination from prior sessions
@@ -680,6 +712,7 @@ export const useAppStore = create<AppState>()(
               familyEvents: [],
               schedule: [],
               reminders: [],
+              giftRecords: [],
               privilegedUsers: [],
               activityLogs: [],
               notifications: [],
@@ -693,6 +726,12 @@ export const useAppStore = create<AppState>()(
 
             return { success: true, status: 'APPROVED' };
           } else {
+            // Verify staff credentials via secure RPC
+            const tokenUpdated = await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId, passwordHash);
+            if (!tokenUpdated) {
+              return { success: false, error: `Incorrect password or authentication failed for "${dbAccount.name}".` };
+            }
+
             const approvalStatus = dbAccount.approvalStatus || 'APPROVED';
 
             const staffUser: PrivilegedUser = {
@@ -701,12 +740,12 @@ export const useAppStore = create<AppState>()(
               targetVipUsername: dbAccount.targetVipUsername,
               approvalStatus,
               username: dbAccount.username,
-              passwordHash: dbAccount.passwordHash,
+              passwordHash: dbAccount.passwordHash || passwordHash,
               name: dbAccount.name,
               role: dbAccount.staffTitle || 'Personal Assistant',
               phone: dbAccount.phone,
               email: dbAccount.email,
-              phoneVerified: true,
+              phoneVerified: !!dbAccount.phoneVerified,
               permissions: sanitizePermissions(dbAccount.permissions),
               addedBy: targetVipId,
               addedAt: dbAccount.createdAt,
@@ -750,8 +789,7 @@ export const useAppStore = create<AppState>()(
               };
             }
 
-            // Gate 2: Approved -> establish authenticated session directly without OTP verification
-            await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
+            // Gate 2: Approved -> establish authenticated session
             setSupabaseAuthSession(targetVipId, authToken);
 
             set({
@@ -766,6 +804,7 @@ export const useAppStore = create<AppState>()(
               familyEvents: [],
               schedule: [],
               reminders: [],
+              giftRecords: [],
               privilegedUsers: [],
               activityLogs: [],
               notifications: [],
@@ -801,7 +840,7 @@ export const useAppStore = create<AppState>()(
             (currentUser.phone && currentUser.phone.toLowerCase() === cleanIdentifier);
 
           if (vipMatch) {
-            const pwMatch = currentUser.passwordHash === passwordHash || password === 'admin123';
+            const pwMatch = currentUser.passwordHash ? constantTimeCompare(currentUser.passwordHash, passwordHash) : false;
             if (pwMatch) {
               const vipId = currentUser.vipId || `vip_${currentUser.username}`;
               setSupabaseAuthSession(vipId, currentUser.authToken || 'offline');
@@ -824,7 +863,7 @@ export const useAppStore = create<AppState>()(
         );
 
         if (privUser) {
-          const pwMatch = privUser.passwordHash === passwordHash || password === 'staff123';
+          const pwMatch = privUser.passwordHash ? constantTimeCompare(privUser.passwordHash, passwordHash) : false;
           if (pwMatch) {
             if (privUser.approvalStatus === 'PENDING_APPROVAL') {
               set({ isAuthenticated: false, currentPrivilegedUser: privUser, activeVipId: null });
@@ -897,7 +936,7 @@ export const useAppStore = create<AppState>()(
           role: params.staffTitle.trim() || 'Personal Assistant',
           phone: params.phone?.trim() || undefined,
           email: params.email?.trim() || undefined,
-          phoneVerified: true,
+          phoneVerified: false,
           permissions: {
             canAddInvitations: true,
             canConfirmIgnoreInvitations: false,
@@ -930,7 +969,7 @@ export const useAppStore = create<AppState>()(
         const { currentPrivilegedUser } = get();
         const username = usernameParam || currentPrivilegedUser?.username;
         if (!username) {
-          return { status: 'PENDING_APPROVAL', phoneVerified: true };
+          return { status: 'PENDING_APPROVAL', phoneVerified: false };
         }
 
         try {
@@ -942,7 +981,7 @@ export const useAppStore = create<AppState>()(
                 ...currentPrivilegedUser,
                 approvalStatus: status,
                 phone: dbAccount.phone || currentPrivilegedUser.phone,
-                phoneVerified: true,
+                phoneVerified: !!dbAccount.phoneVerified,
                 vipId: dbAccount.vipId || currentPrivilegedUser.vipId,
                 targetVipUsername: dbAccount.targetVipUsername || currentPrivilegedUser.targetVipUsername,
               };
@@ -950,9 +989,9 @@ export const useAppStore = create<AppState>()(
               // If approved, establish authenticated session automatically without OTP
               if (status === 'APPROVED' && !get().isAuthenticated) {
                 const targetVipId = dbAccount.vipId || currentPrivilegedUser.vipId || 'vip_default';
-                const authToken = dbAccount.authToken || `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                const authToken = dbAccount.authToken || generateSecureToken('token');
 
-                await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId);
+                await supabaseDbService.updateUserAuthToken(dbAccount.username, authToken, targetVipId, currentPrivilegedUser.passwordHash);
                 setSupabaseAuthSession(targetVipId, authToken);
 
                 set({
@@ -967,6 +1006,7 @@ export const useAppStore = create<AppState>()(
                   familyEvents: [],
                   schedule: [],
                   reminders: [],
+                  giftRecords: [],
                   privilegedUsers: [],
                   activityLogs: [],
                   notifications: [],
@@ -983,7 +1023,7 @@ export const useAppStore = create<AppState>()(
                 });
               }
             }
-            return { status, phoneVerified: true };
+            return { status, phoneVerified: !!dbAccount.phoneVerified };
           }
         } catch (err) {
           console.warn('Error checking staff status:', err);
@@ -991,7 +1031,7 @@ export const useAppStore = create<AppState>()(
 
         return {
           status: currentPrivilegedUser?.approvalStatus || 'PENDING_APPROVAL',
-          phoneVerified: true,
+          phoneVerified: false,
         };
       },
 
@@ -1021,7 +1061,7 @@ export const useAppStore = create<AppState>()(
           vipId: res.data?.vip_id || vipCheck.vipId || `vip_${cleanVip}`,
           targetVipUsername: cleanVip,
           approvalStatus: 'PENDING_APPROVAL',
-          phoneVerified: true,
+          phoneVerified: currentPrivilegedUser.phoneVerified ?? false,
         };
 
         clearSupabaseAuthSession();
@@ -1143,9 +1183,10 @@ export const useAppStore = create<AppState>()(
             people: [],
             invitations: [],
             familyEvents: [],
-          schedule: [],
-          reminders: [],
-          privilegedUsers: [],
+            schedule: [],
+            reminders: [],
+            giftRecords: [],
+            privilegedUsers: [],
           activityLogs: [],
           notifications: [],
           currentScanResult: null,
@@ -1552,8 +1593,12 @@ export const useAppStore = create<AppState>()(
           userData.name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') ||
           'staff_user';
 
-        // Hash password: use provided password, else default
-        const pw = (userData as any).password || 'staff123';
+        // Hash password: require explicit password
+        const pw = (userData as any).password;
+        if (!pw && !userData.passwordHash) {
+          console.error('[addPrivilegedUser] Password is required to add privileged user.');
+          return null;
+        }
         const pwHash = userData.passwordHash || await hashPassword(pw);
         const cleanPhone = userData.phone?.trim() || undefined;
 
@@ -1565,8 +1610,8 @@ export const useAppStore = create<AppState>()(
           username,
           passwordHash: pwHash,
           phone: cleanPhone,
-          phoneVerified: true,
-          phoneVerifiedAt: new Date().toISOString(),
+          phoneVerified: false,
+          phoneVerifiedAt: undefined,
           approvalStatus: 'APPROVED',
           addedBy: targetVipId,
           addedAt: new Date().toISOString(),
@@ -1712,15 +1757,15 @@ export const useAppStore = create<AppState>()(
 
         const upcomingEvents = invitations.filter((inv) => {
           const days = daysUntil(inv.date);
-          return (inv.status === 'confirmed' || inv.status === 'pending') && days >= 0 && days <= 2;
+          return (inv.status === 'confirmed' || inv.status === 'pending') && ((days >= 0 && days <= 2) || days === 7);
         });
 
         const newReminders: Notification[] = [];
 
         for (const inv of upcomingEvents) {
           const days = daysUntil(inv.date);
-          const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : '2days';
-          const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : 'in 2 days';
+          const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : days === 2 ? '2days' : days === 7 ? '7days' : `${days}days`;
+          const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : days === 2 ? 'in 2 days' : days === 7 ? 'in 7 days (1 week)' : `in ${days} days`;
           const reminderId = `notif-rem-${inv.id}-${milestoneKey}`;
 
           const existingList = [...newReminders, ...notifications];
@@ -1731,18 +1776,32 @@ export const useAppStore = create<AppState>()(
                 n.type === 'reminder' &&
                 ((milestoneKey === 'today' && (n.message.toLowerCase().includes('today') || n.id.includes('-today'))) ||
                   (milestoneKey === '1day' && (n.message.toLowerCase().includes('tomorrow') || n.message.toLowerCase().includes('1 day') || n.id.includes('-1day'))) ||
-                  (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days')))))
+                  (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days'))) ||
+                  (milestoneKey === '7days' && (n.message.toLowerCase().includes('7 days') || n.message.toLowerCase().includes('1 week') || n.id.includes('-7days')))))
           );
 
           if (!reminderExists) {
             const isPending = inv.status === 'pending';
             const eventName = inv.nickname || inv.title;
-            const reminderTitle = isPending
-              ? (days === 0 ? `Action Required Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`)
-              : (days === 0 ? `Event Today: ${eventName}` : `Upcoming Event Tomorrow: ${eventName}`);
+            let reminderTitle = '';
+            if (isPending) {
+              if (days === 0) reminderTitle = `Action Required Today: ${eventName}`;
+              else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
+              else if (days === 2) reminderTitle = `Upcoming in 2 Days (Pending): ${eventName}`;
+              else if (days === 7) reminderTitle = `Upcoming in 7 Days (Pending): ${eventName}`;
+              else reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+            } else {
+              if (days === 0) reminderTitle = `Event Today: ${eventName}`;
+              else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
+              else if (days === 2) reminderTitle = `Upcoming in 2 Days: ${eventName}`;
+              else if (days === 7) reminderTitle = `Upcoming in 7 Days: ${eventName}`;
+              else reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+            }
 
             const reminderMessage = isPending
-              ? `Protocol reminder (1 day left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+              ? (days === 7
+                  ? `Protocol reminder (1 week left): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`
+                  : `Protocol reminder (${days === 0 ? 'Today' : days === 1 ? '1 day left' : dayText}): Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}. Invitation is pending review.`)
               : `Protocol reminder: Event is scheduled for ${dayText}${inv.time ? ` at ${inv.time}` : ''}${inv.venue ? ` at ${inv.venue}` : ''}.`;
 
             const reminderNotif: Notification = {
@@ -1838,11 +1897,15 @@ export const useAppStore = create<AppState>()(
       },
       partialize: (state) => ({
         theme: state.theme,
-        currentUser: state.currentUser,
+        currentUser: state.currentUser
+          ? (({ passwordHash, pin, ...rest }) => rest)(state.currentUser)
+          : null,
         hasSetup: state.hasSetup,
         isAuthenticated: state.isAuthenticated,
         isVIP: state.isVIP,
-        currentPrivilegedUser: state.currentPrivilegedUser,
+        currentPrivilegedUser: state.currentPrivilegedUser
+          ? (({ passwordHash, pin, ...rest }) => rest)(state.currentPrivilegedUser)
+          : null,
         activeVipId: state.activeVipId,
         authToken: state.authToken,
         people: state.people,
@@ -1851,7 +1914,9 @@ export const useAppStore = create<AppState>()(
         schedule: state.schedule,
         reminders: state.reminders,
         giftRecords: state.giftRecords,
-        privilegedUsers: state.privilegedUsers,
+        privilegedUsers: (state.privilegedUsers || []).map(
+          ({ passwordHash, pin, ...rest }) => rest
+        ),
         activityLogs: state.activityLogs,
         notifications: state.notifications,
       }),

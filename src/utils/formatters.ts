@@ -39,8 +39,11 @@ export function formatTimeAgo(dateStr: string): string {
 }
 
 export function daysUntil(dateStr: string): number {
+  if (!dateStr || typeof dateStr !== 'string') return 0;
   try {
-    return differenceInCalendarDays(parseISO(dateStr), new Date());
+    const parsed = parseISO(dateStr);
+    const diff = differenceInCalendarDays(parsed, new Date());
+    return Number.isNaN(diff) ? 0 : diff;
   } catch {
     return 0;
   }
