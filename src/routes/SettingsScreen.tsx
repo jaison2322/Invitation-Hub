@@ -23,7 +23,6 @@ import {
   AlertCircle,
   FileText,
   Smartphone,
-  Send,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
 import { exportUpcomingEventsToExcel, exportUpcomingEventsToPdf } from '../services/exportService';
@@ -136,15 +135,73 @@ export default function SettingsScreen() {
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState('');
 
-  // Notification Preferences State
-  const [notifConflictAlerts, setNotifConflictAlerts] = useState(true);
-  const [notifNewInvitations, setNotifNewInvitations] = useState(true);
-  const [notifScheduleChanges, setNotifScheduleChanges] = useState(true);
-  const [notifReminders, setNotifReminders] = useState(true);
+  // Notification Preferences State (Loaded from and saved to localStorage)
+  const [notifNewInvitations, setNotifNewInvitations] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).newInvitations ?? true;
+    } catch {}
+    return true;
+  });
+  const [notifConflictAlerts, setNotifConflictAlerts] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).scheduleConflicts ?? true;
+    } catch {}
+    return true;
+  });
+  const [notifScheduleChanges, setNotifScheduleChanges] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).statusUpdates ?? true;
+    } catch {}
+    return true;
+  });
+  const [remind7Days, setRemind7Days] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).remind7Days ?? true;
+    } catch {}
+    return true;
+  });
+  const [remind2Days, setRemind2Days] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).remind2Days ?? true;
+    } catch {}
+    return true;
+  });
+  const [remind1Day, setRemind1Day] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).remind1Day ?? true;
+    } catch {}
+    return true;
+  });
+  const [remindDayOf, setRemindDayOf] = useState(() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) return JSON.parse(saved).remindDayOf ?? true;
+    } catch {}
+    return true;
+  });
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-  const [testNotifFeedback, setTestNotifFeedback] = useState<string | null>(null);
-  const [isSyncingReminders, setIsSyncingReminders] = useState(false);
-  const [isSendingCloudPush, setIsSendingCloudPush] = useState(false);
+
+  const handleSaveNotificationPreferences = () => {
+    try {
+      const prefs = {
+        newInvitations: notifNewInvitations,
+        scheduleConflicts: notifConflictAlerts,
+        statusUpdates: notifScheduleChanges,
+        remind7Days,
+        remind2Days,
+        remind1Day,
+        remindDayOf,
+      };
+      localStorage.setItem('inv_notif_prefs', JSON.stringify(prefs));
+    } catch {}
+    setActiveModal(null);
+  };
 
   useEffect(() => {
     mobileNotificationService.checkPermission().then((res) => {
@@ -1010,10 +1067,14 @@ export default function SettingsScreen() {
       {/* ─── MODAL: NOTIFICATIONS ───────────────────────────────────────────── */}
       {activeModal === 'notifications' && (
         <div className="modal-overlay" onClick={() => setActiveModal(null)}>
-          <div className="modal-content animate-scale-in" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal-content animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxHeight: '88vh', overflowY: 'auto' }}
+          >
             <div className="modal-handle" />
-            <div className="flex items-center justify-between" style={{ marginBottom: 'var(--space-2)' }}>
-              <h3 style={{ margin: 0 }}>Notification Preferences</h3>
+            <div className="flex items-center justify-between" style={{ marginBottom: '4px' }}>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700 }}>Notification Preferences</h3>
               <span
                 style={{
                   fontSize: '11px',
@@ -1041,7 +1102,9 @@ export default function SettingsScreen() {
                     : 'Not Allowed'}
               </span>
             </div>
-            <p className="text-xs text-secondary mb-4">Choose which alerts you receive on this device</p>
+            <p className="text-xs text-secondary" style={{ marginBottom: '16px' }}>
+              Choose what notifications and when you want to receive alerts
+            </p>
 
             {permissionStatus === 'denied' && (
               <div
@@ -1066,192 +1129,147 @@ export default function SettingsScreen() {
               </div>
             )}
 
-            {/* Live FCM Cloud Engine Status */}
-            <div
-              className="glass-card mb-3 p-3 flex items-center justify-between"
-              style={{
-                border: '1px solid rgba(212, 175, 55, 0.3)',
-                background: 'rgba(212, 175, 55, 0.06)',
-                borderRadius: '12px',
-              }}
-            >
-              <div className="flex items-center gap-2.5">
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 8px #22c55e', flexShrink: 0 }} />
-                <div>
-                  <div className="text-xs font-semibold" style={{ color: 'var(--color-gold)' }}>Live Cloud Push (Firebase FCM)</div>
-                  <div className="text-[11px] text-muted">Heads-up banner alerts active for registered phones</div>
-                </div>
-              </div>
-              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#22c55e', fontWeight: 600 }}>Active</span>
-            </div>
-
-            <div className="flex flex-col gap-3" style={{ marginBottom: '20px' }}>
-              <div className="glass-card flex items-center justify-between p-3">
-                <div>
-                  <div className="text-sm font-semibold">More Events Overlaps alerts</div>
-                  <div className="text-xs text-muted">Immediate alert when more then one event overlaps</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifConflictAlerts}
-                  onChange={() => handleToggleNotification(setNotifConflictAlerts, notifConflictAlerts)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
-                />
-              </div>
-
-              <div className="glass-card flex items-center justify-between p-3">
-                <div>
-                  <div className="text-sm font-semibold">New Invitation Alerts</div>
-                  <div className="text-xs text-muted">Alerts when users submit new invitations</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifNewInvitations}
-                  onChange={() => handleToggleNotification(setNotifNewInvitations, notifNewInvitations)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
-                />
-              </div>
-
-              <div className="glass-card flex items-center justify-between p-3">
-                <div>
-                  <div className="text-sm font-semibold">Event Reminders</div>
-                  <div className="text-xs text-muted">48h, 24h (1 day left) & day-of alerts for events</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifReminders}
-                  onChange={() => handleToggleNotification(setNotifReminders, notifReminders)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
-                />
-              </div>
-
-              <div className="glass-card flex items-center justify-between p-3">
-                <div>
-                  <div className="text-sm font-semibold">Schedule Modifications</div>
-                  <div className="text-xs text-muted">Alerts when changes are made by other users</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifScheduleChanges}
-                  onChange={() => handleToggleNotification(setNotifScheduleChanges, notifScheduleChanges)}
-                  style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)' }}
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2.5">
-              {testNotifFeedback && (
-                <div
-                  className="text-xs text-center p-2 rounded"
-                  style={{
-                    background: testNotifFeedback.includes('sent') || testNotifFeedback.includes('dispatched') || testNotifFeedback.includes('displayed') ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-                    color: testNotifFeedback.includes('sent') || testNotifFeedback.includes('dispatched') || testNotifFeedback.includes('displayed') ? '#22c55e' : '#ef4444',
-                  }}
-                >
-                  {testNotifFeedback}
-                </div>
-              )}
-
-              {/* Cloud FCM Test Trigger */}
-              <button
-                type="button"
-                className="btn w-full"
-                style={{
-                  height: '42px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.22), rgba(212, 175, 55, 0.08))',
-                  border: '1px solid rgba(212, 175, 55, 0.45)',
-                  color: 'var(--color-gold)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '6px',
-                }}
-                disabled={isSendingCloudPush}
-                onClick={async () => {
-                  try {
-                    setIsSendingCloudPush(true);
-                    setTestNotifFeedback('Dispatched to Firebase Cloud Messaging...');
-                    const res = await mobileNotificationService.sendLiveCloudPushTest(activeVipId);
-                    if (res.success) {
-                      setTestNotifFeedback(`Live FCM push dispatched to ${res.sent || 1} registered device(s)!`);
-                    } else {
-                      setTestNotifFeedback(res.error || res.reason || 'No active device tokens found. Open app on phone once.');
-                    }
-                  } catch {
-                    setTestNotifFeedback('Failed to send cloud push');
-                  } finally {
-                    setIsSendingCloudPush(false);
-                    setTimeout(() => setTestNotifFeedback(null), 4500);
-                  }
-                }}
-              >
-                <Send size={13} /> {isSendingCloudPush ? 'Pushing to Phone...' : 'Send Live Cloud Push (FCM to Phone)'}
-              </button>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  className="btn btn-outline flex-1"
-                  style={{ height: '38px', fontSize: '12px' }}
-                  onClick={async () => {
-                    try {
-                      setTestNotifFeedback('Sending test alert...');
-                      const delivered = await mobileNotificationService.sendTestNotification();
-                      if (delivered) {
-                        setTestNotifFeedback('Local test alert displayed!');
-                      } else {
-                        setTestNotifFeedback('Alert blocked: Check notification permissions');
-                      }
-                    } catch {
-                      setTestNotifFeedback('Failed to send test alert');
-                    }
-                    setTimeout(() => setTestNotifFeedback(null), 3500);
-                  }}
-                >
-                  <Bell size={13} style={{ marginRight: '4px' }} /> Local Alert
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-outline flex-1"
-                  style={{ height: '38px', fontSize: '12px' }}
-                  disabled={isSyncingReminders}
-                  onClick={async () => {
-                    try {
-                      setIsSyncingReminders(true);
-                      setTestNotifFeedback('Checking upcoming events...');
-                      await syncWithSupabase(activeVipId);
-                      await checkAndTriggerUpcomingReminders(activeVipId);
-                      setTestNotifFeedback('Upcoming reminders checked & sent!');
-                    } catch {
-                      setTestNotifFeedback('Error syncing reminders');
-                    } finally {
-                      setIsSyncingReminders(false);
-                      setTimeout(() => setTestNotifFeedback(null), 3500);
-                    }
-                  }}
-                >
-                  Check Reminders
-                </button>
-              </div>
-
-              {/* Phone background tip */}
+            {/* ── Section 1: WHAT alerts you receive ── */}
+            <div style={{ marginBottom: '18px' }}>
               <div
-                className="text-[11px] text-muted p-2.5 rounded-lg"
                 style={{
-                  background: 'rgba(118, 118, 128, 0.1)',
-                  lineHeight: '1.45',
-                  border: '1px solid rgba(255, 255, 255, 0.05)',
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-gold)',
+                  marginBottom: '8px',
                 }}
               >
-                <strong style={{ color: 'var(--color-text-primary)' }}>Phone Setup Tip:</strong> In your phone's <em>Settings &gt; Apps &gt; Invitation Hub</em>, ensure <strong>Notifications</strong> are allowed and set Battery usage to <strong>Unrestricted</strong> so live alerts wake your phone even when locked.
+                What alerts you receive
               </div>
 
-              <button className="btn btn-gold w-full mt-1" onClick={() => setActiveModal(null)} style={{ height: '44px', fontWeight: 600 }}>
-                Save Preferences
-              </button>
+              <div className="flex flex-col gap-2.5">
+                {/* New Invitations */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">New Invitation Alerts</div>
+                    <div className="text-xs text-muted">When a new invitation card is scanned or added</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifNewInvitations}
+                    onChange={() => handleToggleNotification(setNotifNewInvitations, notifNewInvitations)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Schedule Conflicts */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">Schedule Overlaps & Conflicts</div>
+                    <div className="text-xs text-muted">Immediate alert when events or functions clash</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifConflictAlerts}
+                    onChange={() => handleToggleNotification(setNotifConflictAlerts, notifConflictAlerts)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Status & Modifications */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">Status & Approval Updates</div>
+                    <div className="text-xs text-muted">When invitations are confirmed, modified, or reviewed</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifScheduleChanges}
+                    onChange={() => handleToggleNotification(setNotifScheduleChanges, notifScheduleChanges)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
             </div>
+
+            {/* ── Section 2: WHEN to receive reminders ── */}
+            <div style={{ marginBottom: '20px' }}>
+              <div
+                style={{
+                  fontSize: '11px',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  color: 'var(--color-gold)',
+                  marginBottom: '8px',
+                }}
+              >
+                When to receive reminders
+              </div>
+
+              <div className="flex flex-col gap-2.5">
+                {/* 7 Days Before */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">7 Days Before (1 Week)</div>
+                    <div className="text-xs text-muted">Early preparation notice 1 week in advance</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={remind7Days}
+                    onChange={() => handleToggleNotification(setRemind7Days, remind7Days)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* 2 Days Before */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">2 Days Before (48 Hours)</div>
+                    <div className="text-xs text-muted">Advance reminder 2 days before the event</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={remind2Days}
+                    onChange={() => handleToggleNotification(setRemind2Days, remind2Days)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* 1 Day Before */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">1 Day Before (Tomorrow)</div>
+                    <div className="text-xs text-muted">Final preparation reminder the day before</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={remind1Day}
+                    onChange={() => handleToggleNotification(setRemind1Day, remind1Day)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Day of Event */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">Day of Event (Today)</div>
+                    <div className="text-xs text-muted">Morning alert on the day of the event</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={remindDayOf}
+                    onChange={() => handleToggleNotification(setRemindDayOf, remindDayOf)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              className="btn btn-gold w-full"
+              onClick={handleSaveNotificationPreferences}
+              style={{ height: '46px', fontWeight: 600, fontSize: '14px' }}
+            >
+              Save Preferences
+            </button>
           </div>
         </div>
       )}

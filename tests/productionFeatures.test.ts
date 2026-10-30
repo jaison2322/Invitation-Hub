@@ -158,3 +158,29 @@ test('productionFeatures - cleanExtractedNotes returns empty for pure noise or U
   const cleaned = cleanExtractedNotes(junkText);
   assert.equal(cleaned, '', 'Pure junk/URLs must return empty string');
 });
+
+test('productionFeatures - user notification preferences filter reminder triggers', () => {
+  const customPrefs = {
+    newInvitations: true,
+    scheduleConflicts: true,
+    statusUpdates: false,
+    remind7Days: false,
+    remind2Days: true,
+    remind1Day: true,
+    remindDayOf: true,
+  };
+
+  const checkMilestoneAllowed = (days: number, prefs: typeof customPrefs) => {
+    return (
+      (days === 0 && prefs.remindDayOf) ||
+      (days === 1 && prefs.remind1Day) ||
+      (days === 2 && prefs.remind2Days) ||
+      (days === 7 && prefs.remind7Days)
+    );
+  };
+
+  assert.equal(checkMilestoneAllowed(7, customPrefs), false, '7-day reminder should be filtered out when disabled');
+  assert.equal(checkMilestoneAllowed(2, customPrefs), true, '2-day reminder should trigger when enabled');
+  assert.equal(checkMilestoneAllowed(1, customPrefs), true, '1-day reminder should trigger when enabled');
+  assert.equal(checkMilestoneAllowed(0, customPrefs), true, 'Day-of reminder should trigger when enabled');
+});

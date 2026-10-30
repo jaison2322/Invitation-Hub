@@ -1755,9 +1755,20 @@ export const useAppStore = create<AppState>()(
         const targetVipId = explicitVipId || activeVipId || currentUser?.vipId;
         if (!targetVipId) return;
 
+        let prefs = { remind7Days: true, remind2Days: true, remind1Day: true, remindDayOf: true };
+        try {
+          const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('inv_notif_prefs') : null;
+          if (raw) prefs = { ...prefs, ...JSON.parse(raw) };
+        } catch {}
+
         const upcomingEvents = invitations.filter((inv) => {
           const days = daysUntil(inv.date);
-          return (inv.status === 'confirmed' || inv.status === 'pending') && ((days >= 0 && days <= 2) || days === 7);
+          const allowed =
+            (days === 0 && prefs.remindDayOf) ||
+            (days === 1 && prefs.remind1Day) ||
+            (days === 2 && prefs.remind2Days) ||
+            (days === 7 && prefs.remind7Days);
+          return (inv.status === 'confirmed' || inv.status === 'pending') && allowed;
         });
 
         const newReminders: Notification[] = [];
