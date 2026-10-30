@@ -287,7 +287,7 @@ export const translations: Record<LanguageCode, TranslationDictionary> = {
     },
     settings: {
       title: 'Settings',
-      accountSubtitle: ' ',
+      accountSubtitle: 'Account credentials, security & preferences',
       preferences: 'Preferences',
       appearance: 'Appearance',
       language: 'Language',

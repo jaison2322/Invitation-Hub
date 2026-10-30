@@ -13,6 +13,7 @@
   --color-bg-primary: #000000;
   --color-bg-secondary: #1c1c1e;
   --color-bg-tertiary: #2c2c2e;
+  --color-stationary-header: #161618;
   --color-bg-card: #1c1c1e;
   --color-bg-card-hover: #2c2c2e;
   --color-bg-elevated: #2c2c2e;
@@ -161,6 +162,7 @@
   --color-bg-primary: #f2f2f7;
   --color-bg-secondary: #ffffff;
   --color-bg-tertiary: #e5e5ea;
+  --color-stationary-header: #e5e5ea;
   --color-bg-card: #ffffff;
   --color-bg-card-hover: #f2f2f7;
   --color-bg-elevated: #ffffff;
@@ -354,7 +356,7 @@
 [data-theme="light"] .badge-gold { background: rgba(212, 175, 55, 0.15); color: var(--color-accent); border: none; }
 
 [data-theme="light"] .status-bar-scrim {
-  background: var(--color-bg-primary) !important;
+  background: var(--color-stationary-header, #e5e5ea) !important;
   border-bottom: none !important;
 }
 
@@ -776,7 +778,7 @@ h4 { font-size: var(--text-lg); }
   right: 0;
   height: var(--mobile-status-bar);
   z-index: 998;
-  background: var(--color-bg-primary);
+  background: var(--color-stationary-header, #161618);
   border-bottom: none;
   pointer-events: none;
 }
@@ -801,7 +803,7 @@ h4 { font-size: var(--text-lg); }
   padding-left: 16px;
   padding-right: 16px;
   padding-bottom: 0px;
-  background: #161618;
+  background: var(--color-stationary-header, #161618);
   z-index: 50;
   position: relative;
   box-sizing: border-box;

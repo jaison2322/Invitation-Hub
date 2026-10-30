@@ -450,23 +450,23 @@ export default function SettingsScreen() {
   return (
     <div className="screen">
       {/* ── Stationary Header ──────────────────────────────────────────────── */}
-      <div className="screen-stationary-header">
+      <div className="screen-stationary-header" style={{ paddingBottom: '16px' }}>
         {/* ── Apple Large Title Header ───────────────────────────────────────── */}
-        <div style={{ marginBottom: 0 }}>
+        <div>
           <h1
             className="font-heading font-bold text-white tracking-tight"
             style={{ fontSize: '32px', letterSpacing: '-0.03em', lineHeight: 1.15 }}
           >
             {t('settings.title')}
           </h1>
-          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '3px' }}>
+          <p style={{ fontSize: '13px', color: 'var(--color-text-secondary)', marginTop: '4px', marginBottom: 0 }}>
             {t('settings.accountSubtitle')}
           </p>
         </div>
       </div>
 
       {/* ── Scrollable Settings Body ────────────────────────────────────────── */}
-      <div className="screen-scroll-body">
+      <div className="screen-scroll-body" style={{ paddingTop: '16px' }}>
         {/* ── Export Status Alert Banner ─────────────────────────────────────── */}
         {exportStatus && (
           <div
