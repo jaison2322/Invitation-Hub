@@ -242,6 +242,7 @@ export async function saveCanonicalInvitation(
     imageId,
     imageUrl,
     ocrText: ocrText || undefined,
+    reminderDays: formData.reminderDays,
     createdBy: creatorId,
   });
 

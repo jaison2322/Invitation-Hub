@@ -129,6 +129,24 @@ export default function EventDetailScreen() {
   const [eventCustomDayInput, setEventCustomDayInput] = useState<number>(3);
   const [reminderToast, setReminderToast] = useState<string | null>(null);
 
+  const [editReminderDays, setEditReminderDays] = useState<number[]>([0, 1, 2, 7]);
+  const [editCustomDaysValue, setEditCustomDaysValue] = useState<number>(3);
+
+  const toggleEditReminderDay = (day: number) => {
+    setEditReminderDays((prev) => {
+      const exists = prev.includes(day);
+      const next = exists ? prev.filter((d) => d !== day) : [...prev, day];
+      return next.sort((a, b) => a - b);
+    });
+  };
+
+  const handleAddEditCustomDay = () => {
+    const day = Math.max(0, Math.min(60, editCustomDaysValue));
+    if (!editReminderDays.includes(day)) {
+      setEditReminderDays((prev) => [...prev, day].sort((a, b) => a - b));
+    }
+  };
+
   const handleToggleEventReminderDay = (day: number) => {
     const current = Array.isArray(invitation.reminderDays) && invitation.reminderDays.length > 0
       ? [...invitation.reminderDays]
@@ -190,6 +208,11 @@ export default function EventDetailScreen() {
     setEditDescription(invitation.description || '');
     setEditPhotoPreview(photoUrl);
     setEditPhotoFile(null);
+    setEditReminderDays(
+      Array.isArray(invitation.reminderDays) && invitation.reminderDays.length > 0
+        ? [...invitation.reminderDays]
+        : defaultGlobalReminderDays
+    );
     setShowPhotoSourceModal(false);
     setShowEditModal(true);
   };
@@ -330,9 +353,12 @@ export default function EventDetailScreen() {
       mainPerson: invitation.mainPerson,
       personId: editPersonId || undefined,
       description: editDescription.trim() || undefined,
+      reminderDays: editReminderDays.length > 0 ? editReminderDays : undefined,
       imageId: finalImageId,
       imageUrl: finalImageUrl,
     });
+
+    checkAndTriggerUpcomingReminders();
 
     addActivityLog({
       userId: isVIP ? 'vip' : currentPrivilegedUser?.id || 'staff',
@@ -1172,6 +1198,166 @@ export default function EventDetailScreen() {
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Reminder Schedule */}
+              <div className="glass-card p-3" style={{ borderRadius: '12px' }}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Bell size={13} style={{ color: 'var(--color-gold)' }} />
+                    <span style={{ fontWeight: 600 }}>Reminder Schedule</span>
+                  </label>
+                  <span className="text-secondary" style={{ fontSize: '0.7rem' }}>
+                    {editReminderDays.length} {editReminderDays.length === 1 ? 'alert' : 'alerts'}
+                  </span>
+                </div>
+                <p className="text-secondary" style={{ fontSize: '0.72rem', marginBottom: '10px' }}>
+                  Set how many days before this event you want to receive reminder notifications
+                </p>
+
+                {/* Quick preset chips */}
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  {[
+                    { days: 0, label: 'Same Day' },
+                    { days: 1, label: '1 Day' },
+                    { days: 2, label: '2 Days' },
+                    { days: 3, label: '3 Days' },
+                    { days: 5, label: '5 Days' },
+                    { days: 7, label: '7 Days (1 wk)' },
+                    { days: 14, label: '14 Days (2 wks)' },
+                  ].map((p) => {
+                    const active = editReminderDays.includes(p.days);
+                    return (
+                      <button
+                        key={p.days}
+                        type="button"
+                        onClick={() => toggleEditReminderDay(p.days)}
+                        className={`badge ${active ? 'badge-gold' : 'badge-ghost'} cursor-pointer`}
+                        style={{
+                          padding: '5px 10px',
+                          fontSize: '11px',
+                          fontWeight: active ? 600 : 500,
+                          borderRadius: '20px',
+                          border: active ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                          background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: active ? 'var(--color-gold)' : 'var(--color-text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        {active && <Check size={11} strokeWidth={2.5} />}
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Days Stepper */}
+                <div
+                  className="flex items-center gap-2 p-2 rounded-lg"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.03)',
+                    border: '1px solid var(--glass-border)',
+                  }}
+                >
+                  <div
+                    className="flex items-center"
+                    style={{
+                      background: 'rgba(212, 175, 55, 0.05)',
+                      borderRadius: '6px',
+                      border: '1px solid var(--glass-border)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: '30px', height: '30px', color: 'var(--color-gold)' }}
+                      onClick={() => setEditCustomDaysValue((prev) => Math.max(0, prev - 1))}
+                    >
+                      <Minus size={12} />
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      value={editCustomDaysValue}
+                      onChange={(e) => setEditCustomDaysValue(Math.max(0, Math.min(60, parseInt(e.target.value) || 0)))}
+                      style={{
+                        width: '40px',
+                        textAlign: 'center',
+                        background: 'transparent',
+                        border: 'none',
+                        color: 'var(--color-text-primary)',
+                        fontWeight: 700,
+                        fontSize: '13px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: '30px', height: '30px', color: 'var(--color-gold)' }}
+                      onClick={() => setEditCustomDaysValue((prev) => Math.min(60, prev + 1))}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  <span className="text-xs text-secondary flex-1" style={{ fontSize: '11px' }}>
+                    {editCustomDaysValue === 0
+                      ? 'Same day alert'
+                      : editCustomDaysValue === 1
+                        ? '1 day before'
+                        : `${editCustomDaysValue} days before event`}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-gold"
+                    onClick={handleAddEditCustomDay}
+                    disabled={editReminderDays.includes(editCustomDaysValue)}
+                    style={{ padding: '5px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                  >
+                    {editReminderDays.includes(editCustomDaysValue) ? 'Added' : '+ Add Alert'}
+                  </button>
+                </div>
+
+                {/* Active Schedule Badges */}
+                {editReminderDays.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {editReminderDays.map((d) => (
+                      <span
+                        key={d}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs"
+                        style={{
+                          background: 'rgba(212, 175, 55, 0.1)',
+                          border: '1px solid rgba(212, 175, 55, 0.25)',
+                          color: 'var(--color-gold)',
+                          fontSize: '11px',
+                        }}
+                      >
+                        <Bell size={10} />
+                        {d === 0 ? 'Same Day' : d === 1 ? '1d Before' : `${d}d Before`}
+                        <button
+                          type="button"
+                          onClick={() => toggleEditReminderDay(d)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--color-text-muted)',
+                            cursor: 'pointer',
+                            padding: '0 2px',
+                            display: 'flex',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* 9. Notes / Description */}

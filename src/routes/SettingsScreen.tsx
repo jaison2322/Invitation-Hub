@@ -23,9 +23,6 @@ import {
   AlertCircle,
   FileText,
   Smartphone,
-  Minus,
-  Plus,
-  X,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
 import { exportUpcomingEventsToExcel, exportUpcomingEventsToPdf } from '../services/exportService';
@@ -160,64 +157,25 @@ export default function SettingsScreen() {
     } catch {}
     return true;
   });
-  const [reminderDays, setReminderDays] = useState<number[]>(() => {
+  const [notifEventReminders, setNotifEventReminders] = useState(() => {
     try {
       const saved = localStorage.getItem('inv_notif_prefs');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.reminderDays) && parsed.reminderDays.length > 0) {
-          return [...new Set<number>(parsed.reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
-        }
-        const initialDays: number[] = [];
-        if (parsed.remindDayOf ?? true) initialDays.push(0);
-        if (parsed.remind1Day ?? true) initialDays.push(1);
-        if (parsed.remind2Days ?? true) initialDays.push(2);
-        if (parsed.remind7Days ?? true) initialDays.push(7);
-        return initialDays.length > 0 ? initialDays : [0, 1, 2, 7];
-      }
+      if (saved) return JSON.parse(saved).eventReminders ?? true;
     } catch {}
-    return [0, 1, 2, 7];
+    return true;
   });
-  const [customDaysValue, setCustomDaysValue] = useState<number>(3);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-
-  const toggleReminderDay = (day: number) => {
-    setReminderDays((prev) => {
-      const exists = prev.includes(day);
-      const next = exists ? prev.filter((d) => d !== day) : [...prev, day];
-      return next.sort((a, b) => a - b);
-    });
-  };
-
-  const handleAddCustomDay = () => {
-    const day = Math.max(0, Math.min(60, customDaysValue));
-    if (!reminderDays.includes(day)) {
-      setReminderDays((prev) => [...prev, day].sort((a, b) => a - b));
-    }
-  };
-
-  const PRESET_REMINDER_DAYS = [
-    { days: 0, label: 'Same Day' },
-    { days: 1, label: '1 Day' },
-    { days: 2, label: '2 Days' },
-    { days: 3, label: '3 Days' },
-    { days: 5, label: '5 Days' },
-    { days: 7, label: '7 Days (1 wk)' },
-    { days: 14, label: '14 Days (2 wks)' },
-  ];
 
   const handleSaveNotificationPreferences = () => {
     try {
-      const sortedDays = [...new Set<number>(reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
+      const existing = localStorage.getItem('inv_notif_prefs');
+      const parsed = existing ? JSON.parse(existing) : {};
       const prefs = {
+        ...parsed,
         newInvitations: notifNewInvitations,
         scheduleConflicts: notifConflictAlerts,
         statusUpdates: notifScheduleChanges,
-        remind7Days: sortedDays.includes(7),
-        remind2Days: sortedDays.includes(2),
-        remind1Day: sortedDays.includes(1),
-        remindDayOf: sortedDays.includes(0),
-        reminderDays: sortedDays,
+        eventReminders: notifEventReminders,
       };
       localStorage.setItem('inv_notif_prefs', JSON.stringify(prefs));
       checkAndTriggerUpcomingReminders();
@@ -1125,7 +1083,7 @@ export default function SettingsScreen() {
               </span>
             </div>
             <p className="text-xs text-secondary" style={{ marginBottom: '16px' }}>
-              Choose what notifications and when you want to receive alerts
+              Choose which alerts you receive on this device
             </p>
 
             {permissionStatus === 'denied' && (
@@ -1151,41 +1109,14 @@ export default function SettingsScreen() {
               </div>
             )}
 
-            {/* ── Section 1: WHAT alerts you receive ── */}
-            <div style={{ marginBottom: '18px' }}>
-              <div
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  color: 'var(--color-gold)',
-                  marginBottom: '8px',
-                }}
-              >
-                What alerts you receive
-              </div>
-
+            {/* ── Alert Categories ── */}
+            <div style={{ marginBottom: '20px' }}>
               <div className="flex flex-col gap-2.5">
-                {/* New Invitations */}
+                {/* Schedule Conflicts / Overlaps */}
                 <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
                   <div>
-                    <div className="text-sm font-semibold">New Invitation Alerts</div>
-                    <div className="text-xs text-muted">When a new invitation card is scanned or added</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={notifNewInvitations}
-                    onChange={() => handleToggleNotification(setNotifNewInvitations, notifNewInvitations)}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-                  />
-                </div>
-
-                {/* Schedule Conflicts */}
-                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
-                  <div>
-                    <div className="text-sm font-semibold">Schedule Overlaps & Conflicts</div>
-                    <div className="text-xs text-muted">Immediate alert when events or functions clash</div>
+                    <div className="text-sm font-semibold">More Events Overlaps alerts</div>
+                    <div className="text-xs text-muted">Immediate alert when more than one event overlaps</div>
                   </div>
                   <input
                     type="checkbox"
@@ -1195,11 +1126,39 @@ export default function SettingsScreen() {
                   />
                 </div>
 
+                {/* New Invitations */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">New Invitation Alerts</div>
+                    <div className="text-xs text-muted">Alerts when users submit new invitations</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifNewInvitations}
+                    onChange={() => handleToggleNotification(setNotifNewInvitations, notifNewInvitations)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
+                {/* Event Reminders */}
+                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
+                  <div>
+                    <div className="text-sm font-semibold">Event Reminders</div>
+                    <div className="text-xs text-muted">Protocol alerts for upcoming functions and events</div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={notifEventReminders}
+                    onChange={() => handleToggleNotification(setNotifEventReminders, notifEventReminders)}
+                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
+                  />
+                </div>
+
                 {/* Status & Modifications */}
                 <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
                   <div>
-                    <div className="text-sm font-semibold">Status & Approval Updates</div>
-                    <div className="text-xs text-muted">When invitations are confirmed, modified, or reviewed</div>
+                    <div className="text-sm font-semibold">Schedule Modifications</div>
+                    <div className="text-xs text-muted">Alerts when changes are made by other users</div>
                   </div>
                   <input
                     type="checkbox"
@@ -1208,188 +1167,6 @@ export default function SettingsScreen() {
                     style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
                   />
                 </div>
-              </div>
-            </div>
-
-            {/* ── Section 2: WHEN to receive reminders ── */}
-            <div style={{ marginBottom: '20px' }}>
-              <div
-                style={{
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  color: 'var(--color-gold)',
-                  marginBottom: '4px',
-                }}
-              >
-                When to receive reminders
-              </div>
-              <p className="text-xs text-secondary" style={{ marginBottom: '12px' }}>
-                Set how many days before an event or function you want to get reminders
-              </p>
-
-              {/* Quick Presets */}
-              <div style={{ marginBottom: '14px' }}>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
-                  Quick Preset Days
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_REMINDER_DAYS.map((p) => {
-                    const active = reminderDays.includes(p.days);
-                    return (
-                      <button
-                        key={p.days}
-                        type="button"
-                        onClick={() => toggleReminderDay(p.days)}
-                        className={`badge ${active ? 'badge-gold' : 'badge-ghost'} cursor-pointer`}
-                        style={{
-                          padding: '6px 12px',
-                          fontSize: '12px',
-                          fontWeight: active ? 600 : 500,
-                          borderRadius: '20px',
-                          border: active ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
-                          background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.04)',
-                          color: active ? 'var(--color-gold)' : 'var(--color-text-secondary)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                        }}
-                      >
-                        {active && <Check size={12} strokeWidth={2.5} />}
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Custom Number of Days Stepper */}
-              <div
-                className="glass-card p-3 mb-3"
-                style={{
-                  borderRadius: '12px',
-                  background: 'rgba(255, 255, 255, 0.03)',
-                  border: '1px solid var(--glass-border)',
-                }}
-              >
-                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
-                  Custom Days Before Event
-                </div>
-                <div className="flex items-center gap-2">
-                  <div
-                    className="flex items-center"
-                    style={{
-                      background: 'rgba(212, 175, 55, 0.05)',
-                      borderRadius: '8px',
-                      border: '1px solid var(--glass-border)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      style={{ width: '36px', height: '36px', color: 'var(--color-gold)' }}
-                      onClick={() => setCustomDaysValue((prev) => Math.max(0, prev - 1))}
-                    >
-                      <Minus size={14} />
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      max="60"
-                      value={customDaysValue}
-                      onChange={(e) => setCustomDaysValue(Math.max(0, Math.min(60, parseInt(e.target.value) || 0)))}
-                      style={{
-                        width: '50px',
-                        textAlign: 'center',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--color-text-primary)',
-                        fontWeight: 700,
-                        fontSize: '15px',
-                        fontFamily: 'var(--font-mono)',
-                        outline: 'none',
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      style={{ width: '36px', height: '36px', color: 'var(--color-gold)' }}
-                      onClick={() => setCustomDaysValue((prev) => Math.min(60, prev + 1))}
-                    >
-                      <Plus size={14} />
-                    </button>
-                  </div>
-                  <span className="text-xs text-secondary flex-1">
-                    {customDaysValue === 0
-                      ? 'Same day alert'
-                      : customDaysValue === 1
-                        ? '1 day before'
-                        : `${customDaysValue} days before event`}
-                  </span>
-                  <button
-                    type="button"
-                    className="btn btn-xs btn-gold"
-                    onClick={handleAddCustomDay}
-                    disabled={reminderDays.includes(customDaysValue)}
-                    style={{ padding: '7px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                  >
-                    {reminderDays.includes(customDaysValue) ? 'Added' : '+ Add Alert'}
-                  </button>
-                </div>
-              </div>
-
-              {/* Active Reminder Schedule Summary */}
-              <div>
-                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
-                  Active Reminder Schedule ({reminderDays.length} {reminderDays.length === 1 ? 'alert' : 'alerts'})
-                </div>
-                {reminderDays.length === 0 ? (
-                  <div
-                    className="p-3 text-center rounded-lg text-xs"
-                    style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.08)' }}
-                  >
-                    No reminders scheduled. Tap a preset day above to activate alerts.
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1.5">
-                    {reminderDays.map((days) => {
-                      const label =
-                        days === 0
-                          ? 'Day of Event (Today)'
-                          : days === 1
-                            ? '1 Day Before (Tomorrow)'
-                            : days === 7
-                              ? '7 Days Before (1 Week)'
-                              : `${days} Days Before Event`;
-                      return (
-                        <div
-                          key={days}
-                          className="flex items-center justify-between p-2.5 rounded-lg"
-                          style={{
-                            background: 'rgba(212, 175, 55, 0.07)',
-                            border: '1px solid rgba(212, 175, 55, 0.2)',
-                          }}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Bell size={13} style={{ color: 'var(--color-gold)' }} />
-                            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{label}</span>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn-icon"
-                            style={{ width: '24px', height: '24px', color: 'var(--color-text-muted)' }}
-                            onClick={() => toggleReminderDay(days)}
-                            title="Remove reminder"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             </div>
 

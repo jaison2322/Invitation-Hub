@@ -1775,6 +1775,10 @@ export const useAppStore = create<AppState>()(
           }
         } catch {}
 
+        if ((prefs as any).eventReminders === false) {
+          return;
+        }
+
         const upcomingEvents = invitations.filter((inv) => {
           const days = daysUntil(inv.date);
           const activeDaysForInv = Array.isArray(inv.reminderDays) && inv.reminderDays.length > 0
