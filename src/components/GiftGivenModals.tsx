@@ -16,7 +16,6 @@ import {
 import {
   formatDate,
   formatCurrency,
-  getGiftCategoryLabel,
   getLocalTodayDateString,
   isInvitationPastByDate,
 } from '../utils/formatters';
@@ -280,7 +279,7 @@ export function AddEditGiftGivenModal({
   const { addGiftRecord, updateGiftRecord } = useAppStore();
 
   const [giftName, setGiftName] = useState(initialGift?.giftName || '');
-  const [giftCategory, setGiftCategory] = useState<GiftCategory>(
+  const [giftCategory] = useState<GiftCategory>(
     (initialGift?.giftCategory as GiftCategory) || 'other'
   );
   const [estimatedValue, setEstimatedValue] = useState<string>(
@@ -299,7 +298,6 @@ export function AddEditGiftGivenModal({
     if (isOpen) {
       if (initialGift) {
         setGiftName(initialGift.giftName || '');
-        setGiftCategory((initialGift.giftCategory as GiftCategory) || 'other');
         setEstimatedValue(
           initialGift.estimatedValue !== undefined ? String(initialGift.estimatedValue) : ''
         );
@@ -307,7 +305,6 @@ export function AddEditGiftGivenModal({
         setRecipientName(initialGift.recipientName || event?.hostName || '');
       } else {
         setGiftName('');
-        setGiftCategory('other');
         setEstimatedValue('');
         setNotes('');
         setRecipientName(event?.hostName || '');
@@ -316,17 +313,6 @@ export function AddEditGiftGivenModal({
       setIsSubmitting(false);
     }
   }, [isOpen, initialGift, event]);
-
-  const categories: GiftCategory[] = [
-    'gold',
-    'silver',
-    'cash',
-    'electronics',
-    'clothing',
-    'jewelry',
-    'household',
-    'other',
-  ];
 
   if (!isOpen || !event) return null;
 
@@ -473,39 +459,20 @@ export function AddEditGiftGivenModal({
             />
           </div>
 
-          {/* 2-Column Grid: Gift Category & Estimated Value (₹) (Screenshot 2 field 2 & 3) */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                Gift Category
-              </label>
-              <select
-                className="select"
-                value={giftCategory}
-                onChange={(e) => setGiftCategory(e.target.value as GiftCategory)}
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {getGiftCategoryLabel(c)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                Estimated Value (₹)
-              </label>
-              <input
-                className="input"
-                type="number"
-                min="0"
-                step="1"
-                value={estimatedValue}
-                onChange={(e) => setEstimatedValue(e.target.value)}
-                placeholder="Enter gift value"
-              />
-            </div>
+          {/* Estimated Value (₹) */}
+          <div>
+            <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+              Estimated Value (₹)
+            </label>
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="1"
+              value={estimatedValue}
+              onChange={(e) => setEstimatedValue(e.target.value)}
+              placeholder="Enter gift value"
+            />
           </div>
 
           {/* Recipient / Host Name */}

@@ -18,10 +18,8 @@ import {
 import {
   formatDate,
   formatCurrency,
-  getGiftCategoryLabel,
   getInitials,
 } from '../utils/formatters';
-import GiftBadgeIcon from '../components/GiftBadgeIcon';
 import type { GiftCategory, GiftRecord } from '../types';
 
 export default function GiftHistoryScreen() {
@@ -42,7 +40,6 @@ export default function GiftHistoryScreen() {
     locationState?.tab === 'given' ? 'given' : 'received'
   );
   const [search, setSearch] = useState('');
-  const [filterCategory, setFilterCategory] = useState<string>('all');
 
   // Sync if navigation state changes
   useEffect(() => {
@@ -106,11 +103,10 @@ export default function GiftHistoryScreen() {
     return giftRecords.filter((gr) => gr.direction === 'given');
   }, [giftRecords]);
 
-  // ── 3. Apply Search & Category Filter ───────────────────────────────────────
+  // ── 3. Apply Search Filter ─────────────────────────────────────────────────
   const filteredReceived = useMemo(() => {
     return receivedGifts
       .filter((g) => {
-        if (filterCategory !== 'all' && g.giftCategory !== filterCategory) return false;
         if (search) {
           const q = search.trim().toLowerCase();
           const person = (g.personName || '').toLowerCase();
@@ -121,12 +117,11 @@ export default function GiftHistoryScreen() {
         return true;
       })
       .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
-  }, [receivedGifts, filterCategory, search]);
+  }, [receivedGifts, search]);
 
   const filteredGiven = useMemo(() => {
     return givenGifts
       .filter((g) => {
-        if (filterCategory !== 'all' && g.giftCategory !== filterCategory) return false;
         if (search) {
           const q = search.trim().toLowerCase();
           const giftName = (g.giftName || '').toLowerCase();
@@ -137,9 +132,7 @@ export default function GiftHistoryScreen() {
         return true;
       })
       .sort((a, b) => b.eventDate.localeCompare(a.eventDate));
-  }, [givenGifts, filterCategory, search]);
-
-  const categories = ['all', 'gold', 'silver', 'cash', 'electronics', 'other'];
+  }, [givenGifts, search]);
 
   // ── Event Selection Handler ─────────────────────────────────────────────────
   const handleEditGivenGift = (gr: GiftRecord) => {
@@ -221,24 +214,6 @@ export default function GiftHistoryScreen() {
             Gift Given
           </button>
         </div>
-
-        {/* ── Category Filter Tabs (Horizontal Scroll) ───────────────────────── */}
-        <div
-          className="overflow-x-auto"
-          style={{ margin: '0 calc(-1 * var(--space-4)) 0', padding: '0 var(--space-4)' }}
-        >
-          <div className="tabs" style={{ width: 'max-content' }}>
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                className={`tab ${filterCategory === cat ? 'active' : ''}`}
-                onClick={() => setFilterCategory(cat)}
-              >
-                <span>{cat === 'all' ? 'All Gifts' : getGiftCategoryLabel(cat as any)}</span>
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* ── Scrollable Body with Search Bar & Gift Ledgers ───────────────────── */}
@@ -276,7 +251,7 @@ export default function GiftHistoryScreen() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-white truncate">{g.personName}</div>
                     <div className="flex items-center gap-2 mt-1">
-                      <GiftBadgeIcon category={g.giftCategory as GiftCategory} size="xs" />
+                      <Gift size={14} className="text-gold flex-shrink-0" />
                       <span className="text-sm text-gold font-medium truncate">{g.gift}</span>
                     </div>
                     <div className="text-xs text-muted mt-1 truncate">
@@ -294,11 +269,6 @@ export default function GiftHistoryScreen() {
                         {formatCurrency(g.estimatedValue)}
                       </div>
                     )}
-                    {g.giftCategory && (
-                      <div className="text-xs text-muted mt-1">
-                        {getGiftCategoryLabel(g.giftCategory as GiftCategory)}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -313,7 +283,7 @@ export default function GiftHistoryScreen() {
                 <div className="empty-state-text">
                   {search
                     ? 'No results matching your search query.'
-                    : 'No gift records found in this category.'}
+                    : 'No gift records found.'}
                 </div>
               </div>
             )}
@@ -339,9 +309,9 @@ export default function GiftHistoryScreen() {
 
                   {/* Main Gift Details */}
                   <div className="flex-1 min-w-0">
-                    {/* Top Row: Gift Name & Category */}
+                    {/* Top Row: Gift Name */}
                     <div className="flex items-center gap-2">
-                      <GiftBadgeIcon category={g.giftCategory as GiftCategory} size="xs" />
+                      <Gift size={14} className="text-gold flex-shrink-0" />
                       <span className="text-sm font-semibold text-white truncate">
                         {g.giftName}
                       </span>
@@ -391,16 +361,13 @@ export default function GiftHistoryScreen() {
                     )}
                   </div>
 
-                  {/* Right Column: Value, Category & Actions */}
+                  {/* Right Column: Value & Actions */}
                   <div className="text-right flex flex-col items-end flex-shrink-0">
                     {g.estimatedValue !== undefined && g.estimatedValue > 0 && (
                       <div className="badge badge-gold" style={{ fontSize: '10px' }}>
                         {formatCurrency(g.estimatedValue)}
                       </div>
                     )}
-                    <div className="text-xs text-muted mt-1">
-                      {getGiftCategoryLabel(g.giftCategory as GiftCategory)}
-                    </div>
 
                     {/* Edit / Delete actions for authorized users */}
                     {canManageGifts && (

@@ -17,16 +17,15 @@ import {
   Award,
   Coins,
   Search,
+  Gift,
 } from 'lucide-react';
 import {
   formatFullDate,
   formatCurrency,
   getInitials,
-  getGiftCategoryLabel,
   getRelationshipLabel,
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
-import GiftBadgeIcon from '../components/GiftBadgeIcon';
 import IconBadge from '../components/IconBadge';
 import type { GuestRecord, GiftCategory, RelationshipType } from '../types';
 import { generateId } from '../utils/id';
@@ -60,7 +59,7 @@ export default function PastEventDetailScreen() {
   const [guestRelationship, setGuestRelationship] = useState<RelationshipType>('friend');
   const [guestAttendance, setGuestAttendance] = useState<'attended' | 'invited_not_attended' | 'unknown'>('attended');
   const [guestGift, setGuestGift] = useState('');
-  const [guestCategory, setGuestCategory] = useState<GiftCategory>('cash');
+  const [guestCategory] = useState<GiftCategory>('other');
   const [guestValue, setGuestValue] = useState<number | undefined>(undefined);
   const [guestNotes, setGuestNotes] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -115,14 +114,6 @@ export default function PastEventDetailScreen() {
     return name.startsWith(q) || words.some((w) => w.startsWith(q));
   });
 
-  const giftCategories: GiftCategory[] = [
-    'gold',
-    'silver',
-    'cash',
-    'electronics',
-    'other',
-  ];
-
   const relationships: RelationshipType[] = [
     'family',
     'relative',
@@ -139,7 +130,6 @@ export default function PastEventDetailScreen() {
     setGuestRelationship('friend');
     setGuestAttendance('attended');
     setGuestGift('');
-    setGuestCategory('other');
     setGuestValue(undefined);
     setGuestNotes('');
     setSelectedGuestIndex(null);
@@ -155,7 +145,6 @@ export default function PastEventDetailScreen() {
     setGuestRelationship(guest.relationship || linkedPerson?.relationship || 'friend');
     setGuestAttendance(guest.attendance);
     setGuestGift(guest.gift || '');
-    setGuestCategory(guest.giftCategory || 'cash');
     setGuestValue(guest.estimatedValue);
     setGuestNotes(guest.notes || '');
     setSelectedGuestIndex(index);
@@ -607,7 +596,7 @@ export default function PastEventDetailScreen() {
                       <div className="text-right flex items-center gap-2 flex-shrink-0">
                         {guest.gift && (
                           <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
-                            <GiftBadgeIcon category={guest.giftCategory || 'other'} size="xs" />
+                            <Gift size={14} className="text-gold flex-shrink-0" />
                             <div className="text-left">
                               <div className="text-xs font-semibold text-white truncate max-w-[120px]">
                                 {guest.gift}
@@ -872,40 +861,18 @@ export default function PastEventDetailScreen() {
                 />
               </div>
 
-              {/* Gift Category & Estimated Value */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                    Gift Category
-                  </label>
-                  <select
-                    className="select"
-                    value={guestCategory}
-                    onChange={(e) => setGuestCategory(e.target.value as GiftCategory)}
-                  >
-                    {giftCategories.map((c) => (
-                      <option key={c} value={c}>
-                        {getGiftCategoryLabel(c)}
-                      </option>
-                    ))}
-                    {!giftCategories.includes(guestCategory) && (
-                      <option value={guestCategory}>{getGiftCategoryLabel(guestCategory)}</option>
-                    )}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
-                    Estimated Value (₹)
-                  </label>
-                  <input
-                    className="input"
-                    type="number"
-                    value={guestValue ?? ''}
-                    onChange={(e) => setGuestValue(e.target.value ? Number(e.target.value) : undefined)}
-                    placeholder="Enter gift value"
-                  />
-                </div>
+              {/* Estimated Value */}
+              <div>
+                <label className="label" style={{ fontSize: '12px', marginBottom: '4px' }}>
+                  Estimated Value (₹)
+                </label>
+                <input
+                  className="input"
+                  type="number"
+                  value={guestValue ?? ''}
+                  onChange={(e) => setGuestValue(e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder="Enter gift value"
+                />
               </div>
 
               {/* Notes */}

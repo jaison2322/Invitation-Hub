@@ -961,8 +961,11 @@ export function calculatePriority(
     );
   }
 
-  // Gift category bonus
-  const hasGoldGift = giftHistory.some((g) => g.giftCategory === 'gold');
+  // High-value / gold gift relationship bonus
+  const hasGoldGift = giftHistory.some((g) => {
+    const giftText = (g.gift || (g as any).giftName || '').toLowerCase();
+    return g.giftCategory === 'gold' || giftText.includes('gold') || giftText.includes('thangam') || giftText.includes('sona');
+  });
   if (hasGoldGift) {
     score += 10;
     reasons.push('Has given gold gifts — indicates strong relationship.');

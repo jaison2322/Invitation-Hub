@@ -16,7 +16,6 @@ import {
   getStatusLabel,
   getEventTypeLabel,
   getRelationshipLabel,
-  getGiftCategoryLabel,
   formatDate,
   formatTime,
   getLocalTodayDateString,
@@ -700,7 +699,6 @@ export async function exportToExcel({
                 : guest.attendance === 'invited_not_attended'
                   ? 'Invited (Absent)'
                   : 'Unknown',
-            'Gift Category': guest.giftCategory ? getGiftCategoryLabel(guest.giftCategory) : '—',
             'Gift Description': guest.gift || guest.giftDescription || '—',
             'Estimated Value (₹)': guest.estimatedValue ? Number(guest.estimatedValue) : 0,
             'Notes': guest.notes || '—',

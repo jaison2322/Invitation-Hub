@@ -13,7 +13,7 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import type { EventType, GuestRecord, GiftCategory, RelationshipType } from '../types';
-import { getEventTypeLabel, getRelationshipLabel, getInitials, getGiftCategoryLabel } from '../utils/formatters';
+import { getEventTypeLabel, getRelationshipLabel, getInitials } from '../utils/formatters';
 import { generateId } from '../utils/id';
 
 export default function AddEditEventScreen() {
@@ -86,14 +86,6 @@ export default function AddEditEventScreen() {
     'other',
   ];
 
-  const giftCategories: GiftCategory[] = [
-    'gold',
-    'silver',
-    'cash',
-    'electronics',
-    'other',
-  ];
-
   const addGuest = () => {
     const newGuest: GuestRecord = {
       id: generateId('guest'),
@@ -103,7 +95,7 @@ export default function AddEditEventScreen() {
       attendance: 'attended',
       gift: '',
       giftDescription: '',
-      giftCategory: 'cash',
+      giftCategory: 'other',
       estimatedValue: undefined,
       notes: '',
     };
@@ -377,7 +369,7 @@ export default function AddEditEventScreen() {
                 <Users size={28} className="text-muted mb-2" style={{ margin: '0 auto 8px' }} />
                 <div className="text-sm font-semibold text-primary">No Guests Recorded Yet</div>
                 <p className="text-xs text-muted mb-3">
-                  Add guests, attendance, gifts, gift value, gift category, notes and link to contacts.
+                  Add guests, attendance, gifts, gift value, notes and link to contacts.
                 </p>
                 <button
                   type="button"
@@ -598,44 +590,22 @@ export default function AddEditEventScreen() {
                           />
                         </div>
 
-                        {/* 5. Gift Category & Estimated Value */}
-                        <div className="grid-2">
-                          <div>
-                            <label className="text-xs text-muted mb-1 block">Category</label>
-                            <select
-                              className="select"
-                              value={guest.giftCategory || 'cash'}
-                              onChange={(e) => updateGuest(i, 'giftCategory', e.target.value)}
-                            >
-                              {giftCategories.map((c) => (
-                                <option key={c} value={c}>
-                                  {getGiftCategoryLabel(c)}
-                                </option>
-                              ))}
-                              {guest.giftCategory && !giftCategories.includes(guest.giftCategory) && (
-                                <option value={guest.giftCategory}>
-                                  {getGiftCategoryLabel(guest.giftCategory)}
-                                </option>
-                              )}
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="text-xs text-muted mb-1 block">Estimated Value (₹)</label>
-                            <input
-                              className="input"
-                              type="number"
-                              value={guest.estimatedValue || ''}
-                              onChange={(e) =>
-                                updateGuest(
-                                  i,
-                                  'estimatedValue',
-                                  parseInt(e.target.value) || undefined
-                                )
-                              }
-                              placeholder="Value ₹"
-                            />
-                          </div>
+                        {/* 5. Estimated Value */}
+                        <div>
+                          <label className="text-xs text-muted mb-1 block">Estimated Value (₹)</label>
+                          <input
+                            className="input"
+                            type="number"
+                            value={guest.estimatedValue || ''}
+                            onChange={(e) =>
+                              updateGuest(
+                                i,
+                                'estimatedValue',
+                                parseInt(e.target.value) || undefined
+                              )
+                            }
+                            placeholder="Value ₹"
+                          />
                         </div>
 
                         {/* 6. Notes */}

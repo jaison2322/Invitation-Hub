@@ -19,7 +19,6 @@ import {
 import {
   formatDate,
   formatCurrency,
-  getGiftCategoryLabel,
   getLocalTodayDateString,
   isInvitationPastByDate,
 } from '../utils/formatters';
@@ -34,15 +33,6 @@ export interface SelectedEventSummary {
   eventType?: string;
   isPast: boolean;
 }
-
-const CATEGORY_OPTIONS: GiftCategory[] = [
-  'gold',
-  'silver',
-  'cash',
-  'electronics',
-  'jewelry',
-  'other',
-];
 
 export default function RecordGiftScreen() {
   const navigate = useNavigate();
@@ -150,8 +140,8 @@ export default function RecordGiftScreen() {
 
   // ── Step 2 State: Gift Form ────────────────────────────────────────────────
   const [giftName, setGiftName] = useState(existingGift?.giftName || '');
-  const [giftCategory, setGiftCategory] = useState<GiftCategory>(
-    existingGift?.giftCategory || 'gold'
+  const [giftCategory] = useState<GiftCategory>(
+    existingGift?.giftCategory || 'other'
   );
   const [estimatedValue, setEstimatedValue] = useState<string>(
     existingGift?.estimatedValue !== undefined ? String(existingGift.estimatedValue) : ''
@@ -786,24 +776,6 @@ export default function RecordGiftScreen() {
                 placeholder={direction === 'received' ? 'Enter gift received (e.g. Gold Coin, Cash, Silk Saree)' : 'Enter gift given'}
                 required
               />
-            </div>
-
-            {/* 2. Gift Category Dropdown */}
-            <div>
-              <label className="label">
-                Gift Category
-              </label>
-              <select
-                className="select"
-                value={giftCategory}
-                onChange={(e) => setGiftCategory(e.target.value as GiftCategory)}
-              >
-                {CATEGORY_OPTIONS.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {getGiftCategoryLabel(cat)}
-                  </option>
-                ))}
-              </select>
             </div>
 
             {/* 3. Gift Value */}

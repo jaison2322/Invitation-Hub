@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
   formatFullDate, formatTime, formatDate, daysUntil,
-  getInitials, formatCurrency, getRelationshipLabel, getGiftCategoryLabel,
+  getInitials, formatCurrency, getRelationshipLabel,
   isInvitationPastByDate, getLocalTodayDateString,
 } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
@@ -735,7 +735,7 @@ export default function EventDetailScreen() {
                       {g.giftName}
                     </div>
                     <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)', marginTop: '1px' }}>
-                      {g.recipientName ? `Given to ${g.recipientName}` : getGiftCategoryLabel(g.giftCategory)}
+                      {g.recipientName ? `Given to ${g.recipientName}` : 'Gift Given'}
                     </div>
                     {g.notes && (
                       <div
