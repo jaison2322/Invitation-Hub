@@ -1273,14 +1273,14 @@ export default function SettingsScreen() {
                   border: '1px solid var(--glass-border)',
                 }}
               >
-                <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary)', marginBottom: '8px' }}>
                   Custom Days Before Event
                 </div>
                 <div className="flex items-center gap-2">
                   <div
                     className="flex items-center"
                     style={{
-                      background: 'rgba(0, 0, 0, 0.3)',
+                      background: 'rgba(212, 175, 55, 0.05)',
                       borderRadius: '8px',
                       border: '1px solid var(--glass-border)',
                       overflow: 'hidden',
@@ -1305,7 +1305,7 @@ export default function SettingsScreen() {
                         textAlign: 'center',
                         background: 'transparent',
                         border: 'none',
-                        color: '#fff',
+                        color: 'var(--color-text-primary)',
                         fontWeight: 700,
                         fontSize: '15px',
                         fontFamily: 'var(--font-mono)',
@@ -1374,7 +1374,7 @@ export default function SettingsScreen() {
                         >
                           <div className="flex items-center gap-2">
                             <Bell size={13} style={{ color: 'var(--color-gold)' }} />
-                            <span style={{ fontSize: '13px', fontWeight: 500, color: '#fff' }}>{label}</span>
+                            <span style={{ fontSize: '13px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{label}</span>
                           </div>
                           <button
                             type="button"

@@ -474,7 +474,7 @@ export default function EventDetailScreen() {
 
         {/* ── Original Invitation Photo Card ─────────────────────────────────── */}
         {photoUrl && (
-          <div className="ios-card mb-4 overflow-hidden">
+          <div className="glass-card mb-4" style={{ padding: '16px', overflow: 'hidden' }}>
             <div className="flex items-center justify-between mb-2.5">
               <div className="flex items-center gap-2">
                 <FileText size={15} style={{ color: 'var(--color-accent)' }} />
@@ -485,28 +485,64 @@ export default function EventDetailScreen() {
               <button
                 type="button"
                 onClick={() => setShowImageModal(true)}
-                className="text-xs flex items-center gap-1 cursor-pointer transition-opacity hover:opacity-80"
-                style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none' }}
+                className="text-xs flex items-center gap-1 cursor-pointer"
+                style={{ color: 'var(--color-accent)', background: 'transparent', border: 'none', padding: 0 }}
                 aria-label="View Full Invitation"
               >
                 <Maximize2 size={13} /> View Full
               </button>
             </div>
             <div
-              className="relative rounded-lg overflow-hidden cursor-pointer group"
-              style={{ maxHeight: '240px', background: 'rgba(0, 0, 0, 0.4)', border: '1px solid var(--glass-border)' }}
+              style={{
+                position: 'relative',
+                maxHeight: '220px',
+                height: '220px',
+                width: '100%',
+                overflow: 'hidden',
+                borderRadius: '12px',
+                background: 'rgba(0, 0, 0, 0.5)',
+                border: '1px solid var(--glass-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
               onClick={() => setShowImageModal(true)}
             >
               <img
                 src={photoUrl}
                 alt={invitation.title}
-                className="w-full h-auto object-cover max-h-60 rounded-lg transition-transform duration-300 group-hover:scale-105"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  maxHeight: '220px',
+                  objectFit: 'contain',
+                  display: 'block',
+                  borderRadius: '12px',
+                }}
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                <span className="badge badge-gold flex items-center gap-1.5 shadow-lg">
-                  <Maximize2 size={12} /> Tap to view full size
-                </span>
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '8px',
+                  right: '8px',
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  backdropFilter: 'blur(4px)',
+                  borderRadius: '12px',
+                  padding: '4px 10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '11px',
+                  color: '#fff',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  pointerEvents: 'none',
+                  zIndex: 2,
+                }}
+              >
+                <Maximize2 size={12} style={{ color: 'var(--color-accent)' }} />
+                <span>Tap to view full size</span>
               </div>
             </div>
           </div>
@@ -732,7 +768,7 @@ export default function EventDetailScreen() {
             </span>
           </div>
 
-          <div className="ios-card" style={{ padding: '16px' }}>
+          <div className="glass-card" style={{ padding: '16px' }}>
             <div className="flex items-center gap-2 mb-1.5">
               <Bell size={15} style={{ color: 'var(--color-accent)' }} />
               <span className="text-xs font-semibold text-white tracking-wide uppercase">
@@ -798,7 +834,7 @@ export default function EventDetailScreen() {
             {/* Stepper for custom days before */}
             <div
               className="flex items-center gap-2 p-2.5 rounded-lg mb-3"
-              style={{ background: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--glass-border)' }}
+              style={{ background: 'rgba(212, 175, 55, 0.06)', border: '1px solid var(--glass-border)' }}
             >
               <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', flex: 1 }}>
                 Custom days before:
@@ -819,7 +855,7 @@ export default function EventDetailScreen() {
                     fontWeight: 700,
                     fontSize: '13px',
                     fontFamily: 'var(--font-mono)',
-                    color: '#fff',
+                    color: 'var(--color-text-primary)',
                   }}
                 >
                   {eventCustomDayInput}d
@@ -878,7 +914,7 @@ export default function EventDetailScreen() {
                       >
                         <div className="flex items-center gap-2">
                           <Bell size={12} style={{ color: 'var(--color-accent)' }} />
-                          <span style={{ fontSize: '12px', fontWeight: 500, color: '#fff' }}>{label}</span>
+                          <span style={{ fontSize: '12px', fontWeight: 500, color: 'var(--color-text-primary)' }}>{label}</span>
                         </div>
                         <button
                           type="button"
@@ -1187,8 +1223,16 @@ export default function EventDetailScreen() {
                     <img
                       src={editPhotoPreview}
                       alt="Invitation preview"
-                      className="w-14 h-14 object-cover rounded-md flex-shrink-0 cursor-pointer"
-                      style={{ border: '1px solid var(--glass-border)' }}
+                      style={{
+                        width: '56px',
+                        height: '56px',
+                        objectFit: 'cover',
+                        borderRadius: '8px',
+                        flexShrink: 0,
+                        cursor: 'pointer',
+                        border: '1px solid var(--glass-border)',
+                        display: 'block',
+                      }}
                       onClick={() => setShowImageModal(true)}
                     />
                     <div className="flex-1 min-w-0">
@@ -1317,8 +1361,15 @@ export default function EventDetailScreen() {
             <img
               src={photoUrl}
               alt={invitation.title}
-              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
-              style={{ border: '1px solid rgba(255, 255, 255, 0.15)' }}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '78vh',
+                objectFit: 'contain',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+                display: 'block',
+              }}
             />
             <div className="mt-3 text-center">
               <p className="text-xs text-slate-200 font-medium">

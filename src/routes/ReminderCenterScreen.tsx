@@ -67,7 +67,7 @@ export default function ReminderCenterScreen() {
           <div className="flex items-center gap-2">
             <Bell size={14} style={{ color: 'var(--color-gold)' }} />
             <div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
                 Active Reminder Schedule
               </div>
               <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>

@@ -1063,8 +1063,15 @@ export default function AddInvitationScreen() {
             <img
               src={photoPreview}
               alt="Original Invitation Card"
-              className="max-w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"
-              style={{ border: '1px solid rgba(255, 255, 255, 0.15)' }}
+              style={{
+                maxWidth: '100%',
+                maxHeight: '78vh',
+                objectFit: 'contain',
+                borderRadius: '12px',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.6)',
+                display: 'block',
+              }}
             />
             <div className="mt-3 text-center">
               <p className="text-xs text-slate-200 font-medium">
