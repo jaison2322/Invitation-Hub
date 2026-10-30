@@ -184,3 +184,47 @@ test('productionFeatures - user notification preferences filter reminder trigger
   assert.equal(checkMilestoneAllowed(1, customPrefs), true, '1-day reminder should trigger when enabled');
   assert.equal(checkMilestoneAllowed(0, customPrefs), true, 'Day-of reminder should trigger when enabled');
 });
+
+test('productionFeatures - customizable advance reminder days (e.g., 3, 5, 10 days before event)', () => {
+  const userConfiguredPrefs = {
+    reminderDays: [0, 1, 3, 5, 10],
+  };
+
+  const isReminderAllowed = (daysBefore: number, prefs: typeof userConfiguredPrefs, eventOverrideDays?: number[]) => {
+    const activeDays = Array.isArray(eventOverrideDays) && eventOverrideDays.length > 0
+      ? eventOverrideDays
+      : prefs.reminderDays;
+    return activeDays.includes(daysBefore);
+  };
+
+  // Configured days should trigger
+  assert.equal(isReminderAllowed(3, userConfiguredPrefs), true, '3-day reminder must be allowed');
+  assert.equal(isReminderAllowed(5, userConfiguredPrefs), true, '5-day reminder must be allowed');
+  assert.equal(isReminderAllowed(10, userConfiguredPrefs), true, '10-day reminder must be allowed');
+  assert.equal(isReminderAllowed(0, userConfiguredPrefs), true, 'Day-of reminder must be allowed');
+
+  // Non-configured day (e.g. 7 days or 4 days) should not trigger
+  assert.equal(isReminderAllowed(7, userConfiguredPrefs), false, '7-day reminder should not trigger when not in list');
+  assert.equal(isReminderAllowed(4, userConfiguredPrefs), false, '4-day reminder should not trigger when not in list');
+
+  // Per-event override: event specifically configured for 14 days before
+  const eventCustomDays = [14, 1];
+  assert.equal(isReminderAllowed(14, userConfiguredPrefs, eventCustomDays), true, 'Per-event 14-day reminder must trigger');
+  assert.equal(isReminderAllowed(3, userConfiguredPrefs, eventCustomDays), false, 'Global 3-day reminder is bypassed by per-event override');
+});
+
+test('productionFeatures - custom reminder ID and message formatting for arbitrary days', () => {
+  const days = 3;
+  const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : days === 2 ? '2days' : days === 7 ? '7days' : `${days}days`;
+  const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : days === 2 ? 'in 2 days' : days === 7 ? 'in 7 days (1 week)' : `in ${days} days`;
+  const invId = 'inv-custom-3d';
+  const reminderId = `notif-rem-${invId}-${milestoneKey}`;
+
+  assert.equal(milestoneKey, '3days');
+  assert.equal(dayText, 'in 3 days');
+  assert.equal(reminderId, 'notif-rem-inv-custom-3d-3days');
+
+  const eventName = 'Annual Corporate Summit';
+  const reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+  assert.equal(reminderTitle, 'Upcoming in 3 Days: Annual Corporate Summit');
+});

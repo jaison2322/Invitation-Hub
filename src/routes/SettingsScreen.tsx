@@ -23,6 +23,9 @@ import {
   AlertCircle,
   FileText,
   Smartphone,
+  Minus,
+  Plus,
+  X,
 } from 'lucide-react';
 import { getInitials } from '../utils/formatters';
 import { exportUpcomingEventsToExcel, exportUpcomingEventsToPdf } from '../services/exportService';
@@ -157,48 +160,67 @@ export default function SettingsScreen() {
     } catch {}
     return true;
   });
-  const [remind7Days, setRemind7Days] = useState(() => {
+  const [reminderDays, setReminderDays] = useState<number[]>(() => {
     try {
       const saved = localStorage.getItem('inv_notif_prefs');
-      if (saved) return JSON.parse(saved).remind7Days ?? true;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.reminderDays) && parsed.reminderDays.length > 0) {
+          return [...new Set<number>(parsed.reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
+        }
+        const initialDays: number[] = [];
+        if (parsed.remindDayOf ?? true) initialDays.push(0);
+        if (parsed.remind1Day ?? true) initialDays.push(1);
+        if (parsed.remind2Days ?? true) initialDays.push(2);
+        if (parsed.remind7Days ?? true) initialDays.push(7);
+        return initialDays.length > 0 ? initialDays : [0, 1, 2, 7];
+      }
     } catch {}
-    return true;
+    return [0, 1, 2, 7];
   });
-  const [remind2Days, setRemind2Days] = useState(() => {
-    try {
-      const saved = localStorage.getItem('inv_notif_prefs');
-      if (saved) return JSON.parse(saved).remind2Days ?? true;
-    } catch {}
-    return true;
-  });
-  const [remind1Day, setRemind1Day] = useState(() => {
-    try {
-      const saved = localStorage.getItem('inv_notif_prefs');
-      if (saved) return JSON.parse(saved).remind1Day ?? true;
-    } catch {}
-    return true;
-  });
-  const [remindDayOf, setRemindDayOf] = useState(() => {
-    try {
-      const saved = localStorage.getItem('inv_notif_prefs');
-      if (saved) return JSON.parse(saved).remindDayOf ?? true;
-    } catch {}
-    return true;
-  });
+  const [customDaysValue, setCustomDaysValue] = useState<number>(3);
   const [permissionStatus, setPermissionStatus] = useState<'granted' | 'denied' | 'prompt'>('prompt');
+
+  const toggleReminderDay = (day: number) => {
+    setReminderDays((prev) => {
+      const exists = prev.includes(day);
+      const next = exists ? prev.filter((d) => d !== day) : [...prev, day];
+      return next.sort((a, b) => a - b);
+    });
+  };
+
+  const handleAddCustomDay = () => {
+    const day = Math.max(0, Math.min(60, customDaysValue));
+    if (!reminderDays.includes(day)) {
+      setReminderDays((prev) => [...prev, day].sort((a, b) => a - b));
+    }
+  };
+
+  const PRESET_REMINDER_DAYS = [
+    { days: 0, label: 'Same Day' },
+    { days: 1, label: '1 Day' },
+    { days: 2, label: '2 Days' },
+    { days: 3, label: '3 Days' },
+    { days: 5, label: '5 Days' },
+    { days: 7, label: '7 Days (1 wk)' },
+    { days: 14, label: '14 Days (2 wks)' },
+  ];
 
   const handleSaveNotificationPreferences = () => {
     try {
+      const sortedDays = [...new Set<number>(reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
       const prefs = {
         newInvitations: notifNewInvitations,
         scheduleConflicts: notifConflictAlerts,
         statusUpdates: notifScheduleChanges,
-        remind7Days,
-        remind2Days,
-        remind1Day,
-        remindDayOf,
+        remind7Days: sortedDays.includes(7),
+        remind2Days: sortedDays.includes(2),
+        remind1Day: sortedDays.includes(1),
+        remindDayOf: sortedDays.includes(0),
+        reminderDays: sortedDays,
       };
       localStorage.setItem('inv_notif_prefs', JSON.stringify(prefs));
+      checkAndTriggerUpcomingReminders();
     } catch {}
     setActiveModal(null);
   };
@@ -1198,68 +1220,176 @@ export default function SettingsScreen() {
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
                   color: 'var(--color-gold)',
-                  marginBottom: '8px',
+                  marginBottom: '4px',
                 }}
               >
                 When to receive reminders
               </div>
+              <p className="text-xs text-secondary" style={{ marginBottom: '12px' }}>
+                Set how many days before an event or function you want to get reminders
+              </p>
 
-              <div className="flex flex-col gap-2.5">
-                {/* 7 Days Before */}
-                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
-                  <div>
-                    <div className="text-sm font-semibold">7 Days Before (1 Week)</div>
-                    <div className="text-xs text-muted">Early preparation notice 1 week in advance</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={remind7Days}
-                    onChange={() => handleToggleNotification(setRemind7Days, remind7Days)}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-                  />
+              {/* Quick Presets */}
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
+                  Quick Preset Days
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_REMINDER_DAYS.map((p) => {
+                    const active = reminderDays.includes(p.days);
+                    return (
+                      <button
+                        key={p.days}
+                        type="button"
+                        onClick={() => toggleReminderDay(p.days)}
+                        className={`badge ${active ? 'badge-gold' : 'badge-ghost'} cursor-pointer`}
+                        style={{
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: active ? 600 : 500,
+                          borderRadius: '20px',
+                          border: active ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                          background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                          color: active ? 'var(--color-gold)' : 'var(--color-text-secondary)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                        }}
+                      >
+                        {active && <Check size={12} strokeWidth={2.5} />}
+                        {p.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                {/* 2 Days Before */}
-                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
-                  <div>
-                    <div className="text-sm font-semibold">2 Days Before (48 Hours)</div>
-                    <div className="text-xs text-muted">Advance reminder 2 days before the event</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={remind2Days}
-                    onChange={() => handleToggleNotification(setRemind2Days, remind2Days)}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-                  />
+              {/* Custom Number of Days Stepper */}
+              <div
+                className="glass-card p-3 mb-3"
+                style={{
+                  borderRadius: '12px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--glass-border)',
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                  Custom Days Before Event
                 </div>
+                <div className="flex items-center gap-2">
+                  <div
+                    className="flex items-center"
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.3)',
+                      borderRadius: '8px',
+                      border: '1px solid var(--glass-border)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: '36px', height: '36px', color: 'var(--color-gold)' }}
+                      onClick={() => setCustomDaysValue((prev) => Math.max(0, prev - 1))}
+                    >
+                      <Minus size={14} />
+                    </button>
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      value={customDaysValue}
+                      onChange={(e) => setCustomDaysValue(Math.max(0, Math.min(60, parseInt(e.target.value) || 0)))}
+                      style={{
+                        width: '50px',
+                        textAlign: 'center',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#fff',
+                        fontWeight: 700,
+                        fontSize: '15px',
+                        fontFamily: 'var(--font-mono)',
+                        outline: 'none',
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      style={{ width: '36px', height: '36px', color: 'var(--color-gold)' }}
+                      onClick={() => setCustomDaysValue((prev) => Math.min(60, prev + 1))}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                  <span className="text-xs text-secondary flex-1">
+                    {customDaysValue === 0
+                      ? 'Same day alert'
+                      : customDaysValue === 1
+                        ? '1 day before'
+                        : `${customDaysValue} days before event`}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-xs btn-gold"
+                    onClick={handleAddCustomDay}
+                    disabled={reminderDays.includes(customDaysValue)}
+                    style={{ padding: '7px 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                  >
+                    {reminderDays.includes(customDaysValue) ? 'Added' : '+ Add Alert'}
+                  </button>
+                </div>
+              </div>
 
-                {/* 1 Day Before */}
-                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
-                  <div>
-                    <div className="text-sm font-semibold">1 Day Before (Tomorrow)</div>
-                    <div className="text-xs text-muted">Final preparation reminder the day before</div>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={remind1Day}
-                    onChange={() => handleToggleNotification(setRemind1Day, remind1Day)}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-                  />
+              {/* Active Reminder Schedule Summary */}
+              <div>
+                <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
+                  Active Reminder Schedule ({reminderDays.length} {reminderDays.length === 1 ? 'alert' : 'alerts'})
                 </div>
-
-                {/* Day of Event */}
-                <div className="glass-card flex items-center justify-between p-3" style={{ borderRadius: '12px' }}>
-                  <div>
-                    <div className="text-sm font-semibold">Day of Event (Today)</div>
-                    <div className="text-xs text-muted">Morning alert on the day of the event</div>
+                {reminderDays.length === 0 ? (
+                  <div
+                    className="p-3 text-center rounded-lg text-xs"
+                    style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.08)' }}
+                  >
+                    No reminders scheduled. Tap a preset day above to activate alerts.
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={remindDayOf}
-                    onChange={() => handleToggleNotification(setRemindDayOf, remindDayOf)}
-                    style={{ width: '18px', height: '18px', accentColor: 'var(--color-gold)', cursor: 'pointer' }}
-                  />
-                </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5">
+                    {reminderDays.map((days) => {
+                      const label =
+                        days === 0
+                          ? 'Day of Event (Today)'
+                          : days === 1
+                            ? '1 Day Before (Tomorrow)'
+                            : days === 7
+                              ? '7 Days Before (1 Week)'
+                              : `${days} Days Before Event`;
+                      return (
+                        <div
+                          key={days}
+                          className="flex items-center justify-between p-2.5 rounded-lg"
+                          style={{
+                            background: 'rgba(212, 175, 55, 0.07)',
+                            border: '1px solid rgba(212, 175, 55, 0.2)',
+                          }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <Bell size={13} style={{ color: 'var(--color-gold)' }} />
+                            <span style={{ fontSize: '13px', fontWeight: 500, color: '#fff' }}>{label}</span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-icon"
+                            style={{ width: '24px', height: '24px', color: 'var(--color-text-muted)' }}
+                            onClick={() => toggleReminderDay(days)}
+                            title="Remove reminder"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 

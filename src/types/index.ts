@@ -166,6 +166,7 @@ export interface Invitation {
   imageId?: string;
   imageUrl?: string;
   ocrText?: string;
+  reminderDays?: number[]; // Custom advance days before event to trigger reminders (e.g. [0, 1, 3, 7])
   createdAt: string;
   createdBy: string;
   updatedAt: string;
@@ -360,6 +361,7 @@ export interface CanonicalManualInvitationData {
   status: InvitationStatus;
   description: string;
   mainPerson?: string;
+  reminderDays?: number[];
   confidence: Record<string, number>;
 }
 

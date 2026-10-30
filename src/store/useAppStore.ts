@@ -1755,19 +1755,32 @@ export const useAppStore = create<AppState>()(
         const targetVipId = explicitVipId || activeVipId || currentUser?.vipId;
         if (!targetVipId) return;
 
-        let prefs = { remind7Days: true, remind2Days: true, remind1Day: true, remindDayOf: true };
+        let globalReminderDays: number[] = [0, 1, 2, 7];
+        let prefs = { remind7Days: true, remind2Days: true, remind1Day: true, remindDayOf: true, reminderDays: [0, 1, 2, 7] };
         try {
           const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('inv_notif_prefs') : null;
-          if (raw) prefs = { ...prefs, ...JSON.parse(raw) };
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            prefs = { ...prefs, ...parsed };
+            if (Array.isArray(parsed.reminderDays) && parsed.reminderDays.length > 0) {
+              globalReminderDays = [...new Set<number>(parsed.reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
+            } else {
+              const legacyDays: number[] = [];
+              if (parsed.remindDayOf ?? true) legacyDays.push(0);
+              if (parsed.remind1Day ?? true) legacyDays.push(1);
+              if (parsed.remind2Days ?? true) legacyDays.push(2);
+              if (parsed.remind7Days ?? true) legacyDays.push(7);
+              if (legacyDays.length > 0) globalReminderDays = legacyDays;
+            }
+          }
         } catch {}
 
         const upcomingEvents = invitations.filter((inv) => {
           const days = daysUntil(inv.date);
-          const allowed =
-            (days === 0 && prefs.remindDayOf) ||
-            (days === 1 && prefs.remind1Day) ||
-            (days === 2 && prefs.remind2Days) ||
-            (days === 7 && prefs.remind7Days);
+          const activeDaysForInv = Array.isArray(inv.reminderDays) && inv.reminderDays.length > 0
+            ? inv.reminderDays
+            : globalReminderDays;
+          const allowed = activeDaysForInv.includes(days);
           return (inv.status === 'confirmed' || inv.status === 'pending') && allowed;
         });
 
@@ -1776,7 +1789,15 @@ export const useAppStore = create<AppState>()(
         for (const inv of upcomingEvents) {
           const days = daysUntil(inv.date);
           const milestoneKey = days === 0 ? 'today' : days === 1 ? '1day' : days === 2 ? '2days' : days === 7 ? '7days' : `${days}days`;
-          const dayText = days === 0 ? 'Today' : days === 1 ? 'Tomorrow (1 day left)' : days === 2 ? 'in 2 days' : days === 7 ? 'in 7 days (1 week)' : `in ${days} days`;
+          const dayText = days === 0
+            ? 'Today'
+            : days === 1
+              ? 'Tomorrow (1 day left)'
+              : days === 2
+                ? 'in 2 days'
+                : days === 7
+                  ? 'in 7 days (1 week)'
+                  : `in ${days} days`;
           const reminderId = `notif-rem-${inv.id}-${milestoneKey}`;
 
           const existingList = [...newReminders, ...notifications];
@@ -1788,7 +1809,8 @@ export const useAppStore = create<AppState>()(
                 ((milestoneKey === 'today' && (n.message.toLowerCase().includes('today') || n.id.includes('-today'))) ||
                   (milestoneKey === '1day' && (n.message.toLowerCase().includes('tomorrow') || n.message.toLowerCase().includes('1 day') || n.id.includes('-1day'))) ||
                   (milestoneKey === '2days' && (n.message.toLowerCase().includes('in 2 days') || n.id.includes('-2days'))) ||
-                  (milestoneKey === '7days' && (n.message.toLowerCase().includes('7 days') || n.message.toLowerCase().includes('1 week') || n.id.includes('-7days')))))
+                  (milestoneKey === '7days' && (n.message.toLowerCase().includes('7 days') || n.message.toLowerCase().includes('1 week') || n.id.includes('-7days'))) ||
+                  (n.id.includes(`-${milestoneKey}`) || n.message.toLowerCase().includes(`in ${days} days`))))
           );
 
           if (!reminderExists) {
@@ -1800,7 +1822,7 @@ export const useAppStore = create<AppState>()(
               else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
               else if (days === 2) reminderTitle = `Upcoming in 2 Days (Pending): ${eventName}`;
               else if (days === 7) reminderTitle = `Upcoming in 7 Days (Pending): ${eventName}`;
-              else reminderTitle = `Upcoming in ${days} Days: ${eventName}`;
+              else reminderTitle = `Upcoming in ${days} Days (Pending): ${eventName}`;
             } else {
               if (days === 0) reminderTitle = `Event Today: ${eventName}`;
               else if (days === 1) reminderTitle = `Upcoming Event Tomorrow: ${eventName}`;
@@ -1830,6 +1852,19 @@ export const useAppStore = create<AppState>()(
             newReminders.push(reminderNotif);
             supabaseDbService.insertNotification(reminderNotif, targetVipId).catch(console.warn);
             mobileNotificationService.deliverNotification(reminderNotif).catch(console.warn);
+
+            const reminderRecord: Reminder = {
+              id: `rem-${inv.id}-${milestoneKey}`,
+              vipId: targetVipId,
+              eventId: inv.id,
+              eventTitle: eventName,
+              daysBeforeEvent: days,
+              date: inv.date,
+              message: reminderMessage,
+              read: false,
+              priority: inv.priority,
+            };
+            supabaseDbService.insertReminder(reminderRecord, targetVipId).catch(console.warn);
           }
         }
 

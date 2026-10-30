@@ -5,9 +5,10 @@ import {
   ArrowLeft, Calendar, Clock, MapPin, Sparkles, AlertTriangle,
   History, Gift, User, CheckCircle2, Trash2, ChevronRight,
   Edit3, X, FileText, Maximize2, Upload, Loader2, Camera, Plus,
+  Minus, Bell, Check,
 } from 'lucide-react';
 import {
-  formatFullDate, formatTime, formatDate,
+  formatFullDate, formatTime, formatDate, daysUntil,
   getInitials, formatCurrency, getRelationshipLabel, getGiftCategoryLabel,
   isInvitationPastByDate, getLocalTodayDateString,
 } from '../utils/formatters';
@@ -34,6 +35,7 @@ export default function EventDetailScreen() {
     currentPrivilegedUser,
     activeVipId,
     addActivityLog,
+    checkAndTriggerUpcomingReminders,
   } = useAppStore();
 
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -105,6 +107,54 @@ export default function EventDetailScreen() {
     (g) => g.eventId === invitation.id && g.direction === 'given'
   );
   const conflicts = detectScheduleConflicts(invitation.date, invitation.time, schedule, invitations.filter((i) => i.id !== invitation.id));
+
+  // ── Active reminder days for this event (custom or from global preferences) ──
+  const defaultGlobalReminderDays: number[] = (() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.reminderDays) && parsed.reminderDays.length > 0) {
+          return [...new Set<number>(parsed.reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
+        }
+      }
+    } catch {}
+    return [0, 1, 2, 7];
+  })();
+
+  const activeEventReminderDays: number[] = Array.isArray(invitation.reminderDays) && invitation.reminderDays.length > 0
+    ? invitation.reminderDays
+    : defaultGlobalReminderDays;
+
+  const [eventCustomDayInput, setEventCustomDayInput] = useState<number>(3);
+  const [reminderToast, setReminderToast] = useState<string | null>(null);
+
+  const handleToggleEventReminderDay = (day: number) => {
+    const current = Array.isArray(invitation.reminderDays) && invitation.reminderDays.length > 0
+      ? [...invitation.reminderDays]
+      : [...defaultGlobalReminderDays];
+    const exists = current.includes(day);
+    const updated = exists ? current.filter((d) => d !== day) : [...current, day].sort((a, b) => a - b);
+
+    updateInvitation(invitation.id, { reminderDays: updated });
+    setReminderToast(exists ? `Removed ${day}d reminder` : `Alert scheduled for ${day === 0 ? 'event day' : `${day} days before`}`);
+    setTimeout(() => setReminderToast(null), 3000);
+    checkAndTriggerUpcomingReminders();
+  };
+
+  const handleAddEventCustomDay = () => {
+    const valid = Math.max(0, Math.min(60, eventCustomDayInput));
+    const current = Array.isArray(invitation.reminderDays) && invitation.reminderDays.length > 0
+      ? [...invitation.reminderDays]
+      : [...defaultGlobalReminderDays];
+    if (!current.includes(valid)) {
+      const updated = [...current, valid].sort((a, b) => a - b);
+      updateInvitation(invitation.id, { reminderDays: updated });
+      setReminderToast(`Alert scheduled for ${valid === 0 ? 'event day' : `${valid} days before`}`);
+      setTimeout(() => setReminderToast(null), 3000);
+      checkAndTriggerUpcomingReminders();
+    }
+  };
 
   // Resolve photo URL from storage or direct URL
   useEffect(() => {
@@ -655,6 +705,197 @@ export default function EventDetailScreen() {
               )}
             </div>
           )}
+        </section>
+
+        {/* ── Protocol Reminders & Alert Schedule ────────────────────────────── */}
+        <section className="mb-4">
+          <div className="section-header flex items-center justify-between">
+            <span className="section-title">Reminder Schedule</span>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--color-accent)',
+                background: 'rgba(212, 175, 55, 0.12)',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                border: '1px solid rgba(212, 175, 55, 0.25)',
+              }}
+            >
+              {daysUntil(invitation.date) < 0
+                ? 'Past Event'
+                : daysUntil(invitation.date) === 0
+                  ? 'Event is Today'
+                  : daysUntil(invitation.date) === 1
+                    ? 'Event is Tomorrow'
+                    : `In ${daysUntil(invitation.date)} Days`}
+            </span>
+          </div>
+
+          <div className="ios-card" style={{ padding: '16px' }}>
+            <div className="flex items-center gap-2 mb-1.5">
+              <Bell size={15} style={{ color: 'var(--color-accent)' }} />
+              <span className="text-xs font-semibold text-white tracking-wide uppercase">
+                Alert Timing Before Event
+              </span>
+            </div>
+            <p style={{ fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '12px' }}>
+              Set how many days before this event you want to receive reminder notifications.
+            </p>
+
+            {reminderToast && (
+              <div
+                className="mb-3 p-2 rounded-lg text-center text-xs font-medium"
+                style={{ background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+              >
+                {reminderToast}
+              </div>
+            )}
+
+            {/* Quick preset chips */}
+            <div className="mb-3">
+              <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
+                Quick Presets
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  { d: 0, label: 'Same Day' },
+                  { d: 1, label: '1 Day' },
+                  { d: 2, label: '2 Days' },
+                  { d: 3, label: '3 Days' },
+                  { d: 5, label: '5 Days' },
+                  { d: 7, label: '7 Days' },
+                  { d: 14, label: '14 Days' },
+                ].map(({ d, label }) => {
+                  const active = activeEventReminderDays.includes(d);
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => handleToggleEventReminderDay(d)}
+                      className="badge cursor-pointer"
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: '11px',
+                        borderRadius: '16px',
+                        border: active ? '1px solid var(--color-accent)' : '1px solid var(--glass-border)',
+                        background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.03)',
+                        color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
+                        fontWeight: active ? 600 : 500,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      {active && <Check size={11} strokeWidth={2.5} />}
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Stepper for custom days before */}
+            <div
+              className="flex items-center gap-2 p-2.5 rounded-lg mb-3"
+              style={{ background: 'rgba(0, 0, 0, 0.25)', border: '1px solid var(--glass-border)' }}
+            >
+              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', flex: 1 }}>
+                Custom days before:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="btn-icon"
+                  style={{ width: '28px', height: '28px', color: 'var(--color-accent)' }}
+                  onClick={() => setEventCustomDayInput((prev) => Math.max(0, prev - 1))}
+                >
+                  <Minus size={13} />
+                </button>
+                <span
+                  style={{
+                    minWidth: '32px',
+                    textAlign: 'center',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-mono)',
+                    color: '#fff',
+                  }}
+                >
+                  {eventCustomDayInput}d
+                </span>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  style={{ width: '28px', height: '28px', color: 'var(--color-accent)' }}
+                  onClick={() => setEventCustomDayInput((prev) => Math.min(60, prev + 1))}
+                >
+                  <Plus size={13} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-xs btn-gold ml-1"
+                  style={{ fontSize: '11px', padding: '5px 10px' }}
+                  onClick={handleAddEventCustomDay}
+                  disabled={activeEventReminderDays.includes(eventCustomDayInput)}
+                >
+                  {activeEventReminderDays.includes(eventCustomDayInput) ? 'Scheduled' : '+ Add Alert'}
+                </button>
+              </div>
+            </div>
+
+            {/* Active scheduled alert times */}
+            <div>
+              <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
+                Scheduled Reminders ({activeEventReminderDays.length})
+              </div>
+              {activeEventReminderDays.length === 0 ? (
+                <div
+                  className="p-2.5 text-center rounded-lg text-xs"
+                  style={{ color: '#ef4444', background: 'rgba(239, 68, 68, 0.08)' }}
+                >
+                  No reminders scheduled for this event. Tap a preset day above.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {activeEventReminderDays.map((d) => {
+                    const label =
+                      d === 0
+                        ? 'Day of Event (Today)'
+                        : d === 1
+                          ? '1 Day Before Event'
+                          : d === 7
+                            ? '7 Days Before (1 Week)'
+                            : `${d} Days Before Event`;
+                    return (
+                      <div
+                        key={d}
+                        className="flex items-center justify-between p-2 rounded-lg"
+                        style={{
+                          background: 'rgba(212, 175, 55, 0.07)',
+                          border: '1px solid rgba(212, 175, 55, 0.2)',
+                        }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bell size={12} style={{ color: 'var(--color-accent)' }} />
+                          <span style={{ fontSize: '12px', fontWeight: 500, color: '#fff' }}>{label}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          style={{ width: '22px', height: '22px', color: 'var(--color-text-muted)' }}
+                          onClick={() => handleToggleEventReminderDay(d)}
+                          title="Remove alert"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
         </section>
       </div>
 

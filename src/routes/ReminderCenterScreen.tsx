@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, Bell, Clock, Calendar } from 'lucide-react';
+import { ArrowLeft, Bell, Clock, Calendar, Settings as SettingsIcon } from 'lucide-react';
 import { formatDate, daysUntil } from '../utils/formatters';
 import EventBadgeIcon from '../components/EventBadgeIcon';
 import PriorityBadge from '../components/PriorityBadge';
@@ -8,6 +8,19 @@ import PriorityBadge from '../components/PriorityBadge';
 export default function ReminderCenterScreen() {
   const navigate = useNavigate();
   const { invitations } = useAppStore();
+
+  const reminderDaysSummary: number[] = (() => {
+    try {
+      const saved = localStorage.getItem('inv_notif_prefs');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.reminderDays) && parsed.reminderDays.length > 0) {
+          return [...new Set<number>(parsed.reminderDays.map((x: any) => Number(x)))].sort((a: number, b: number) => a - b);
+        }
+      }
+    } catch {}
+    return [0, 1, 2, 7];
+  })();
 
   const confirmed = invitations
     .filter((i) => i.status === 'confirmed' && daysUntil(i.date) >= 0)
@@ -29,12 +42,49 @@ export default function ReminderCenterScreen() {
             <ArrowLeft size={18} />
           </button>
           <span className="top-bar-title">Protocol Reminders</span>
-          <div style={{ width: '36px' }} />
+          <button
+            type="button"
+            className="btn-icon"
+            style={{ color: 'var(--color-gold)' }}
+            onClick={() => navigate('/settings')}
+            title="Configure Reminder Days"
+          >
+            <SettingsIcon size={18} />
+          </button>
         </div>
       </div>
 
       {/* ── Scrollable Reminders Content ────────────────────────────────────── */}
       <div className="screen-scroll-body">
+        {/* Active Reminder Timing Pill */}
+        <div
+          className="flex items-center justify-between p-3 mb-3 rounded-xl"
+          style={{
+            background: 'rgba(212, 175, 55, 0.08)',
+            border: '1px solid rgba(212, 175, 55, 0.2)',
+          }}
+        >
+          <div className="flex items-center gap-2">
+            <Bell size={14} style={{ color: 'var(--color-gold)' }} />
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#fff' }}>
+                Active Reminder Schedule
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+                {reminderDaysSummary.map((d) => d === 0 ? 'Same Day' : `${d}d`).join(', ')} before events
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-xs btn-ghost text-gold"
+            style={{ fontSize: '11px', padding: '4px 8px' }}
+            onClick={() => navigate('/settings')}
+          >
+            Adjust Days
+          </button>
+        </div>
+
         {confirmed.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon"><Bell size={28} /></div>
