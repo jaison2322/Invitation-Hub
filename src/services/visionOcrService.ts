@@ -8,6 +8,7 @@
  */
 
 import type { ExtractedFields, EventType } from '../types';
+import { cleanExtractedNotes } from './scanMappingService';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,12 @@ export interface VisionOcrResult {
 const GEMINI_API_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
 
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+const GEMINI_MODELS = [
+  'gemini-flash-latest',
+  'gemini-3.5-flash',
+  'gemini-3.8-flash',
+  'gemini-flash-lite-latest',
+];
 
 const EXTRACTION_PROMPT = `You are an expert at reading invitation cards (wedding, birthday, engagement, house warming, etc.) in both Tamil and English.
 
@@ -46,7 +52,7 @@ Return ONLY valid JSON with these fields:
   "time": the event time in HH:MM 24-hour format (e.g. "18:00"),
   "venue": the venue/hall name (e.g. "Chennai Convention Centre"),
   "location": the city or area (e.g. "Chennai"),
-  "description": a brief 1-2 sentence summary of the invitation,
+  "description": ONLY specific additional notes printed on the card (e.g. RSVP contact numbers, parentage like S/o or D/o, dinner/lunch timings, dress code, "No gifts please", or specific program timings). NEVER include website URLs, search engine queries, printer/designer credits (e.g. Milan Mantra, Canva), or redundant summaries of the couple or venue. If there are no specific additional details, return null,
   "rawText": the full text you can read from the image (for reference),
   "confidence": your confidence in the extraction as a number from 0.0 to 1.0,
   "fieldConfidence": {
@@ -77,7 +83,7 @@ export async function extractInvitationFromImage(
   imageDataUrl: string,
   options: { timeout?: number } = {}
 ): Promise<VisionOcrResult> {
-  const { timeout = 12000 } = options;
+  const { timeout = 18000 } = options;
 
   // Try Gemini Vision first
   if (GEMINI_API_KEY) {
@@ -200,12 +206,9 @@ async function callGeminiVision(
 
       if (!response.ok) {
         const errText = await response.text().catch(() => 'Unknown error');
-        if (response.status === 404) {
-          console.warn(`[VisionOCR] Model ${model} returned 404, trying fallback model...`);
-          lastError = new Error(`Gemini model ${model} error 404: ${errText}`);
-          continue;
-        }
-        throw new Error(`Gemini API error ${response.status}: ${errText}`);
+        console.warn(`[VisionOCR] Model ${model} returned error ${response.status}: ${errText}. Trying next model...`);
+        lastError = new Error(`Gemini model ${model} error ${response.status}: ${errText}`);
+        continue;
       }
 
       const data = await response.json();
@@ -215,7 +218,9 @@ async function callGeminiVision(
         data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
       if (!textContent) {
-        throw new Error('Empty response from Gemini');
+        console.warn(`[VisionOCR] Model ${model} returned empty response, trying next model...`);
+        lastError = new Error(`Empty response from Gemini model ${model}`);
+        continue;
       }
 
       // Parse the JSON response
@@ -223,14 +228,9 @@ async function callGeminiVision(
       return parsed;
     } catch (err: any) {
       clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        throw new Error('Gemini Vision API timed out');
-      }
+      console.warn(`[VisionOCR] Model ${model} request failed (${err.name || 'Error'}: ${err.message}). Trying fallback model...`);
       lastError = err;
-      if (err.message && err.message.includes('404')) {
-        continue;
-      }
-      throw err;
+      continue;
     }
   }
 
@@ -282,7 +282,7 @@ function parseGeminiResponse(jsonText: string): VisionOcrResult {
     time: isValidTime(parsed.time) ? parsed.time : undefined,
     venue: parsed.venue || undefined,
     location: parsed.location || undefined,
-    description: parsed.description || undefined,
+    description: parsed.description ? (cleanExtractedNotes(parsed.description) || undefined) : undefined,
     confidence,
   };
 

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { daysUntil } from '../src/utils/formatters';
 import type { Invitation, Notification, GiftRecord } from '../src/types';
+import { extractAdditionalDetails } from '../src/services/aiService';
+import { cleanExtractedNotes } from '../src/services/scanMappingService';
 
 test('productionFeatures - 7-day reminder calculation and milestone key', () => {
   // Compute date exactly 7 calendar days in future using local date components
@@ -125,4 +127,34 @@ test('productionFeatures - gift records support both received and given directio
   assert.equal(givenList[0].id, 'gift-1');
   assert.equal(receivedList.length, 1);
   assert.equal(receivedList[0].id, 'gift-2');
+});
+
+test('productionFeatures - extractAdditionalDetails purges URLs and OCR noise while extracting parentage and notes', () => {
+  const userOcrText = "google.com/search?client= Milan Mantra : ச க ] ந oe A R 7 '4 வ - < 5 - Yo ' 0 Roy Family cordially invited you the engagement of Sidharth Roy S/ 0: My. Pravakar Roy E& Mrs. Sunita Roy RRitika Mitra D/ 0: Ram Prakesh and Sunita Mittal 1 ம்";
+  const extracted = extractAdditionalDetails(userOcrText);
+
+  assert.ok(extracted, 'Should extract meaningful notes');
+  assert.ok(!extracted.includes('google.com'), 'Must not contain google.com');
+  assert.ok(!extracted.includes('client='), 'Must not contain client=');
+  assert.ok(!extracted.includes('Milan Mantra'), 'Must not contain Milan Mantra watermark');
+  assert.ok(!extracted.includes('oe A R'), 'Must not contain isolated symbol noise');
+  assert.ok(extracted.includes('S/o: Mr. Pravakar Roy & Mrs. Sunita Roy'), 'Must extract corrected groom parentage');
+  assert.ok(extracted.includes('D/o: Ram Prakesh and Sunita Mittal'), 'Must extract bride parentage');
+});
+
+test('productionFeatures - extractAdditionalDetails extracts RSVP, food notice, and dress code cleanly', () => {
+  const cardWithDetails = "Wedding Reception of Ajay & Divya\non 25th Dec 2026 at 7 PM\nDinner to follow\nRSVP: +91 98401 23456\nDress Code: Ethnic / Traditional\nWith best compliments from Uncle and Aunt\nhttps://google.com/search?client=chrome";
+  const extracted = extractAdditionalDetails(cardWithDetails);
+
+  assert.ok(extracted, 'Should extract notes');
+  assert.ok(extracted.includes('RSVP: +91 98401 23456'), 'Should extract RSVP');
+  assert.ok(extracted.includes('Dinner to follow'), 'Should extract Dinner to follow');
+  assert.ok(extracted.includes('Dress Code: Ethnic / Traditional'), 'Should extract dress code');
+  assert.ok(!extracted.includes('https://'), 'Should strip URLs');
+});
+
+test('productionFeatures - cleanExtractedNotes returns empty for pure noise or URLs', () => {
+  const junkText = "https://google.com/search?client=chrome Milan Mantra !@#$%^&*() ச க ] ந oe A R";
+  const cleaned = cleanExtractedNotes(junkText);
+  assert.equal(cleaned, '', 'Pure junk/URLs must return empty string');
 });

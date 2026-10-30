@@ -31,6 +31,41 @@ export const VALID_EVENT_TYPES: EventType[] = [
 ];
 
 /**
+ * Cleans extracted notes, stripping URLs, search parameters, template watermarks, and OCR noise.
+ * Returns only meaningful notes, or empty string if no additional details exist.
+ */
+export function cleanExtractedNotes(rawNotes?: string | null): string {
+  if (!rawNotes || typeof rawNotes !== 'string') return '';
+
+  // 1. Strip URLs, query strings, and search engine parameters
+  let cleaned = rawNotes
+    .replace(/https?:\/\/[^\s]+/gi, '')
+    .replace(/(?:www\.)?[a-zA-Z0-9-]+\.(?:com|org|net|in|co|io|gov|edu|ai|me)[^\s]*/gi, '')
+    .replace(/\b(?:google\.com|search\?|client=|q=|source=|hl=)[^\s]*/gi, '')
+    .replace(/\b(?:Milan\s*Mantra|Canva|Shutterstock|Freepik|Pinterest|WeddingWire|Greetings\s*Island)\b[:\s-]*/gi, '')
+    .replace(/\b(?:Printed\s*by|Designed\s*by|Offset\s*Printers?|Cards?\s*Gallery)\b.*?(?=\n|$)/gi, '');
+
+  // 2. Strip random symbols & punctuation noise
+  cleaned = cleaned.replace(/[®©™<>[\]{}|~`^_+=*•★✦!@#$%^&*()\\/]+/g, ' ');
+
+  // 3. Filter lines to keep only meaningful text containing genuine words
+  const lines = cleaned
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => {
+      // Must contain at least one genuine word of 3+ letters
+      const genuineWords = l.split(/\s+/).filter((w) => /[a-zA-Z\u0B80-\u0BFF]{3,}/.test(w));
+      return genuineWords.length >= 1;
+    });
+
+  const result = lines.join('\n').trim();
+  const genuineWordsTotal = result.split(/\s+/).filter((w) => /[a-zA-Z\u0B80-\u0BFF]{3,}/.test(w));
+  if (genuineWordsTotal.length < 2) return '';
+
+  return result;
+}
+
+/**
  * Normalizes raw AI/OCR extraction into the exact Manual Add Invitation format.
  * No information is invented: unextracted fields remain empty or receive standard defaults.
  */
@@ -96,8 +131,8 @@ export function mapScanToManualForm(
   // 10. Status: default according to privileges ('confirmed' for VIP/manager, 'pending' for staff)
   const status: InvitationStatus = canConfirmIgnore ? 'confirmed' : 'pending';
 
-  // 11. Description / Notes / Dress Code / Gift Context
-  const description = (extracted.description || '').trim();
+  // 11. Description / Notes / Dress Code / Gift Context (clean & filter unwanted noise)
+  const description = cleanExtractedNotes(extracted.description);
 
   // 12. Confidence map
   const confidence = extracted.confidence || {};

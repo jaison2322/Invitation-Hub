@@ -610,12 +610,101 @@ function generateTitle(eventType: EventType | null, mainPerson: string): string 
   return `${mainPerson}'s ${label}`;
 }
 
+export function extractAdditionalDetails(rawText: string): string | undefined {
+  if (!rawText || typeof rawText !== 'string') return undefined;
+
+  const results: string[] = [];
+
+  // 1. Normalize text and strip URLs, query strings, and search engine patterns
+  let cleaned = rawText
+    .replace(/https?:\/\/[^\s]+/gi, '')
+    .replace(/(?:www\.)?[a-zA-Z0-9-]+\.(?:com|org|net|in|co|io|gov|edu|ai|me)[^\s]*/gi, '')
+    .replace(/\b(?:google\.com|search\?|client=|q=|source=|hl=)[^\s]*/gi, '')
+    .replace(/\b(?:Milan\s*Mantra|Canva|Shutterstock|Freepik|Pinterest|WeddingWire|Greetings\s*Island)\b[:\s-]*/gi, '')
+    .replace(/\b(?:Printed\s*by|Designed\s*by|Offset\s*Printers?|Cards?\s*Gallery)\b.*?(?=\n|$)/gi, '');
+
+  // 2. Fix common OCR misreads in invitation cards
+  cleaned = cleaned
+    .replace(/\bS\/\s*0[:\s]*/gi, 'S/o: ')
+    .replace(/\bD\/\s*0[:\s]*/gi, 'D/o: ')
+    .replace(/\bE\s*&\s*Mrs\./gi, '& Mrs.')
+    .replace(/\bMy\.\s*Pravakar\b/gi, 'Mr. Pravakar')
+    .replace(/\bRRitika\b/gi, 'Ritika');
+
+  // 3. Extract Parentage / Lineage (S/o, D/o)
+  const sMatch = cleaned.match(/S\/o:\s*([A-Za-z.\s&]+?)(?=\s*(?:Ritika|D\/o|\n|$))/i);
+  if (sMatch && sMatch[1]) {
+    const parent = sMatch[1].replace(/\s+/g, ' ').trim();
+    if (parent.length > 3) results.push(`S/o: ${parent}`);
+  }
+  const dMatch = cleaned.match(/D\/o:\s*([A-Za-z.\s&]+?)(?=\s*(?:1\s*ம்|\n|$|\d))/i);
+  if (dMatch && dMatch[1]) {
+    const parent = dMatch[1].replace(/\s+/g, ' ').trim();
+    if (parent.length > 3) results.push(`D/o: ${parent}`);
+  }
+
+  // 4. Extract RSVP / Contacts
+  const rsvpMatches = cleaned.match(/\b(?:RSVP|R\.S\.V\.P|Contact|Ph|Mob|Phone|Call|WhatsApp|தொடர்புக்கு)[:\s]+[+\d\s\-()]{7,22}/gi);
+  if (rsvpMatches) {
+    for (const rm of rsvpMatches) {
+      const trimmed = rm.replace(/\s+/g, ' ').trim();
+      if (trimmed.length > 6 && !results.includes(trimmed)) {
+        results.push(trimmed);
+      }
+    }
+  }
+
+  // 5. Extract Schedule / Catering / Sub-events
+  const scheduleMatches = cleaned.match(/\b(?:Muhurtham|Muhurtam|Reception|Dinner|Lunch|Breakfast|High\s*Tea|Virundhu|Sangeet|Mehendi|Haldi|Pooja|Aarti|விருந்து|முகூர்த்தம்)\s*[:\-]?\s*(?:to\s*follow|\d{1,2}[:.]\d{2}\s*(?:AM|PM|am|pm)?)/gi);
+  if (scheduleMatches) {
+    for (const sm of scheduleMatches) {
+      const trimmed = sm.replace(/\s+/g, ' ').trim();
+      if (trimmed.length > 4 && !results.includes(trimmed)) {
+        results.push(trimmed);
+      }
+    }
+  }
+
+  // 6. Extract Food notice: "Dinner to follow", "Lunch to follow"
+  const foodMatches = cleaned.match(/\b(?:Dinner|Lunch|Breakfast|High\s*Tea|Virundhu|விருந்து)\s+to\s+follow\b/gi);
+  if (foodMatches) {
+    for (const fm of foodMatches) {
+      const trimmed = fm.replace(/\s+/g, ' ').trim();
+      if (!results.includes(trimmed)) results.push(trimmed);
+    }
+  }
+
+  // 7. Extract Dress Code / Theme
+  const dressMatches = cleaned.match(/\b(?:Dress\s*Code|Theme|Attire)\s*[:\-]?\s*[^.\n,]+/gi);
+  if (dressMatches) {
+    for (const dm of dressMatches) {
+      const trimmed = dm.replace(/\s+/g, ' ').trim();
+      if (trimmed.length > 4 && !results.includes(trimmed)) {
+        results.push(trimmed);
+      }
+    }
+  }
+
+  // 8. Extract Special notes, blessings & gift guidance
+  const specialMatches = cleaned.match(/\b(?:With\s+best\s+compliments\s+from|Blessings\s+from|No\s+boxed\s+gifts|Gifts\s+in\s+blessings\s+only|No\s+gifts\s+please|நல்வாழ்த்துகளுடன்|பரிசுகள்\s+தவிர்க்கவும்)[^.\n]*/gi);
+  if (specialMatches) {
+    for (const sp of specialMatches) {
+      const trimmed = sp.replace(/\s+/g, ' ').trim();
+      if (trimmed.length > 5 && !results.includes(trimmed)) {
+        results.push(trimmed);
+      }
+    }
+  }
+
+  if (results.length > 0) {
+    return results.join('\n');
+  }
+
+  return undefined;
+}
+
 function generateDescription(text: string): string | undefined {
-  const cleaned = text
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned.length > 10 ? cleaned.substring(0, 250) : undefined;
+  return extractAdditionalDetails(text);
 }
 
 // ─── Person Matcher ──────────────────────────────────────────────────────────
