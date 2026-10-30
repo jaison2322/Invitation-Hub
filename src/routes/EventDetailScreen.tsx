@@ -129,6 +129,15 @@ export default function EventDetailScreen() {
   const [eventCustomDayInput, setEventCustomDayInput] = useState<number>(3);
   const [reminderToast, setReminderToast] = useState<string | null>(null);
 
+  const PRESET_EVENT_REMINDERS = [
+    { days: 0, label: 'Same Day', desc: 'Day of event' },
+    { days: 1, label: '1 Day Before', desc: '24h advance' },
+    { days: 2, label: '2 Days Before', desc: '48h advance' },
+    { days: 3, label: '3 Days Before', desc: '72h advance' },
+    { days: 7, label: '1 Week Before', desc: '7 days advance' },
+    { days: 14, label: '2 Weeks Before', desc: '14 days advance' },
+  ];
+
   const [editReminderDays, setEditReminderDays] = useState<number[]>([0, 1, 2, 7]);
   const [editCustomDaysValue, setEditCustomDaysValue] = useState<number>(3);
 
@@ -814,96 +823,178 @@ export default function EventDetailScreen() {
               </div>
             )}
 
-            {/* Quick preset chips */}
-            <div className="mb-3">
-              <div style={{ fontSize: '11px', color: 'var(--color-text-muted)', marginBottom: '6px' }}>
-                Quick Presets
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { d: 0, label: 'Same Day' },
-                  { d: 1, label: '1 Day' },
-                  { d: 2, label: '2 Days' },
-                  { d: 3, label: '3 Days' },
-                  { d: 5, label: '5 Days' },
-                  { d: 7, label: '7 Days' },
-                  { d: 14, label: '14 Days' },
-                ].map(({ d, label }) => {
-                  const active = activeEventReminderDays.includes(d);
-                  return (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => handleToggleEventReminderDay(d)}
-                      className="badge cursor-pointer"
+            {/* Structured 2-Column Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+              {PRESET_EVENT_REMINDERS.map((p) => {
+                const active = activeEventReminderDays.includes(p.days);
+                return (
+                  <button
+                    key={p.days}
+                    type="button"
+                    onClick={() => handleToggleEventReminderDay(p.days)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 10px',
+                      borderRadius: '10px',
+                      border: active ? '1.5px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                      background: active ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div
                       style={{
-                        padding: '5px 10px',
-                        fontSize: '11px',
-                        borderRadius: '16px',
-                        border: active ? '1px solid var(--color-accent)' : '1px solid var(--glass-border)',
-                        background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.03)',
-                        color: active ? 'var(--color-accent)' : 'var(--color-text-secondary)',
-                        fontWeight: active ? 600 : 500,
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
+                        justifyContent: 'center',
+                        flexShrink: 0,
+                        background: active ? 'var(--color-gold)' : 'transparent',
+                        border: active ? 'none' : '1.5px solid var(--color-text-muted)',
+                        color: active ? '#000000' : 'transparent',
                       }}
                     >
-                      {active && <Check size={11} strokeWidth={2.5} />}
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
+                      {active && <Check size={11} strokeWidth={3} />}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: active ? 600 : 500,
+                          color: active ? 'var(--color-gold)' : 'var(--color-text-primary)',
+                          lineHeight: 1.2,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {p.label}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '10px',
+                          color: 'var(--color-text-muted)',
+                          marginTop: '2px',
+                          lineHeight: 1.1,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {p.desc}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Stepper for custom days before */}
             <div
-              className="flex items-center gap-2 p-2.5 rounded-lg mb-3"
-              style={{ background: 'rgba(212, 175, 55, 0.06)', border: '1px solid var(--glass-border)' }}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '10px',
+                background: 'rgba(212, 175, 55, 0.04)',
+                border: '1px solid var(--glass-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                marginBottom: '12px',
+              }}
             >
-              <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)', flex: 1 }}>
-                Custom days before:
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  className="btn-icon"
-                  style={{ width: '28px', height: '28px', color: 'var(--color-accent)' }}
-                  onClick={() => setEventCustomDayInput((prev) => Math.max(0, prev - 1))}
-                >
-                  <Minus size={13} />
-                </button>
-                <span
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                  Custom:
+                </span>
+                <div
                   style={{
-                    minWidth: '32px',
-                    textAlign: 'center',
-                    fontWeight: 700,
-                    fontSize: '13px',
-                    fontFamily: 'var(--font-mono)',
-                    color: 'var(--color-text-primary)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    background: 'var(--color-bg-primary)',
+                    border: '1px solid var(--glass-border)',
+                    borderRadius: '7px',
+                    overflow: 'hidden',
                   }}
                 >
-                  {eventCustomDayInput}d
+                  <button
+                    type="button"
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--color-gold)',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setEventCustomDayInput((prev) => Math.max(0, prev - 1))}
+                    aria-label="Decrease days"
+                  >
+                    <Minus size={12} strokeWidth={2.5} />
+                  </button>
+                  <div
+                    style={{
+                      width: '32px',
+                      textAlign: 'center',
+                      fontWeight: 700,
+                      fontSize: '12px',
+                      fontFamily: 'var(--font-mono)',
+                      color: 'var(--color-text-primary)',
+                    }}
+                  >
+                    {eventCustomDayInput}d
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: 'none',
+                      background: 'transparent',
+                      color: 'var(--color-gold)',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setEventCustomDayInput((prev) => Math.min(60, prev + 1))}
+                    aria-label="Increase days"
+                  >
+                    <Plus size={12} strokeWidth={2.5} />
+                  </button>
+                </div>
+                <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                  {eventCustomDayInput === 0
+                    ? 'Day-of'
+                    : eventCustomDayInput === 1
+                      ? '1 day prior'
+                      : `${eventCustomDayInput}d prior`}
                 </span>
-                <button
-                  type="button"
-                  className="btn-icon"
-                  style={{ width: '28px', height: '28px', color: 'var(--color-accent)' }}
-                  onClick={() => setEventCustomDayInput((prev) => Math.min(60, prev + 1))}
-                >
-                  <Plus size={13} />
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-xs btn-gold ml-1"
-                  style={{ fontSize: '11px', padding: '5px 10px' }}
-                  onClick={handleAddEventCustomDay}
-                  disabled={activeEventReminderDays.includes(eventCustomDayInput)}
-                >
-                  {activeEventReminderDays.includes(eventCustomDayInput) ? 'Scheduled' : '+ Add Alert'}
-                </button>
               </div>
+
+              <button
+                type="button"
+                className="btn btn-xs btn-gold"
+                style={{
+                  padding: '6px 12px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  borderRadius: '7px',
+                }}
+                onClick={handleAddEventCustomDay}
+                disabled={activeEventReminderDays.includes(eventCustomDayInput)}
+              >
+                {activeEventReminderDays.includes(eventCustomDayInput) ? '✓ Scheduled' : '+ Add Alert'}
+              </button>
             </div>
 
             {/* Active scheduled alert times */}
@@ -1201,53 +1292,96 @@ export default function EventDetailScreen() {
               </div>
 
               {/* Reminder Schedule */}
-              <div className="glass-card p-3" style={{ borderRadius: '12px' }}>
+              <div className="glass-card p-3.5" style={{ borderRadius: '14px' }}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Bell size={13} style={{ color: 'var(--color-gold)' }} />
-                    <span style={{ fontWeight: 600 }}>Reminder Schedule</span>
+                    <Bell size={14} style={{ color: 'var(--color-gold)' }} />
+                    <span style={{ fontWeight: 600, fontSize: '13.5px' }}>Reminder Schedule</span>
                   </label>
-                  <span className="text-secondary" style={{ fontSize: '0.7rem' }}>
-                    {editReminderDays.length} {editReminderDays.length === 1 ? 'alert' : 'alerts'}
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      background: editReminderDays.length > 0 ? 'rgba(212, 175, 55, 0.15)' : 'rgba(239, 68, 68, 0.1)',
+                      color: editReminderDays.length > 0 ? 'var(--color-gold)' : '#ef4444',
+                      border: editReminderDays.length > 0 ? '1px solid rgba(212, 175, 55, 0.3)' : '1px solid rgba(239, 68, 68, 0.2)',
+                    }}
+                  >
+                    {editReminderDays.length} {editReminderDays.length === 1 ? 'alert set' : 'alerts set'}
                   </span>
                 </div>
-                <p className="text-secondary" style={{ fontSize: '0.72rem', marginBottom: '10px' }}>
-                  Set how many days before this event you want to receive reminder notifications
+                <p className="text-secondary" style={{ fontSize: '11.5px', marginBottom: '12px' }}>
+                  Choose advance notification milestones before the event date
                 </p>
 
-                {/* Quick preset chips */}
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  {[
-                    { days: 0, label: 'Same Day' },
-                    { days: 1, label: '1 Day' },
-                    { days: 2, label: '2 Days' },
-                    { days: 3, label: '3 Days' },
-                    { days: 5, label: '5 Days' },
-                    { days: 7, label: '7 Days (1 wk)' },
-                    { days: 14, label: '14 Days (2 wks)' },
-                  ].map((p) => {
+                {/* Structured 2-Column Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                  {PRESET_EVENT_REMINDERS.map((p) => {
                     const active = editReminderDays.includes(p.days);
                     return (
                       <button
                         key={p.days}
                         type="button"
                         onClick={() => toggleEditReminderDay(p.days)}
-                        className={`badge ${active ? 'badge-gold' : 'badge-ghost'} cursor-pointer`}
                         style={{
-                          padding: '5px 10px',
-                          fontSize: '11px',
-                          fontWeight: active ? 600 : 500,
-                          borderRadius: '20px',
-                          border: active ? '1px solid var(--color-gold)' : '1px solid var(--glass-border)',
-                          background: active ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.04)',
-                          color: active ? 'var(--color-gold)' : 'var(--color-text-secondary)',
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '4px',
+                          gap: '8px',
+                          padding: '10px 10px',
+                          borderRadius: '10px',
+                          border: active ? '1.5px solid var(--color-gold)' : '1px solid var(--glass-border)',
+                          background: active ? 'rgba(212, 175, 55, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                          cursor: 'pointer',
+                          textAlign: 'left',
+                          transition: 'all 0.15s ease',
                         }}
                       >
-                        {active && <Check size={11} strokeWidth={2.5} />}
-                        {p.label}
+                        <div
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            background: active ? 'var(--color-gold)' : 'transparent',
+                            border: active ? 'none' : '1.5px solid var(--color-text-muted)',
+                            color: active ? '#000000' : 'transparent',
+                          }}
+                        >
+                          {active && <Check size={11} strokeWidth={3} />}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: '12.5px',
+                              fontWeight: active ? 600 : 500,
+                              color: active ? 'var(--color-gold)' : 'var(--color-text-primary)',
+                              lineHeight: 1.2,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {p.label}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: '10px',
+                              color: 'var(--color-text-muted)',
+                              marginTop: '2px',
+                              lineHeight: 1.1,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                          >
+                            {p.desc}
+                          </div>
+                        </div>
                       </button>
                     );
                   })}
@@ -1255,107 +1389,160 @@ export default function EventDetailScreen() {
 
                 {/* Custom Days Stepper */}
                 <div
-                  className="flex items-center gap-2 p-2 rounded-lg"
                   style={{
-                    background: 'rgba(255, 255, 255, 0.03)',
+                    padding: '8px 10px',
+                    borderRadius: '10px',
+                    background: 'rgba(212, 175, 55, 0.04)',
                     border: '1px solid var(--glass-border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '8px',
                   }}
                 >
-                  <div
-                    className="flex items-center"
-                    style={{
-                      background: 'rgba(212, 175, 55, 0.05)',
-                      borderRadius: '6px',
-                      border: '1px solid var(--glass-border)',
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      style={{ width: '30px', height: '30px', color: 'var(--color-gold)' }}
-                      onClick={() => setEditCustomDaysValue((prev) => Math.max(0, prev - 1))}
-                    >
-                      <Minus size={12} />
-                    </button>
-                    <input
-                      type="number"
-                      min="0"
-                      max="60"
-                      value={editCustomDaysValue}
-                      onChange={(e) => setEditCustomDaysValue(Math.max(0, Math.min(60, parseInt(e.target.value) || 0)))}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '11.5px', fontWeight: 600, color: 'var(--color-text-secondary)' }}>
+                      Custom:
+                    </span>
+                    <div
                       style={{
-                        width: '40px',
-                        textAlign: 'center',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--color-text-primary)',
-                        fontWeight: 700,
-                        fontSize: '13px',
-                        fontFamily: 'var(--font-mono)',
-                        outline: 'none',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        background: 'var(--color-bg-primary)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '7px',
+                        overflow: 'hidden',
                       }}
-                    />
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      style={{ width: '30px', height: '30px', color: 'var(--color-gold)' }}
-                      onClick={() => setEditCustomDaysValue((prev) => Math.min(60, prev + 1))}
                     >
-                      <Plus size={12} />
-                    </button>
+                      <button
+                        type="button"
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--color-gold)',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setEditCustomDaysValue((prev) => Math.max(0, prev - 1))}
+                        aria-label="Decrease days"
+                      >
+                        <Minus size={12} strokeWidth={2.5} />
+                      </button>
+                      <div
+                        style={{
+                          width: '32px',
+                          textAlign: 'center',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          fontFamily: 'var(--font-mono)',
+                          color: 'var(--color-text-primary)',
+                        }}
+                      >
+                        {editCustomDaysValue}d
+                      </div>
+                      <button
+                        type="button"
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          border: 'none',
+                          background: 'transparent',
+                          color: 'var(--color-gold)',
+                          cursor: 'pointer',
+                        }}
+                        onClick={() => setEditCustomDaysValue((prev) => Math.min(60, prev + 1))}
+                        aria-label="Increase days"
+                      >
+                        <Plus size={12} strokeWidth={2.5} />
+                      </button>
+                    </div>
+                    <span style={{ fontSize: '11px', color: 'var(--color-text-muted)' }}>
+                      {editCustomDaysValue === 0
+                        ? 'Day-of'
+                        : editCustomDaysValue === 1
+                          ? '1 day prior'
+                          : `${editCustomDaysValue}d prior`}
+                    </span>
                   </div>
-                  <span className="text-xs text-secondary flex-1" style={{ fontSize: '11px' }}>
-                    {editCustomDaysValue === 0
-                      ? 'Same day alert'
-                      : editCustomDaysValue === 1
-                        ? '1 day before'
-                        : `${editCustomDaysValue} days before event`}
-                  </span>
+
                   <button
                     type="button"
                     className="btn btn-xs btn-gold"
                     onClick={handleAddEditCustomDay}
                     disabled={editReminderDays.includes(editCustomDaysValue)}
-                    style={{ padding: '5px 10px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      whiteSpace: 'nowrap',
+                      borderRadius: '7px',
+                    }}
                   >
-                    {editReminderDays.includes(editCustomDaysValue) ? 'Added' : '+ Add Alert'}
+                    {editReminderDays.includes(editCustomDaysValue) ? '✓ Added' : '+ Add Alert'}
                   </button>
                 </div>
 
                 {/* Active Schedule Badges */}
-                {editReminderDays.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {editReminderDays.map((d) => (
-                      <span
-                        key={d}
-                        className="flex items-center gap-1 px-2 py-0.5 rounded text-xs"
-                        style={{
-                          background: 'rgba(212, 175, 55, 0.1)',
-                          border: '1px solid rgba(212, 175, 55, 0.25)',
-                          color: 'var(--color-gold)',
-                          fontSize: '11px',
-                        }}
-                      >
-                        <Bell size={10} />
-                        {d === 0 ? 'Same Day' : d === 1 ? '1d Before' : `${d}d Before`}
-                        <button
-                          type="button"
-                          onClick={() => toggleEditReminderDay(d)}
+                {editReminderDays.length > 0 ? (
+                  <div style={{ marginTop: '10px' }}>
+                    <div style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '5px' }}>
+                      Active Schedule:
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {editReminderDays.map((d) => (
+                        <span
+                          key={d}
+                          className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs"
                           style={{
-                            background: 'none',
-                            border: 'none',
-                            color: 'var(--color-text-muted)',
-                            cursor: 'pointer',
-                            padding: '0 2px',
-                            display: 'flex',
-                            alignItems: 'center',
+                            background: 'rgba(212, 175, 55, 0.12)',
+                            border: '1px solid rgba(212, 175, 55, 0.3)',
+                            color: 'var(--color-gold)',
+                            fontSize: '11px',
+                            fontWeight: 500,
                           }}
                         >
-                          <X size={11} />
-                        </button>
-                      </span>
-                    ))}
+                          <Bell size={10} />
+                          {d === 0 ? 'Same Day' : d === 1 ? '1 Day Prior' : d === 7 ? '1 Week Prior' : d === 14 ? '2 Weeks Prior' : `${d}d Prior`}
+                          <button
+                            type="button"
+                            onClick={() => toggleEditReminderDay(d)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: 'var(--color-text-muted)',
+                              cursor: 'pointer',
+                              padding: '0 2px',
+                              display: 'flex',
+                              alignItems: 'center',
+                            }}
+                            title="Remove alert"
+                          >
+                            <X size={11} />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px',
+                      borderRadius: '8px',
+                      background: 'rgba(239, 68, 68, 0.08)',
+                      color: '#ef4444',
+                      fontSize: '11px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    No reminders scheduled. Tap any option above to set alert timings.
                   </div>
                 )}
               </div>
