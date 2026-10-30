@@ -8,7 +8,6 @@ import {
   MapPin,
   Building2,
   User,
-  Tag,
   AlertTriangle,
   Check,
   Crown,
@@ -28,8 +27,8 @@ import {
   Plus,
 } from 'lucide-react';
 import type { EventType, Priority, InvitationStatus, CanonicalManualInvitationData } from '../types';
-import { getEventTypeLabel, isInvitationPastByDate } from '../utils/formatters';
-import { mapScanToManualForm, saveCanonicalInvitation, VALID_EVENT_TYPES } from '../services/scanMappingService';
+import { isInvitationPastByDate } from '../utils/formatters';
+import { mapScanToManualForm, saveCanonicalInvitation } from '../services/scanMappingService';
 import { getCachedScanImage } from '../utils/imagePreprocess';
 import { permissionService } from '../services/permissionService';
 import ContactSearchDropdown from '../components/ContactSearchDropdown';
@@ -711,55 +710,34 @@ export default function ExtractedDetailsScreen() {
             />
           </div>
 
-          {/* 3. Event Type & Priority Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-            <div>
-              <label className="label">
-                <Tag size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Event Category
-                {getConfidenceBadge('eventType')}
-              </label>
-              <select
-                className="select"
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value as EventType)}
+          {/* 3. Priority */}
+          <div>
+            <label className="label">
+              <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+              Priority
+            </label>
+            <select
+              className="select"
+              value={priority}
+              disabled={!canChangePriority}
+              onChange={(e) => setPriority(e.target.value as Priority)}
+            >
+              <option value="high">High Priority</option>
+              <option value="medium">Medium Priority</option>
+              <option value="low">Low Priority</option>
+            </select>
+            {!canChangePriority && (
+              <span
+                style={{
+                  fontSize: '0.65rem',
+                  color: 'var(--color-text-muted)',
+                  marginTop: '2px',
+                  display: 'block',
+                }}
               >
-                {VALID_EVENT_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {getEventTypeLabel(t)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="label">
-                <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Priority
-              </label>
-              <select
-                className="select"
-                value={priority}
-                disabled={!canChangePriority}
-                onChange={(e) => setPriority(e.target.value as Priority)}
-              >
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
-              </select>
-              {!canChangePriority && (
-                <span
-                  style={{
-                    fontSize: '0.65rem',
-                    color: 'var(--color-text-muted)',
-                    marginTop: '2px',
-                    display: 'block',
-                  }}
-                >
-                  Priority set by VIP rule
-                </span>
-              )}
-            </div>
+                Priority set by VIP rule
+              </span>
+            )}
           </div>
 
           {/* 4. Date & Time Grid */}

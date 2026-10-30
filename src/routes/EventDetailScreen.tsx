@@ -1148,31 +1148,6 @@ export default function EventDetailScreen() {
                 />
               </div>
 
-              {/* 2. Event Category */}
-              <div>
-                <label className="label">Event Category</label>
-                <select
-                  className="select"
-                  value={editEventType}
-                  onChange={(e) => setEditEventType(e.target.value as EventType)}
-                >
-                  <option value="wedding">Wedding</option>
-                  <option value="engagement">Engagement</option>
-                  <option value="reception">Reception</option>
-                  <option value="birthday">Birthday</option>
-                  <option value="anniversary">Anniversary</option>
-                  <option value="house_warming">House Warming</option>
-                  <option value="baby_shower">Baby Shower</option>
-                  <option value="business_event">Business Event</option>
-                  <option value="cultural">Cultural</option>
-                  <option value="religious">Religious</option>
-                  <option value="graduation">Graduation</option>
-                  <option value="retirement">Retirement</option>
-                  <option value="funeral">Funeral</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-
               {/* 3. Event Title */}
               <div>
                 <label className="label">Event Title *</label>

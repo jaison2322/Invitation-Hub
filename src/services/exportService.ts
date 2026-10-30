@@ -103,7 +103,6 @@ function formatEventTime(timeStr?: string): string {
 export interface UpcomingExportRow {
   'Host Name': string;
   'Contact Details': string;
-  'Event Category': string;
   'Event Details': string;
   'Event Date': string;
   'Event Time': string;
@@ -114,7 +113,6 @@ export interface UpcomingExportRow {
 export const UPCOMING_EXPORT_HEADERS = [
   'Host Name',
   'Contact Details',
-  'Event Category',
   'Event Details',
   'Event Date',
   'Event Time',
@@ -189,7 +187,6 @@ export function getUpcomingExportRows({
     return {
       'Host Name': hostName,
       'Contact Details': contactDetails,
-      'Event Category': eventCategory,
       'Event Details': eventDetails,
       'Event Date': formattedDate,
       'Event Time': formattedTimeStr,
@@ -227,8 +224,7 @@ export async function exportUpcomingEventsToExcel({
     ws['!cols'] = [
       { wch: Math.max(16, ...rows.map((r) => String(r['Host Name'] || '').length + 3)) },
       { wch: Math.max(18, ...rows.map((r) => String(r['Contact Details'] || '').length + 3)) },
-      { wch: Math.max(18, ...rows.map((r) => String(r['Event Category'] || '').length + 3)) },
-      { wch: Math.max(24, ...rows.map((r) => String(r['Event Details'] || '').length + 3)) },
+      { wch: Math.max(26, ...rows.map((r) => String(r['Event Details'] || '').length + 3)) },
       { wch: Math.max(16, ...rows.map((r) => String(r['Event Date'] || '').length + 3)) },
       { wch: Math.max(14, ...rows.map((r) => String(r['Event Time'] || '').length + 3)) },
       { wch: Math.max(18, ...rows.map((r) => String(r['Venue'] || '').length + 3)) },
@@ -383,7 +379,6 @@ export async function exportUpcomingEventsToPdf({
     const bodyData = rows.map((r) => [
       r['Host Name'] || '—',
       r['Contact Details'] || '—',
-      r['Event Category'] || '—',
       r['Event Details'] || '—',
       r['Event Date'] || '—',
       r['Event Time'] || '—',
@@ -421,14 +416,13 @@ export async function exportUpcomingEventsToPdf({
         fillColor: [249, 250, 252],
       },
       columnStyles: {
-        0: { cellWidth: 32 }, // Host Name
-        1: { cellWidth: 28 }, // Contact Details
-        2: { cellWidth: 26 }, // Event Category
-        3: { cellWidth: 48 }, // Event Details
-        4: { cellWidth: 25 }, // Event Date
-        5: { cellWidth: 22 }, // Event Time
-        6: { cellWidth: 42 }, // Venue
-        7: { cellWidth: 46 }, // Location
+        0: { cellWidth: 36 }, // Host Name
+        1: { cellWidth: 32 }, // Contact Details
+        2: { cellWidth: 54 }, // Event Details
+        3: { cellWidth: 26 }, // Event Date
+        4: { cellWidth: 24 }, // Event Time
+        5: { cellWidth: 46 }, // Venue
+        6: { cellWidth: 50 }, // Location
       },
     });
 

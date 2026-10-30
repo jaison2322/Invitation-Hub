@@ -8,7 +8,6 @@ import {
   MapPin,
   Building2,
   User,
-  Tag,
   AlertTriangle,
   Check,
   Crown,
@@ -25,7 +24,7 @@ import {
   Plus,
 } from 'lucide-react';
 import type { EventType, Priority, InvitationStatus, RelationshipType } from '../types';
-import { getEventTypeLabel, isInvitationPastByDate } from '../utils/formatters';
+import { isInvitationPastByDate } from '../utils/formatters';
 import { permissionService } from '../services/permissionService';
 import { storageService } from '../services/storageService';
 import { generateId } from '../utils/id';
@@ -142,22 +141,6 @@ export default function AddInvitationScreen() {
   const [newPersonName, setNewPersonName] = useState('');
   const [newPersonPhone, setNewPersonPhone] = useState('');
   const [newPersonRel, setNewPersonRel] = useState<RelationshipType>('friend');
-
-  const eventTypes: EventType[] = [
-    'wedding',
-    'engagement',
-    'reception',
-    'birthday',
-    'anniversary',
-    'house_warming',
-    'baby_shower',
-    'business_event',
-    'cultural',
-    'religious',
-    'graduation',
-    'retirement',
-    'other',
-  ];
 
   // Conflict Check
   const hasDateConflict = date ? invitations.some((i) => i.date === date && i.status !== 'ignored') || schedule.some((s) => s.date === date) : false;
@@ -758,47 +741,27 @@ export default function AddInvitationScreen() {
             />
           </div>
 
-          {/* Event Type & Priority Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-3)' }}>
-            <div>
-              <label className="label">
-                <Tag size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Event Category
-              </label>
-              <select
-                className="select"
-                value={eventType}
-                onChange={(e) => setEventType(e.target.value as EventType)}
-              >
-                {eventTypes.map((t) => (
-                  <option key={t} value={t}>
-                    {getEventTypeLabel(t)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="label">
-                <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
-                Priority
-              </label>
-              <select
-                className="select"
-                value={priority}
-                disabled={!canChangePriority}
-                onChange={(e) => setPriority(e.target.value as Priority)}
-              >
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
-              </select>
-              {!canChangePriority && (
-                <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '2px', display: 'block' }}>
-                  Priority set by VIP rule
-                </span>
-              )}
-            </div>
+          {/* Priority */}
+          <div>
+            <label className="label">
+              <Shield size={12} style={{ display: 'inline', marginRight: '4px', verticalAlign: 'middle' }} />
+              Priority
+            </label>
+            <select
+              className="select"
+              value={priority}
+              disabled={!canChangePriority}
+              onChange={(e) => setPriority(e.target.value as Priority)}
+            >
+              <option value="high">High Priority</option>
+              <option value="medium">Medium Priority</option>
+              <option value="low">Low Priority</option>
+            </select>
+            {!canChangePriority && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '2px', display: 'block' }}>
+                Priority set by VIP rule
+              </span>
+            )}
           </div>
 
           {/* Date & Time Grid */}
