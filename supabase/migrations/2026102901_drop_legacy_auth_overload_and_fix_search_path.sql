@@ -16,3 +16,4 @@ ALTER FUNCTION public.check_vip_principal_exists(text) SET search_path = public,
 ALTER FUNCTION public.handle_new_notification() SET search_path = public, pg_temp;
 
 COMMIT;
+

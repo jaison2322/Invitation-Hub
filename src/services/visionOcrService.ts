@@ -30,7 +30,7 @@ export interface VisionOcrResult {
 const GEMINI_API_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
 
 const EXTRACTION_PROMPT = `You are an expert at reading invitation cards (wedding, birthday, engagement, house warming, etc.) in both Tamil and English.
 
@@ -160,8 +160,6 @@ async function callGeminiVision(
   const mimeType = match[1];
   const base64Data = match[2];
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-
   const requestBody = {
     contents: [
       {
@@ -183,44 +181,60 @@ async function callGeminiVision(
     },
   };
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  let lastError: Error | null = null;
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
+  for (const model of GEMINI_MODELS) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    clearTimeout(timeoutId);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => 'Unknown error');
-      throw new Error(`Gemini API error ${response.status}: ${errText}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => 'Unknown error');
+        if (response.status === 404) {
+          console.warn(`[VisionOCR] Model ${model} returned 404, trying fallback model...`);
+          lastError = new Error(`Gemini model ${model} error 404: ${errText}`);
+          continue;
+        }
+        throw new Error(`Gemini API error ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json();
+
+      // Extract the text response from Gemini
+      const textContent =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      if (!textContent) {
+        throw new Error('Empty response from Gemini');
+      }
+
+      // Parse the JSON response
+      const parsed = parseGeminiResponse(textContent);
+      return parsed;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Gemini Vision API timed out');
+      }
+      lastError = err;
+      if (err.message && err.message.includes('404')) {
+        continue;
+      }
+      throw err;
     }
-
-    const data = await response.json();
-
-    // Extract the text response from Gemini
-    const textContent =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-
-    if (!textContent) {
-      throw new Error('Empty response from Gemini');
-    }
-
-    // Parse the JSON response
-    const parsed = parseGeminiResponse(textContent);
-    return parsed;
-  } catch (err: any) {
-    clearTimeout(timeoutId);
-    if (err.name === 'AbortError') {
-      throw new Error('Gemini Vision API timed out');
-    }
-    throw err;
   }
+
+  throw lastError || new Error('All Gemini models failed');
 }
 
 /**
