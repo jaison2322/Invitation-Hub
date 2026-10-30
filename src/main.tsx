@@ -63,6 +63,17 @@ if (typeof window !== 'undefined') {
       } catch {}
     }
   });
+
+  // Blur date/time input after selection so no blue subfield focus or selection handles linger
+  window.addEventListener('change', (e: Event) => {
+    const target = e.target as HTMLElement | null;
+    if (
+      target instanceof HTMLInputElement &&
+      (target.type === 'date' || target.type === 'time' || target.type === 'datetime-local')
+    ) {
+      target.blur();
+    }
+  });
 }
 
 createRoot(document.getElementById('root')!).render(
