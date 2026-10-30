@@ -549,8 +549,8 @@ svg {
   -webkit-user-drag: none;
 }
 
-/* Explicit whitelist for genuine user text editing fields */
-input,
+/* Explicit whitelist for genuine user text editing fields (excluding date/time pickers) */
+input:not([type="date"]):not([type="time"]):not([type="datetime-local"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]),
 textarea,
 [contenteditable="true"],
 .selectable-text {
@@ -559,6 +559,18 @@ textarea,
   -ms-user-select: text !important;
   user-select: text !important;
   -webkit-touch-callout: default !important;
+}
+
+/* Date & Time Inputs: disable subfield text selection and treat whole box as a picker trigger */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  cursor: pointer;
 }
 
 /* Ambient background glow */
@@ -1478,6 +1490,9 @@ input[type="datetime-local"].input {
   align-items: center;
   line-height: normal;
   padding: 10px 14px;
+  cursor: pointer;
+  -webkit-user-select: none !important;
+  user-select: none !important;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator,

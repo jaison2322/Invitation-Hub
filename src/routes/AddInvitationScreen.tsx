@@ -772,10 +772,15 @@ export default function AddInvitationScreen() {
                 Event Date *
               </label>
               <input
-                className="input"
+                className="input cursor-pointer"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker();
+                  } catch {}
+                }}
                 required
               />
             </div>
@@ -786,10 +791,15 @@ export default function AddInvitationScreen() {
                 Time
               </label>
               <input
-                className="input"
+                className="input cursor-pointer"
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker();
+                  } catch {}
+                }}
               />
             </div>
           </div>

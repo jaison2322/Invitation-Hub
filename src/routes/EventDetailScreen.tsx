@@ -1167,9 +1167,14 @@ export default function EventDetailScreen() {
                   <label className="label">Date *</label>
                   <input
                     type="date"
-                    className="input"
+                    className="input cursor-pointer"
                     value={editDate}
                     onChange={(e) => setEditDate(e.target.value)}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker();
+                      } catch {}
+                    }}
                     required
                   />
                 </div>
@@ -1177,9 +1182,14 @@ export default function EventDetailScreen() {
                   <label className="label">Time</label>
                   <input
                     type="time"
-                    className="input"
+                    className="input cursor-pointer"
                     value={editTime}
                     onChange={(e) => setEditTime(e.target.value)}
+                    onClick={(e) => {
+                      try {
+                        e.currentTarget.showPicker();
+                      } catch {}
+                    }}
                   />
                 </div>
               </div>

@@ -518,9 +518,14 @@ export default function RecordGiftScreen() {
                       </label>
                       <input
                         type="date"
-                        className="input"
+                        className="input cursor-pointer"
                         value={manualDate}
                         onChange={(e) => setManualDate(e.target.value)}
+                        onClick={(e) => {
+                          try {
+                            e.currentTarget.showPicker();
+                          } catch {}
+                        }}
                       />
                     </div>
                   </div>

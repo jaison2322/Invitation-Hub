@@ -749,10 +749,15 @@ export default function ExtractedDetailsScreen() {
                 {getConfidenceBadge('date')}
               </label>
               <input
-                className="input"
+                className="input cursor-pointer"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker();
+                  } catch {}
+                }}
                 required
               />
             </div>
@@ -764,10 +769,15 @@ export default function ExtractedDetailsScreen() {
                 {getConfidenceBadge('time')}
               </label>
               <input
-                className="input"
+                className="input cursor-pointer"
                 type="time"
                 value={time}
                 onChange={(e) => setTime(e.target.value)}
+                onClick={(e) => {
+                  try {
+                    e.currentTarget.showPicker();
+                  } catch {}
+                }}
               />
             </div>
           </div>

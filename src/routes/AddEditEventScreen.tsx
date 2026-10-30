@@ -306,10 +306,15 @@ export default function AddEditEventScreen() {
           <div>
             <label className="label">Date *</label>
             <input
-              className="input"
+              className="input cursor-pointer"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              onClick={(e) => {
+                try {
+                  e.currentTarget.showPicker();
+                } catch {}
+              }}
               required
             />
           </div>
