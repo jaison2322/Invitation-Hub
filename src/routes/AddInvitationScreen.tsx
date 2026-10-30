@@ -25,7 +25,7 @@ import {
   Plus,
 } from 'lucide-react';
 import type { EventType, Priority, InvitationStatus, RelationshipType } from '../types';
-import { getEventTypeLabel } from '../utils/formatters';
+import { getEventTypeLabel, isInvitationPastByDate } from '../utils/formatters';
 import { permissionService } from '../services/permissionService';
 import { storageService } from '../services/storageService';
 import { generateId } from '../utils/id';
@@ -67,6 +67,7 @@ export default function AddInvitationScreen() {
   const [description, setDescription] = useState('');
   const [reminderDays, setReminderDays] = useState<number[]>([0, 1, 2, 7]);
   const [customDaysValue, setCustomDaysValue] = useState<number>(3);
+  const isEventPast = date ? isInvitationPastByDate({ date }) : false;
 
   const PRESET_REMINDER_DAYS = [
     { days: 0, label: 'Same Day', desc: 'Day of event' },
@@ -921,8 +922,9 @@ export default function AddInvitationScreen() {
             </div>
           </div>
 
-          {/* Reminder Schedule */}
-          <div className="glass-card p-3.5" style={{ borderRadius: '14px' }}>
+          {/* Reminder Schedule (Upcoming Events Only) */}
+          {!isEventPast && (
+            <div className="glass-card p-3.5" style={{ borderRadius: '14px' }}>
             <div className="flex items-center justify-between mb-1">
               <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Bell size={14} style={{ color: 'var(--color-gold)' }} />
@@ -1176,6 +1178,7 @@ export default function AddInvitationScreen() {
               </div>
             )}
           </div>
+          )}
 
           {/* Description / Notes */}
           <div>

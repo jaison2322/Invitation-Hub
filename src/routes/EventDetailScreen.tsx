@@ -100,6 +100,9 @@ export default function EventDetailScreen() {
     );
   }
 
+  const isPast = isInvitationPastByDate(invitation);
+  const isEditDatePast = editDate ? isInvitationPastByDate({ date: editDate }) : false;
+
   const person = invitation.personId ? people.find((p) => p.id === invitation.personId) : null;
   const relHistory = person ? getRelationshipHistory(person.id, familyEvents) : [];
   const giftHist = person ? getGiftHistory(person.id, familyEvents) : [];
@@ -778,8 +781,9 @@ export default function EventDetailScreen() {
           )}
         </section>
 
-        {/* ── Protocol Reminders & Alert Schedule ────────────────────────────── */}
-        <section className="mb-4">
+        {/* ── Protocol Reminders & Alert Schedule (Upcoming Events Only) ── */}
+        {!isPast && (
+          <section className="mb-4">
           <div className="section-header flex items-center justify-between">
             <span className="section-title">Reminder Schedule</span>
             <span
@@ -1050,6 +1054,7 @@ export default function EventDetailScreen() {
             </div>
           </div>
         </section>
+        )}
       </div>
 
       {/* ── Decision Bar for Pending Events ────────────────────────────────── */}
@@ -1291,8 +1296,9 @@ export default function EventDetailScreen() {
                 </select>
               </div>
 
-              {/* Reminder Schedule */}
-              <div className="glass-card p-3.5" style={{ borderRadius: '14px' }}>
+              {/* Reminder Schedule (Upcoming Events Only) */}
+              {!isEditDatePast && (
+                <div className="glass-card p-3.5" style={{ borderRadius: '14px' }}>
                 <div className="flex items-center justify-between mb-1">
                   <label className="label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Bell size={14} style={{ color: 'var(--color-gold)' }} />
@@ -1546,6 +1552,7 @@ export default function EventDetailScreen() {
                   </div>
                 )}
               </div>
+              )}
 
               {/* 9. Notes / Description */}
               <div>
