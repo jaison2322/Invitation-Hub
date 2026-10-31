@@ -249,6 +249,7 @@ export interface Notification {
   timestamp: string;
   actionUrl?: string;
   relatedEntityId?: string;
+  requestStatus?: 'pending' | 'approved' | 'rejected';
 }
 
 export interface AIAnalysis {

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
-import { ArrowLeft, Bell, AlertTriangle, Calendar, UserCheck, CheckCheck, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Bell, AlertTriangle, Calendar, UserCheck, CheckCheck, Trash2, X, Check } from 'lucide-react';
 import { formatTimeAgo } from '../utils/formatters';
 
 const TYPE_ICONS: Record<string, ReactNode> = {
@@ -27,6 +27,7 @@ export default function NotificationsScreen() {
   const navigate = useNavigate();
   const {
     notifications,
+    privilegedUsers,
     markNotificationRead,
     markAllNotificationsRead,
     deleteNotification,
@@ -36,6 +37,7 @@ export default function NotificationsScreen() {
 
   const [activeTab, setActiveTab] = useState<'all' | 'unread'>('all');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [processingUser, setProcessingUser] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
   const filtered = activeTab === 'unread' ? notifications.filter((n) => !n.read) : notifications;
@@ -131,95 +133,203 @@ export default function NotificationsScreen() {
 
       <div className="screen-scroll-body">
         <div className="flex flex-col gap-2">
-          {filtered.map((notif, i) => (
-            <div
-              key={notif.id}
-              className={`glass-card animate-slide-up ${!notif.read ? 'glass-card-gold' : ''}`}
-              style={{
-                animationDelay: `${Math.min(i * 0.03, 0.3)}s`,
-                padding: 'var(--space-3) var(--space-4)',
-                opacity: notif.read ? 0.75 : 1,
-                position: 'relative',
-              }}
-            >
-              <div className="flex items-start gap-3">
-                <div
-                  style={{
-                    width: '32px',
-                    height: '32px',
-                    borderRadius: 'var(--radius-sm)',
-                    background: `${TYPE_COLORS[notif.type] || 'var(--color-text-muted)'}15`,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: TYPE_COLORS[notif.type] || 'var(--color-text-muted)',
-                    flexShrink: 0,
-                  }}
-                >
-                  {TYPE_ICONS[notif.type] || <Bell size={16} />}
-                </div>
+          {filtered.map((notif, i) => {
+            const targetUser =
+              notif.relatedEntityId ||
+              notif.message.match(/(?:Username:\s*|@)([a-zA-Z0-9_-]+)/i)?.[1] ||
+              notif.title.match(/Staff Request:\s*([a-zA-Z0-9_-]+)/i)?.[1];
 
-                <div
-                  className="flex-1 min-w-0"
-                  style={{ cursor: notif.actionUrl || notif.relatedEntityId ? 'pointer' : 'default' }}
-                  onClick={() => handleNotificationClick(notif)}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
-                      {notif.title}
-                    </span>
-                    {!notif.read && (
-                      <div
-                        style={{
-                          width: '8px',
-                          height: '8px',
-                          borderRadius: '50%',
-                          background: 'var(--color-gold)',
-                          flexShrink: 0,
-                          marginLeft: '8px',
-                        }}
-                      />
-                    )}
+            const linkedUser = targetUser
+              ? privilegedUsers.find(
+                  (u) =>
+                    u.username?.toLowerCase() === targetUser.toLowerCase() ||
+                    u.name?.toLowerCase() === targetUser.toLowerCase()
+                )
+              : undefined;
+
+            const isApproved =
+              notif.requestStatus === 'approved' ||
+              linkedUser?.approvalStatus === 'APPROVED' ||
+              notif.title.toLowerCase().includes('approved') ||
+              notif.message.toLowerCase().includes('was approved');
+
+            const isRejected =
+              notif.requestStatus === 'rejected' ||
+              linkedUser?.approvalStatus === 'REJECTED' ||
+              notif.title.toLowerCase().includes('declined') ||
+              notif.title.toLowerCase().includes('rejected') ||
+              notif.message.toLowerCase().includes('was declined') ||
+              notif.message.toLowerCase().includes('was rejected');
+
+            const isStaffEvent =
+              notif.type === 'staff_request' ||
+              notif.title.toLowerCase().includes('staff') ||
+              Boolean(targetUser && linkedUser);
+
+            const isPendingRequest =
+              isStaffEvent &&
+              !isApproved &&
+              !isRejected &&
+              (!linkedUser || linkedUser.approvalStatus === 'PENDING_APPROVAL');
+
+            const isProcessing = Boolean(processingUser && processingUser === (targetUser || notif.id));
+
+            return (
+              <div
+                key={notif.id}
+                className={`glass-card animate-slide-up ${!notif.read ? 'glass-card-gold' : ''}`}
+                style={{
+                  animationDelay: `${Math.min(i * 0.03, 0.3)}s`,
+                  padding: 'var(--space-3) var(--space-4)',
+                  opacity: notif.read ? 0.75 : 1,
+                  position: 'relative',
+                }}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    style={{
+                      width: '32px',
+                      height: '32px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: `${TYPE_COLORS[notif.type] || 'var(--color-text-muted)'}15`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: TYPE_COLORS[notif.type] || 'var(--color-text-muted)',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {TYPE_ICONS[notif.type] || <Bell size={16} />}
                   </div>
-                  <p className="text-sm text-secondary" style={{ marginTop: '2px', lineHeight: '1.4' }}>
-                    {notif.message}
-                  </p>
 
-                  {notif.type === 'staff_request' && !notif.read && (
-                    <div className="flex items-center gap-2 mt-3 pt-2" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-primary"
-                        style={{ fontSize: '11px', padding: '4px 10px' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const targetUser = notif.relatedEntityId || notif.message.match(/Username:\s*([a-zA-Z0-9_-]+)/i)?.[1];
-                          if (targetUser) {
-                            respondToStaffRequest(targetUser, true);
-                          }
-                        }}
-                      >
-                        Accept
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-secondary"
-                        style={{ fontSize: '11px', padding: '4px 10px', color: 'var(--color-danger)' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const targetUser = notif.relatedEntityId || notif.message.match(/Username:\s*([a-zA-Z0-9_-]+)/i)?.[1];
-                          if (targetUser) {
-                            respondToStaffRequest(targetUser, false);
-                          }
-                        }}
-                      >
-                        Reject
-                      </button>
+                  <div
+                    className="flex-1 min-w-0"
+                    style={{ cursor: notif.actionUrl || notif.relatedEntityId ? 'pointer' : 'default' }}
+                    onClick={() => handleNotificationClick(notif)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                        {notif.title}
+                      </span>
+                      {!notif.read && (
+                        <div
+                          style={{
+                            width: '8px',
+                            height: '8px',
+                            borderRadius: '50%',
+                            background: 'var(--color-gold)',
+                            flexShrink: 0,
+                            marginLeft: '8px',
+                          }}
+                        />
+                      )}
                     </div>
-                  )}
+                    <p className="text-sm text-secondary" style={{ marginTop: '2px', lineHeight: '1.4' }}>
+                      {notif.message}
+                    </p>
 
-                  <div className="text-xs text-muted mt-1">{formatTimeAgo(notif.timestamp)}</div>
-                </div>
+                    {isApproved && isStaffEvent && (
+                      <div
+                        className="flex items-center gap-2 mt-2.5 pt-2"
+                        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold"
+                          style={{
+                            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                            color: '#4ade80',
+                            border: '1px solid rgba(34, 197, 94, 0.3)',
+                          }}
+                        >
+                          <Check size={13} strokeWidth={2.5} />
+                          Approved
+                        </span>
+                      </div>
+                    )}
+
+                    {isRejected && isStaffEvent && (
+                      <div
+                        className="flex items-center gap-2 mt-2.5 pt-2"
+                        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold"
+                          style={{
+                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            color: '#f87171',
+                            border: '1px solid rgba(239, 68, 68, 0.3)',
+                          }}
+                        >
+                          <X size={13} strokeWidth={2.5} />
+                          Rejected
+                        </span>
+                      </div>
+                    )}
+
+                    {isPendingRequest && (
+                      <div
+                        className="flex items-center gap-2 mt-3 pt-2"
+                        style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          disabled={isProcessing}
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 12px',
+                            fontWeight: 600,
+                            opacity: isProcessing ? 0.6 : 1,
+                          }}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const userToRespond = targetUser || notif.relatedEntityId;
+                            if (userToRespond) {
+                              setProcessingUser(userToRespond);
+                              try {
+                                await respondToStaffRequest(userToRespond, true);
+                              } finally {
+                                setProcessingUser(null);
+                              }
+                            }
+                          }}
+                        >
+                          {isProcessing ? 'Approving...' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-secondary"
+                          disabled={isProcessing}
+                          style={{
+                            fontSize: '11px',
+                            padding: '4px 12px',
+                            color: 'var(--color-danger)',
+                            fontWeight: 600,
+                            opacity: isProcessing ? 0.6 : 1,
+                          }}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const userToRespond = targetUser || notif.relatedEntityId;
+                            if (userToRespond) {
+                              setProcessingUser(userToRespond);
+                              try {
+                                await respondToStaffRequest(userToRespond, false);
+                              } finally {
+                                setProcessingUser(null);
+                              }
+                            }
+                          }}
+                        >
+                          {isProcessing ? 'Rejecting...' : 'Reject'}
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-muted mt-1">{formatTimeAgo(notif.timestamp)}</div>
+                  </div>
 
                 <button
                   className="btn-ghost"
@@ -242,7 +352,8 @@ export default function NotificationsScreen() {
                 </button>
               </div>
             </div>
-          ))}
+          );
+        })}
 
           {filtered.length === 0 && (
             <div className="empty-state">

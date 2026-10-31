@@ -1132,13 +1132,17 @@ export const useAppStore = create<AppState>()(
 
         // Optimistically update local notifications & privileged users immediately
         set((state) => ({
-          notifications: state.notifications.map((n) =>
-            ((n.relatedEntityId && n.relatedEntityId.toLowerCase() === staffUsername.toLowerCase()) ||
-              n.message.toLowerCase().includes(staffUsername.toLowerCase())) &&
-            n.type === 'staff_request'
-              ? { ...n, read: true }
-              : n
-          ),
+          notifications: state.notifications.map((n) => {
+            const isTarget =
+              ((n.relatedEntityId && n.relatedEntityId.toLowerCase() === staffUsername.toLowerCase()) ||
+                n.message.toLowerCase().includes(staffUsername.toLowerCase()) ||
+                n.title.toLowerCase().includes(staffUsername.toLowerCase())) &&
+              (n.type === 'staff_request' || n.title.toLowerCase().includes('staff'));
+
+            return isTarget
+              ? { ...n, read: true, requestStatus: accept ? 'approved' : 'rejected' }
+              : n;
+          }),
           privilegedUsers: state.privilegedUsers.map((u) =>
             u.username && u.username.toLowerCase() === staffUsername.toLowerCase()
               ? { ...u, approvalStatus: accept ? 'APPROVED' : 'REJECTED' }
@@ -1152,14 +1156,15 @@ export const useAppStore = create<AppState>()(
 
         get().addNotification({
           vipId: activeVipId || undefined,
-          type: 'staff_request',
+          type: 'system',
           title: accept ? 'Staff Access Approved' : 'Staff Access Declined',
           message: accept
             ? `Staff access for @${staffUsername} was approved.`
             : `Staff request for @${staffUsername} was declined.`,
-          read: false,
+          read: true,
           relatedEntityId: staffUsername,
-          actionUrl: '/settings',
+          actionUrl: '/staff-requests',
+          requestStatus: accept ? 'approved' : 'rejected',
         });
 
         return { success: true };
