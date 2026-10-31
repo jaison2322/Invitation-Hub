@@ -183,9 +183,13 @@ export default function NotificationsScreen() {
                   padding: 'var(--space-3) var(--space-4)',
                   opacity: notif.read ? 0.75 : 1,
                   position: 'relative',
+                  width: '100%',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'hidden',
                 }}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3" style={{ width: '100%', minWidth: 0 }}>
                   <div
                     style={{
                       width: '32px',
@@ -204,11 +208,29 @@ export default function NotificationsScreen() {
 
                   <div
                     className="flex-1 min-w-0"
-                    style={{ cursor: notif.actionUrl || notif.relatedEntityId ? 'pointer' : 'default' }}
+                    style={{
+                      cursor: notif.actionUrl || notif.relatedEntityId ? 'pointer' : 'default',
+                      minWidth: 0,
+                      overflow: 'hidden',
+                    }}
                     onClick={() => handleNotificationClick(notif)}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
+                    <div className="flex items-start justify-between gap-2" style={{ minWidth: 0, width: '100%' }}>
+                      <span
+                        className="text-sm font-semibold"
+                        style={{
+                          color: 'var(--color-text-primary)',
+                          flex: 1,
+                          minWidth: 0,
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word',
+                          lineHeight: '1.35',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                          overflow: 'hidden',
+                        }}
+                      >
                         {notif.title}
                       </span>
                       {!notif.read && (
@@ -219,12 +241,20 @@ export default function NotificationsScreen() {
                             borderRadius: '50%',
                             background: 'var(--color-gold)',
                             flexShrink: 0,
-                            marginLeft: '8px',
+                            marginTop: '4px',
                           }}
                         />
                       )}
                     </div>
-                    <p className="text-sm text-secondary" style={{ marginTop: '2px', lineHeight: '1.4' }}>
+                    <p
+                      className="text-sm text-secondary"
+                      style={{
+                        marginTop: '4px',
+                        lineHeight: '1.4',
+                        wordBreak: 'break-word',
+                        overflowWrap: 'break-word',
+                      }}
+                    >
                       {notif.message}
                     </p>
 
@@ -341,6 +371,8 @@ export default function NotificationsScreen() {
                     border: 'none',
                     cursor: 'pointer',
                     flexShrink: 0,
+                    marginTop: '-2px',
+                    marginRight: '-4px',
                   }}
                   title="Dismiss notification"
                   onClick={(e) => {

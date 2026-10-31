@@ -918,7 +918,11 @@ h4 { font-size: var(--text-lg); }
 .gap-5 { gap: var(--space-5); }
 .gap-6 { gap: var(--space-6); }
 .flex-1 { flex: 1; }
+.min-w-0 { min-width: 0 !important; }
 .w-full { width: 100%; }
+.break-words { overflow-wrap: break-word; word-break: break-word; }
+.line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 .grid { display: grid; }
 .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
