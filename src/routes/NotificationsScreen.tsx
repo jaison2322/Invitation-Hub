@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
@@ -28,6 +28,8 @@ export default function NotificationsScreen() {
   const {
     notifications,
     privilegedUsers,
+    activeVipId,
+    refreshStaffAccounts,
     markNotificationRead,
     markAllNotificationsRead,
     deleteNotification,
@@ -39,8 +41,31 @@ export default function NotificationsScreen() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [processingUser, setProcessingUser] = useState<string | null>(null);
 
+  // Ensure staff approval statuses are fresh from the database on mount
+  useEffect(() => {
+    if (activeVipId) {
+      refreshStaffAccounts(activeVipId).catch(console.warn);
+    }
+  }, [activeVipId, refreshStaffAccounts]);
+
   const unreadCount = notifications.filter((n) => !n.read).length;
   const filtered = activeTab === 'unread' ? notifications.filter((n) => !n.read) : notifications;
+
+  // Deduplicate redundant staff request/access cards for the same staff user
+  const seenStaff = new Set<string>();
+  const displayList = filtered.filter((n) => {
+    const isStaff = n.type === 'staff_request' || n.title.toLowerCase().includes('staff');
+    if (!isStaff) return true;
+    const staffUser =
+      n.relatedEntityId ||
+      n.message.match(/(?:Username:\s*|@)([a-zA-Z0-9_-]+)/i)?.[1] ||
+      n.title.match(/Staff (?:Request|Access):\s*([a-zA-Z0-9_-]+)/i)?.[1];
+    if (!staffUser) return true;
+    const key = staffUser.toLowerCase();
+    if (seenStaff.has(key)) return false;
+    seenStaff.add(key);
+    return true;
+  });
 
   const handleNotificationClick = (notif: (typeof notifications)[0]) => {
     markNotificationRead(notif.id);
@@ -133,11 +158,11 @@ export default function NotificationsScreen() {
 
       <div className="screen-scroll-body">
         <div className="flex flex-col gap-2">
-          {filtered.map((notif, i) => {
+          {displayList.map((notif, i) => {
             const targetUser =
               notif.relatedEntityId ||
               notif.message.match(/(?:Username:\s*|@)([a-zA-Z0-9_-]+)/i)?.[1] ||
-              notif.title.match(/Staff Request:\s*([a-zA-Z0-9_-]+)/i)?.[1];
+              notif.title.match(/Staff (?:Request|Access):\s*([a-zA-Z0-9_-]+)/i)?.[1];
 
             const linkedUser = targetUser
               ? privilegedUsers.find(
@@ -147,30 +172,93 @@ export default function NotificationsScreen() {
                 )
               : undefined;
 
+            // Cross-check all signals for this staff user
+            const isApprovedAnywhere = targetUser
+              ? privilegedUsers.some(
+                  (u) =>
+                    (u.username?.toLowerCase() === targetUser.toLowerCase() ||
+                      u.name?.toLowerCase() === targetUser.toLowerCase()) &&
+                    u.approvalStatus === 'APPROVED'
+                ) ||
+                notifications.some((n) => {
+                  const match =
+                    n.relatedEntityId?.toLowerCase() === targetUser.toLowerCase() ||
+                    n.message.toLowerCase().includes(targetUser.toLowerCase()) ||
+                    n.title.toLowerCase().includes(targetUser.toLowerCase());
+                  return (
+                    match &&
+                    (n.requestStatus === 'approved' ||
+                      n.title.toLowerCase().includes('approved') ||
+                      n.message.toLowerCase().includes('was approved'))
+                  );
+                })
+              : false;
+
+            const isRejectedAnywhere = targetUser
+              ? privilegedUsers.some(
+                  (u) =>
+                    (u.username?.toLowerCase() === targetUser.toLowerCase() ||
+                      u.name?.toLowerCase() === targetUser.toLowerCase()) &&
+                    u.approvalStatus === 'REJECTED'
+                ) ||
+                notifications.some((n) => {
+                  const match =
+                    n.relatedEntityId?.toLowerCase() === targetUser.toLowerCase() ||
+                    n.message.toLowerCase().includes(targetUser.toLowerCase()) ||
+                    n.title.toLowerCase().includes(targetUser.toLowerCase());
+                  return (
+                    match &&
+                    (n.requestStatus === 'rejected' ||
+                      n.title.toLowerCase().includes('declined') ||
+                      n.title.toLowerCase().includes('rejected') ||
+                      n.message.toLowerCase().includes('was declined') ||
+                      n.message.toLowerCase().includes('was rejected'))
+                  );
+                })
+              : false;
+
             const isApproved =
               notif.requestStatus === 'approved' ||
               linkedUser?.approvalStatus === 'APPROVED' ||
               notif.title.toLowerCase().includes('approved') ||
-              notif.message.toLowerCase().includes('was approved');
+              notif.message.toLowerCase().includes('was approved') ||
+              isApprovedAnywhere;
 
             const isRejected =
-              notif.requestStatus === 'rejected' ||
-              linkedUser?.approvalStatus === 'REJECTED' ||
-              notif.title.toLowerCase().includes('declined') ||
-              notif.title.toLowerCase().includes('rejected') ||
-              notif.message.toLowerCase().includes('was declined') ||
-              notif.message.toLowerCase().includes('was rejected');
+              !isApproved &&
+              (notif.requestStatus === 'rejected' ||
+                linkedUser?.approvalStatus === 'REJECTED' ||
+                notif.title.toLowerCase().includes('declined') ||
+                notif.title.toLowerCase().includes('rejected') ||
+                notif.message.toLowerCase().includes('was declined') ||
+                notif.message.toLowerCase().includes('was rejected') ||
+                isRejectedAnywhere);
 
             const isStaffEvent =
               notif.type === 'staff_request' ||
               notif.title.toLowerCase().includes('staff') ||
-              Boolean(targetUser && linkedUser);
+              Boolean(targetUser);
 
             const isPendingRequest =
               isStaffEvent &&
               !isApproved &&
               !isRejected &&
+              !notif.read &&
               (!linkedUser || linkedUser.approvalStatus === 'PENDING_APPROVAL');
+
+            const displayTitle =
+              isApproved && isStaffEvent
+                ? 'Staff Access Approved'
+                : isRejected && isStaffEvent
+                ? 'Staff Access Declined'
+                : notif.title;
+
+            const displayMessage =
+              isApproved && isStaffEvent && targetUser
+                ? `Staff access for @${targetUser} was approved.`
+                : isRejected && isStaffEvent && targetUser
+                ? `Staff request for @${targetUser} was declined.`
+                : notif.message;
 
             const isProcessing = Boolean(processingUser && processingUser === (targetUser || notif.id));
 
@@ -231,7 +319,7 @@ export default function NotificationsScreen() {
                           overflow: 'hidden',
                         }}
                       >
-                        {notif.title}
+                        {displayTitle}
                       </span>
                       {!notif.read && (
                         <div
@@ -255,7 +343,7 @@ export default function NotificationsScreen() {
                         overflowWrap: 'break-word',
                       }}
                     >
-                      {notif.message}
+                      {displayMessage}
                     </p>
 
                     {isApproved && isStaffEvent && (
@@ -387,7 +475,7 @@ export default function NotificationsScreen() {
           );
         })}
 
-          {filtered.length === 0 && (
+          {displayList.length === 0 && (
             <div className="empty-state">
               <div className="empty-state-icon"><Bell size={28} /></div>
               <div className="empty-state-title">

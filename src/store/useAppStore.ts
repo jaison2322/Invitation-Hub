@@ -1130,6 +1130,14 @@ export const useAppStore = create<AppState>()(
           return { success: false, error: res.error || 'Failed to respond to request' };
         }
 
+        const updatedTitle = accept ? 'Staff Access Approved' : 'Staff Access Declined';
+        const updatedMessage = accept
+          ? `Staff access for @${staffUsername} was approved.`
+          : `Staff request for @${staffUsername} was declined.`;
+
+        const affectedNotifIds: string[] = [];
+        let hadExistingNotification = false;
+
         // Optimistically update local notifications & privileged users immediately
         set((state) => ({
           notifications: state.notifications.map((n) => {
@@ -1139,9 +1147,19 @@ export const useAppStore = create<AppState>()(
                 n.title.toLowerCase().includes(staffUsername.toLowerCase())) &&
               (n.type === 'staff_request' || n.title.toLowerCase().includes('staff'));
 
-            return isTarget
-              ? { ...n, read: true, requestStatus: accept ? 'approved' : 'rejected' }
-              : n;
+            if (isTarget) {
+              hadExistingNotification = true;
+              affectedNotifIds.push(n.id);
+              return {
+                ...n,
+                title: updatedTitle,
+                message: updatedMessage,
+                read: true,
+                type: 'system',
+                requestStatus: accept ? 'approved' : 'rejected',
+              };
+            }
+            return n;
           }),
           privilegedUsers: state.privilegedUsers.map((u) =>
             u.username && u.username.toLowerCase() === staffUsername.toLowerCase()
@@ -1150,22 +1168,37 @@ export const useAppStore = create<AppState>()(
           ),
         }));
 
+        // Persist the title/message change to Supabase for the original notification
+        for (const notifId of affectedNotifIds) {
+          supabaseDbService.updateNotification(
+            notifId,
+            {
+              title: updatedTitle,
+              message: updatedMessage,
+              read: true,
+              type: 'system',
+            },
+            activeVipId || undefined
+          ).catch(console.warn);
+        }
+
         if (activeVipId) {
           get().refreshStaffAccounts(activeVipId).catch(console.warn);
         }
 
-        get().addNotification({
-          vipId: activeVipId || undefined,
-          type: 'system',
-          title: accept ? 'Staff Access Approved' : 'Staff Access Declined',
-          message: accept
-            ? `Staff access for @${staffUsername} was approved.`
-            : `Staff request for @${staffUsername} was declined.`,
-          read: true,
-          relatedEntityId: staffUsername,
-          actionUrl: '/staff-requests',
-          requestStatus: accept ? 'approved' : 'rejected',
-        });
+        // Only add a new notification if no existing notification was found to transform
+        if (!hadExistingNotification) {
+          get().addNotification({
+            vipId: activeVipId || undefined,
+            type: 'system',
+            title: updatedTitle,
+            message: updatedMessage,
+            read: true,
+            relatedEntityId: staffUsername,
+            actionUrl: '/staff-requests',
+            requestStatus: accept ? 'approved' : 'rejected',
+          });
+        }
 
         return { success: true };
       },

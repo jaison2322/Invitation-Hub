@@ -661,6 +661,26 @@ export const supabaseDbService = {
     }
   },
 
+  async updateNotification(id: string, updates: Partial<Notification>, vipId?: string): Promise<boolean> {
+    try {
+      const targetVipId = vipId || getActiveSessionVipId();
+      const payload: any = {};
+      if (updates.title !== undefined) payload.title = updates.title;
+      if (updates.message !== undefined) payload.message = updates.message;
+      if (updates.read !== undefined) payload.read = updates.read;
+      if (updates.type !== undefined) payload.type = updates.type;
+      if (updates.actionUrl !== undefined) payload.action_url = updates.actionUrl;
+
+      let query = supabase.from('notifications').update(payload).eq('id', id);
+      if (targetVipId) query = query.eq('vip_id', targetVipId);
+      const { error } = await query;
+      return !error;
+    } catch (err) {
+      console.warn('Supabase updateNotification exception:', err);
+      return false;
+    }
+  },
+
   async markAllNotificationsRead(vipId?: string): Promise<boolean> {
     try {
       const targetVipId = vipId || getActiveSessionVipId();
